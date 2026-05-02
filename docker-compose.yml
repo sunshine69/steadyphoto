@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  db:
+    image: ankane/pgvector:latest # Using a pre-built image with pgvector support
+    environment:
+      POSTGRES_USER: steadyphoto
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: steadyphoto
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
