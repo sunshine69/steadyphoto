@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -97,13 +98,15 @@ func TestPostgresPhotoRepository(t *testing.T) {
 		for i := 0; i < 5; i++ {
 			p := &domain.Photo{
 				ID:         uuid.New(),
-				Path:       "/tmp/test/list.jpg",
-				Filename:   "list.jpg",
+				Path:       fmt.Sprintf("/tmp/test/list_%d.jpg", i),
+				Filename:   fmt.Sprintf("list_%d.jpg", i),
 				Hash:       uuid.New().String(),
 				SizeBytes:  100,
 				CapturedAt: time.Now().Add(time.Duration(i) * time.Second),
 			}
-			_ = repo.Create(context.Background(), p)
+			if err := repo.Create(context.Background(), p); err != nil {
+				t.Fatalf("Failed to create photo in List test index %d: %v", i, err)
+			}
 		}
 
 		photos, total, err := repo.List(context.Background(), 2, 0)
@@ -128,7 +131,9 @@ func TestPostgresPhotoRepository(t *testing.T) {
 			SizeBytes:  500,
 			CapturedAt: time.Now().Truncate(time.Microsecond),
 		}
-		_ = repo.Create(context.Background(), photo)
+		if err := repo.Create(context.Background(), photo); err != nil {
+			t.Fatalf("Failed to create photo for update test: %v", err)
+		}
 
 		photo.SizeBytes = 9999
 		photo.Metadata = domain.Metadata{"updated": "true"}
@@ -154,7 +159,9 @@ func TestPostgresPhotoRepository(t *testing.T) {
 			Hash:       "hash_del",
 			CapturedAt: time.Now(),
 		}
-		_ = repo.Create(context.Background(), photo)
+		if err := repo.Create(context.Background(), photo); err != nil {
+			t.Fatalf("Failed to create photo for delete test: %v", err)
+		}
 
 		err := repo.Delete(context.Background(), photo.ID)
 		if err != nil {
