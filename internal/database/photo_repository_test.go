@@ -18,8 +18,6 @@ func TestPostgresPhotoRepository(t *testing.T) {
 	// Setup database connection using environment variable
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
-		// Fallback for local development if env is not set, 
-		// but we prioritize the env var as requested.
 		dbURL = "postgres://steadyphoto:password@localhost:5432/steadyphoto?sslmode=disable"
 	}
 
@@ -28,6 +26,13 @@ func TestPostgresPhotoRepository(t *testing.T) {
 		t.Fatalf("Failed to connect to database: %v. Ensure DATABASE_URL is set and Postgres is running.", err)
 	}
 	defer db.Close()
+
+	// --- IDEMPOTENCY STEP: Wipe the database before starting the tests ---
+	// We use CASCADE to ensure that all related records in faces and albums are also removed.
+	_, err = db.Exec("TRUNCATE TABLE photos, faces, albums RESTART IDENTITY CASCADE")
+	if err != nil {
+		t.Fatalf("Failed to clean up database for idempotent testing: %v", err)
+	}
 
 	repo := NewPostgresPhotoRepository(db)
 
@@ -95,7 +100,8 @@ func TestPostgresPhotoRepository(t *testing.T) {
 
 	t.Run("List", func(t *testing.T) {
 		// Create multiple photos
-		for i := 0; i < 5; i++ {
+		count := 5
+		for i := 0; i < count; i++ {
 			p := &domain.Photo{
 				ID:         uuid.New(),
 				Path:       fmt.Sprintf("/tmp/test/list_%d.jpg", i),
@@ -117,8 +123,8 @@ func TestPostgresPhotoRepository(t *testing.T) {
 		if len(photos) != 2 {
 			t.Errorf("Expected 2 photos, got %d", len(photos))
 		}
-		if total < 5 {
-			t.Errorf("Expected total at least 5, got %d", total)
+		if total < count {
+			t.Errorf("Expected total at least %d, got %d", count, total)
 		}
 	})
 
