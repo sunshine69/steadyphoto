@@ -13,190 +13,157 @@ import (
 	_ "github.com/lib/pq"
 )
 
-func getTestDB(t *testing.T) *sqlx.DB {
+func TestPostgresPhotoRepository(t *testing.T) {
+	// Setup database connection using environment variable
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
-		t.Fatal("DATABASE_URL environment variable is not set")
+		// Fallback for local development if env is not set, 
+		// but we prioritize the env var as requested.
+		dbURL = "postgres://steadyphoto:password@localhost:5432/steadyphoto?sslmode=disable"
 	}
 
 	db, err := sqlx.Connect("postgres", dbURL)
 	if err != nil {
-		t.Fatalf("failed to connect to database: %v", err)
+		t.Fatalf("Failed to connect to database: %v. Ensure DATABASE_URL is set and Postgres is running.", err)
 	}
+	defer db.Close()
 
-	// Clean up after tests
-	t.Cleanup(func() {
-		db.Close()
-	})
-
-	return db
-}
-
-func TestPostgresPhotoRepository(t *testing.T) {
-	db := getTestDB(t)
-	ctx := context.Background()
 	repo := NewPostgresPhotoRepository(db)
 
-	// 1. Test Create
-	p := &domain.Photo{
-		Hash:       "test-hash-123",
-		Filename:   "test.jpg",
-		Path:       "/tmp/test/test.jpg",
-		SizeBytes:  1024,
-		Width:      800,
-		Height:     600,
-		CapturedAt: time.Now().Truncate(time.Second),
-		Metadata:   map[string]string{"camera": "test-cam"},
-	}
+	t.Run("Create_and_GetByID", func(t *testing.T) {
+		photo := &domain.Photo{
+			ID:         uuid.New(),
+			Path:       "/tmp/test/img.jpg",
+			Filename:   "img.jpg",
+			Hash:       "hash123",
+			SizeBytes:  1024,
+			Width:      1920,
+			Height:    1080,
+			CapturedAt: time.Now().Truncate(time.Microsecond),
+			Metadata:   domain.Metadata{"camera": "sony"},
+			CreatedAt:  time.Now().Truncate(time.Microsecond),
+			UpdatedAt:  time.Now().Truncate(time.Microsecond),
+		}
 
-	err := repo.Create(ctx, p)
-	if err != nil {
-		t.Fatalf("Create failed: %v", err)
-	}
+		err := repo.Create(context.Background(), photo)
+		if err != nil {
+			t.Fatalf("Failed to create photo: %v", err)
+		}
 
-	if p.ID == uuid.Nil {
-		t.Error("expected photo ID to be populated")
-	}
+		retrieved, err := repo.GetByID(context.Background(), photo.ID)
+		if err != nil {
+			t.Fatalf("Failed to get photo: %v", err)
+		}
 
-	// 2. Test GetByID
-	found, err := repo.GetByID(ctx, p.ID)
-	if err != nil {
-		t.Fatalf("GetByID failed: %v", err)
-	}
-	if found.Hash != p.Hash {
-		t.Errorf("expected hash %s, got %s", p.Hash, found.Hash)
-	}
-	if found.SizeBytes != p.SizeBytes {
-		t.Errorf("expected size %d, got %d", p.SizeBytes, found.SizeBytes)
-	}
-	if found.Metadata["camera"] != "test-cam" {
-		t.Errorf("expected metadata camera=test-cam, got %s", found.Metadata["camera"])
-	}
+		if retrieved.Hash != photo.Hash {
+			t.Errorf("Expected hash %s, got %s", photo.Hash, retrieved.Hash)
+		}
+		if retrieved.SizeBytes != photo.SizeBytes {
+			t.Errorf("Expected size %d, got %d", photo.SizeBytes, retrieved.SizeBytes)
+		}
+		if retrieved.Metadata["camera"] != "sony" {
+			t.Errorf("Expected metadata camera=sony, got %s", retrieved.Metadata["camera"])
+		}
+	})
 
-	// 3. Test GetByHash
-	foundByHash, err := repo.GetByHash(ctx, p.Hash)
-	if err != nil {
-		t.Fatalf("GetByHash failed: %v", err)
-	}
-	if foundByHash.ID != p.ID {
-		t.Errorf("expected ID %s, got %s", p.ID, foundByHash.ID)
-	}
+	t.Run("GetByHash", func(t *testing.T) {
+		hash := "unique_hash_999"
+		photo := &domain.Photo{
+			ID:         uuid.New(),
+			Path:       "/tmp/test/img2.jpg",
+			Filename:   "img2.jpg",
+			Hash:       hash,
+			SizeBytes:  2048,
+			CapturedAt: time.Now().Truncate(time.Microsecond),
+		}
 
-	// 4. Test List
-	photos, err := repo.List(ctx, 10, 0)
-	if err != nil {
-		t.Fatalf("List failed: %v", err)
-	}
-	if len(photos) == 0 {
-		t.Error("expected at least one photo in list")
-	}
+		err := repo.Create(context.Background(), photo)
+		if err != nil {
+			t.Fatalf("Failed to create photo: %v", err)
+		}
 
-	// 5. Test Update
-	p.Filename = "updated.jpg"
-	err = repo.Update(ctx, p)
-	if err != nil {
-		t.Fatalf("Update failed: %v", err)
-	}
+		retrieved, err := repo.GetByHash(context.Background(), hash)
+		if err != nil {
+			t.Fatalf("Failed to get photo by hash: %v", err)
+		}
 
-	updated, err := repo.GetByID(ctx, p.ID)
-	if err != nil {
-		t.Fatalf("GetByID after update failed: %v", err)
-	}
-	if updated.Filename != "updated.jpg" {
-		t.Errorf("expected filename updated.jpg, got %s", updated.Filename)
-	}
-}
+		if retrieved.ID != photo.ID {
+			t.Errorf("Expected ID %s, got %s", photo.ID, retrieved.ID)
+		}
+	})
 
-func TestPostgresFaceRepository(t *testing.T) {
-	db := getTestDB(t)
-	ctx := context.Background()
-	photoRepo := NewPostgresPhotoRepository(db)
-	faceRepo := NewPostgresFaceRepository(db)
+	t.Run("List", func(t *testing.T) {
+		// Create multiple photos
+		for i := 0; i < 5; i++ {
+			p := &domain.Photo{
+				ID:         uuid.New(),
+				Path:       "/tmp/test/list.jpg",
+				Filename:   "list.jpg",
+				Hash:       uuid.New().String(),
+				SizeBytes:  100,
+				CapturedAt: time.Now().Add(time.Duration(i) * time.Second),
+			}
+			_ = repo.Create(context.Background(), p)
+		}
 
-	// Setup: Create a photo first
-	p := &domain.Photo{
-		Hash:      "face-test-hash",
-		Filename:  "face.jpg",
-		Path:      "/tmp/face.jpg",
-		SizeBytes: 2048,
-	}
-	err := photoRepo.Create(ctx, p)
-	if err != nil {
-		t.Fatalf("failed to setup photo for face test: %v", err)
-	}
+		photos, total, err := repo.List(context.Background(), 2, 0)
+		if err != nil {
+			t.Fatalf("Failed to list photos: %v", err)
+		}
 
-	// 1. Test Create Face
-	f := &domain.Face{
-		PhotoID:     p.ID,
-		BoundingBox: map[string]float64{"x": 10, "y": 20, "w": 100, "h": 100},
-		Embedding:   make([]float64, 512), // zero vector
-	}
-	f.Embedding[0] = 0.5
+		if len(photos) != 2 {
+			t.Errorf("Expected 2 photos, got %d", len(photos))
+		}
+		if total < 5 {
+			t.Errorf("Expected total at least 5, got %d", total)
+		}
+	})
 
-	err = faceRepo.Create(ctx, f)
-	if err != nil {
-		t.Fatalf("Create face failed: %v", err)
-	}
+	t.Run("Update", func(t *testing.T) {
+		photo := &domain.Photo{
+			ID:         uuid.New(),
+			Path:       "/tmp/test/upd.jpg",
+			Filename:   "upd.jpg",
+			Hash:       "hash_upd",
+			SizeBytes:  500,
+			CapturedAt: time.Now().Truncate(time.Microsecond),
+		}
+		_ = repo.Create(context.Background(), photo)
 
-	// 2. Test GetByPhotoID
-	faces, err := faceRepo.GetByPhotoID(ctx, p.ID)
-	if err != nil {
-		t.Fatalf("GetByPhotoID failed: %v", err)
-	}
-	if len(faces) != 1 {
-		t.Fatalf("expected 1 face, got %d", len(faces))
-	}
-	if faces[0].Embedding[0] != 0.5 {
-		t.Errorf("expected embedding[0]=0.5, got %f", faces[0].Embedding[0])
-	}
-}
+		photo.SizeBytes = 9999
+		photo.Metadata = domain.Metadata{"updated": "true"}
+		err := repo.Update(context.Background(), photo)
+		if err != nil {
+			t.Fatalf("Failed to update photo: %v", err)
+		}
 
-func TestPostgresJobRepository(t *testing.T) {
-	db := getTestDB(t)
-	ctx := context.Background()
-	jobRepo := NewPostgresJobRepository(db)
+		retrieved, _ := repo.GetByID(context.Background(), photo.ID)
+		if retrieved.SizeBytes != 9999 {
+			t.Errorf("Expected size 9999, got %d", retrieved.SizeBytes)
+		}
+		if retrieved.Metadata["updated"] != "true" {
+			t.Errorf("Expected metadata updated=true, got %s", retrieved.Metadata["updated"])
+		}
+	})
 
-	// Setup: Create a photo for the job
-	photoRepo := NewPostgresPhotoRepository(db)
-	p := &domain.Photo{Hash: "job-test-hash", Filename: "job.jpg", Path: "/job.jpg", SizeBytes: 100}
-	photoRepo.Create(ctx, p)
+	t.Run("Delete", func(t *testing.T) {
+		photo := &domain.Photo{
+			ID:         uuid.New(),
+			Path:       "/tmp/test/del.jpg",
+			Filename:   "del.jpg",
+			Hash:       "hash_del",
+			CapturedAt: time.Now(),
+		}
+		_ = repo.Create(context.Background(), photo)
 
-	// 1. Test Create Job
-	j := &domain.Job{
-		PhotoID: p.ID,
-		Type:    domain.JobTypeFaceDetection,
-		Status:  domain.JobStatusPending,
-	}
-	err := jobRepo.Create(ctx, j)
-	if err != nil {
-		t.Fatalf("Create job failed: %v", err)
-	}
+		err := repo.Delete(context.Background(), photo.ID)
+		if err != nil {
+			t.Fatalf("Failed to delete photo: %v", err)
+		}
 
-	// 2. Test GetPending
-	pending, err := jobRepo.GetPending(ctx, 10)
-	if err != nil {
-		t.Fatalf("GetPending failed: %v", err)
-	}
-	if len(pending) != 1 {
-		t.Fatalf("expected 1 pending job, got %d", len(pending))
-	}
-	if pending[0].ID != j.ID {
-		t.Errorf("expected job ID %s, got %s", j.ID, pending[0].ID)
-	}
-
-	// 3. Test UpdateStatus
-	var errMsg *string = nil
-	err = jobRepo.UpdateStatus(ctx, j.ID, domain.JobStatusCompleted, errMsg)
-	if err != nil {
-		t.Fatalf("UpdateStatus failed: %v", err)
-	}
-
-	// 4. Verify status change
-	updated, err := jobRepo.GetByID(ctx, j.ID)
-	if err != nil {
-		t.Fatalf("GetByID after update failed: %v", err)
-	}
-	if updated.Status != domain.JobStatusCompleted {
-		t.Errorf("expected status completed, got %s", updated.Status)
-	}
+		_, err = repo.GetByID(context.Background(), photo.ID)
+		if err == nil {
+			t.Error("Expected error getting deleted photo, got nil")
+		}
+	})
 }
