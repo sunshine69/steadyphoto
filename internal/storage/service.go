@@ -2,49 +2,60 @@ package storage
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 )
 
-// Service manages access to the physical storage on disk
-type Service struct {
-	rootPath string
+// StorageService manages access to the physical media files.
+type StorageService struct {
+	baseDir string
 }
 
-// NewService creates a new storage service with a defined root directory
-func NewService(rootPath string) (*Service, error) {
-	// Ensure the path is absolute and cleaned
-	absRoot, err := filepath.Abs(rootPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get absolute path for root: %w", err)
+// NewStorageService creates a new service with a base directory.
+func NewStorageService(baseDir string) *StorageService {
+	return &StorageService{
+		baseDir: filepath.Clean(baseDir),
+	}
+}
+
+// ResolvePath takes a path (either relative to baseDir or absolute) 
+// and returns the full, absolute path on the local filesystem.
+func (s *StorageService) ResolvePath(relativePath string) (string, error) {
+	// 1. Clean the input
+	relativePath = filepath.Clean(relativePath)
+
+	// 2. If the path is already absolute, just verify it exists
+	if filepath.IsAbs(relativePath) {
+		if _, err := os.Stat(relativePath); err != nil {
+			return "", fmt.Errorf("file not found at absolute path: %w", err)
+		}
+		return relativePath, nil
 	}
 
-	return &Service{
-		rootPath: absRoot,
-	}, nil
-}
+	// 3. Normalize the relative path for comparison:
+	// Strip leading slashes and current-directory dots (e.g., "/storage/..." -> "storage/...")
+	normalizedRel := strings.TrimLeft(relativePath, "/\\.")
 
-// GetAbsolutePath converts a relative path from the database into a safe, absolute filesystem path
-func (s *Service) GetAbsolutePath(relPath string) (string, error) {
-	// 1. Clean the input path to prevent basic traversal attempts like /../
-	relPath = filepath.Clean("/" + relPath)
-	// Remove the leading slash to make it relative for filepath.Join
-	relPath = strings.TrimPrefix(relPath, "/")
-
-	// 2. Join with the root path
-	absPath := filepath.Join(s.rootPath, relPath)
-
-	// 3. Security Check: Ensure the resulting path is actually inside the rootPath
-	// This prevents directory traversal attacks (e.g., relPath = "../../etc/passwd")
-	rel, err := filepath.Rel(s.rootPath, absPath)
-	if err != nil || strings.HasPrefix(rel, "..") {
-		return "", fmt.Errorf("security violation: attempted access outside storage root")
+	// 4. Handle the "Duplicate BaseDir" edge case.
+	// We check if the normalized path starts with our base directory's name.
+	baseName := filepath.Base(s.baseDir)
+	
+	// Check if the path starts with "storage/" or just "storage"
+	if strings.HasPrefix(normalizedRel, baseName+string(os.PathSeparator)) || normalizedRel == baseName {
+		// Strip the base name and any following separator
+		normalizedRel = strings.TrimPrefix(normalizedRel, baseName)
+		normalizedRel = strings.TrimLeft(normalizedRel, string(os.PathSeparator))
+		relativePath = filepath.Clean(normalizedRel)
 	}
 
-	return absPath, nil
-}
+	// 5. Join the cleaned relative path with the base directory
+	fullPath := filepath.Join(s.baseDir, relativePath)
 
-// Root returns the base directory for storage
-func (s *Service) Root() string {
-	return s.rootPath
+	// 6. Verify the file exists
+	if _, err := os.Stat(fullPath); err != nil {
+		return "", fmt.Errorf("file not found at resolved path: %w", err)
+	}
+
+	return fullPath, nil
 }

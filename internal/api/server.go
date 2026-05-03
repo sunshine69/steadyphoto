@@ -4,60 +4,105 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/google/uuid"
+	"github.com/gorilla/mux"
 	"steadyphoto/internal/domain"
 	"steadyphoto/internal/storage"
-
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
 )
 
-// Server holds the dependencies for the API
 type Server struct {
-	router  *chi.Mux
-	repo    domain.PhotoRepository
-	storage *storage.Service
+	router         *mux.Router
+	photoRepo      domain.PhotoRepository
+	storageService *storage.StorageService
 }
 
-// NewServer creates a new API server with the provided repository and storage service
-func NewServer(repo domain.PhotoRepository, storageSvc *storage.Service) *Server {
+func NewServer(photoRepo domain.PhotoRepository, storageService *storage.StorageService) *Server {
 	s := &Server{
-		router:  chi.NewRouter(),
-		repo:    repo,
-		storage: storageSvc,
+		router:         mux.NewRouter(),
+		photoRepo:      photoRepo,
+		storageService: storageService,
 	}
-
 	s.routes()
 	return s
 }
 
-// routes configures the middleware and API endpoints
 func (s *Server) routes() {
-	// Standard middlewares for production-ready APIs
-	s.router.Use(middleware.Logger)
-	s.router.Use(middleware.Recoverer)
-	s.router.Use(middleware.RealIP)
-
-	// Health check (outside versioned API)
-	s.router.Get("/health", s.handleHealth)
-
 	// API Versioning
-	s.router.Route("/api/v1", func(r chi.Router) {
-		r.Route("/photos", func(r chi.Router) {
-			r.Get("/", s.handleListPhotos)
-			r.Get("/{id}", s.handleGetPhoto)
-			r.Get("/{id}/original", s.handleGetOriginal)
-		})
-	})
+	api := s.router.PathPrefix("/api/v1").Subrouter()
+
+	// Photo Routes
+	api.HandleFunc("/photos", s.handleListPhotos).Methods(http.MethodGet)
+	api.HandleFunc("/photos/{id}", s.handleGetPhoto).Methods(http.MethodGet)
+	api.HandleFunc("/photos/{id}/original", s.handleGetOriginal).Methods(http.MethodGet)
 }
 
-// handleHealth provides a simple endpoint to verify the server is running
-func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+// handleListPhotos returns a paginated list of photos
+func (s *Server) handleListPhotos(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	
+	// List returns (photos, total, error)
+	photos, _, err := s.photoRepo.List(ctx, 20, 0)
+	if err != nil {
+		http.Error(w, "Failed to list photos: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	json.NewEncoder(w).Encode(photos)
 }
 
-// Handler returns the underlying http.Handler
-func (s *Server) Handler() http.Handler {
-	return s.router
+// handleGetPhoto returns metadata for a single photo
+func (s *Server) handleGetPhoto(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	vars := mux.Vars(r)
+	idStr := vars["id"]
+
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		http.Error(w, "Invalid UUID format", http.StatusBadRequest)
+		return
+	}
+
+	photo, err := s.photoRepo.GetByID(ctx, id)
+	if err != nil {
+		http.Error(w, "Photo not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(photo)
+}
+
+// handleGetOriginal streams the actual file
+func (s *Server) handleGetOriginal(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	vars := mux.Vars(r)
+	idStr := vars["id"]
+
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		http.Error(w, "Invalid UUID format", http.StatusBadRequest)
+		return
+	}
+
+	photo, err := s.photoRepo.GetByID(ctx, id)
+	if err != nil {
+		http.Error(w, "Photo not found", http.StatusNotFound)
+		return
+	}
+
+	// Resolve the absolute path using our Storage Service
+	absPath, err := s.storageService.ResolvePath(photo.Path)
+	if err != nil {
+		http.Error(w, "Could not locate file: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// http.ServeFile handles Range requests automatically (crucial for video/seeking)
+	http.ServeFile(w, r, absPath)
+}
+
+// ServeHTTP makes our Server struct implement the http.Handler interface
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	s.router.ServeHTTP(w, r)
 }
