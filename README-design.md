@@ -1,64 +1,73 @@
 # SteadyPhoto Design Document
 
+**Goal:** A reliable, long-term, "Filesystem-First" photo management system. The database is an index; the filesystem is the source of truth.
+
+---
+
 ## 1. Core Philosophy
-SteadyPhoto is built on the principle of **"Filesystem as the Source of Truth."** 
-- **Human Readable Storage:** Photos are stored in a hierarchical structure (`/YYYY/MM/DD/filename.ext`) to ensure they are accessible without any software.
-- **Database as an Index:** The database (PostgreSQL) is a high-performance cache and index. If lost, the entire state can be rebuilt by scanning the filesystem.
-- **Strict Versioning:** The API must be versioned (e.g., `/v1/`) to ensure long-term compatibility for clients (Android, Web, CLI).
+* **Filesystem as Source of Truth:** Files are organized in a human-readable hierarchy: `/YYYY/MM/DD/filename.ext`.
+* **Database as Index:** The database is a cache of metadata. If the database is lost, the system can be fully reconstructed by scanning the filesystem.
+* **Predictability & Stability:** Use versioned APIs and avoid breaking changes.
+* **No Hash-Based Naming:** Files keep their original names for easy backup and manual browsing.
 
-## 2. Architecture Overview
-The system follows a decoupled, modular architecture designed for concurrent development and scalability.
+---
 
-### 2.1 Components
-1.  **`cmd/server` (API Server):** A Go-based RESTful API that serves metadata, handles uploads, and provides image streaming.
-2.  **`cmd/worker` (Background Processor):** A Go-based worker that listens to a Redis queue to perform heavy tasks:
-    *   Thumbnail generation (via `libvips`).
-    *   AI Face Detection (via `ONNX Runtime`).
-    *   Metadata extraction.
-3.  **`cmd/scanner` (Filesystem Crawler):** A utility to scan existing directories and sync them with the database.
-4.  **`cmd/cli` (Management Tool):** A command-line interface for administrators to manage the system.
+## 2. Technology Stack
+* **Language:** Golang (High performance, single binary).
+* **Database:** PostgreSQL (Reliable, JSONB for metadata, `pgvector` for AI).
+* **Storage Access:** `sqlx` (Transparent SQL) + `pgx` (High-performance driver).
+* **API:** RESTful with versioning (`/api/v1/...`).
+* **Image Processing:** `libvips` (Fast, low memory).
+* **AI Engine:** ONNX Runtime (Local, high-performance AI inference).
 
-### 2.2 Modular Design (Internal Packages)
-To allow parallel development, the system is split into discrete internal modules:
+---
 
-*   **`internal/domain`**: Contains the core business logic, entities (Photo, Album, Face), and interface definitions. This is the "glue" that all other modules depend on.
-*   **`internal/storage`**: Handles the physical movement and organization of files on the disk.
-*   **`internal/database`**: Implementation of the persistence layer (PostgreSQL).
-*   **`internal/api`**: HTTP handlers and routing logic.
-*   **`internal/processor`**: Logic for image manipulation and heavy lifting.
-*   **`internal/scanner`**: Logic for traversing filesystems and detecting changes.
-*   **`internal/ai`**: Interface and implementation for ONNX-based AI models.
-*   **`internal/config`**: Centralized configuration management.
+## 3. System Architecture
 
-## 3. Data Model (High-Level)
-- **Photo**: `id (UUID)`, `original_path`, `checksum (sha256)`, `filename`, `mime_type`, `exif_data (JSONB)`, `created_at`.
-- **Face**: `id (UUID)`, `photo_id`, `bounding_box (JSONB)`, `embedding (vector)`, `is_person_identified (bool)`.
-- **Album**: `id`, `name`, `photo_ids (array/join table)`.
+### A. Ingestion (The Scanner)
+* Scans source directories.
+* Resolves symlinks.
+* Deduplicates via SHA256.
+* Extracts EXIF metadata.
+* Moves/Copies files to organized `storage/YYYY/MM/DD/` structure.
+* Stores **relative paths** in the database.
 
-## 4. Implementation Roadmap (Phased Approach)
+### B. Storage Service
+* Translates relative paths from the DB into absolute system paths.
+* Handles path normalization to prevent directory traversal and duplication.
 
-### Phase 1: The Core Engine (Foundation)
-- [ ] Define `domain` entities and interfaces.
-- [ ] Implement `storage` module (File mover + YYYY/MM/DD logic).
-- [ ] Implement `database` module (PostgreSQL schema).
-- [ ] Implement `scanner` (The "Rebuild from Filesystem" logic).
+### C. API Layer
+* Provides metadata and file streaming.
+* Supports `Range` requests (crucial for video seeking).
 
-### Phase 2: API & Viewing
-- [ ] Implement `api` (v1) with basic CRUD for photos.
-- [ ] Implement `processor` for thumbnail generation using `libvips`.
-- [ ] Create the `server` entry point.
+---
 
-### Phase 3: Background Tasks & AI
-- [ ] Setup Redis and the `worker` module.
-- [ ] Implement the job queue for image processing.
-- [ ] Integrate `ai` module using ONNX for face detection.
+## 4. Implementation Roadmap
 
-### Phase 4: Client Ecosystem
-- [ ] Android Client (Kotlin).
-- [ ] Web Gallery (React/Vue).
+### Phase 1: Core Foundation [COMPLETED]
+* [x] **Domain Models**: Defined `Photo`, `Face`, and `Album` entities.
+* [x] **Database Schema**: PostgreSQL with UUIDs, JSONB, and `pgvector` support.
+* [x] **Scanner Engine**: Symlink-aware, deduplicating, EXIF-extracting scanner.
+* [x] **Storage Service**: Robust path resolution (handles relative/absolute/duplicate prefixes).
+* [x] **REST API**: 
+    * `GET /api/v1/photos` (List/Paginate)
+    * `GET /api/v1/photos/{id}` (Metadata)
+    * `GET /api/v1/photos/{id}/original` (File Stream)
 
-## 5. Development Guidelines for Agents
-1.  **Dependency Rule:** Modules should depend on `internal/domain` interfaces, not on each other's concrete implementations. This allows mocking during testing.
-2.  **Error Handling:** Always return wrapped errors to provide context in the logs.
-3.  **Concurrency:** Use Go channels and context for all long-running processes (scanner, worker).
-4.  **Testing:** Every module in `internal/` must have a corresponding `_test.go` file.
+### Phase 2: Media Optimization & AI [NEXT]
+* [ ] **Thumbnail Engine**: Integration of `libvips` to generate preview sizes.
+* [ ] **AI Face Detection**: ONNX-based worker to find faces and store bounding boxes.
+* [ ] **Semantic Search**: CLIP embedding generation for "search by description."
+
+### Phase 3: Mobile & Sync [UPCOMING]
+* [ ] **Android Client**: Kotlin/Jetpack Compose app for background uploads.
+* [ ] **Sync Protocol**: Efficient delta-based file uploading.
+
+---
+
+## 5. Current Milestone Summary
+**Status:** The "Full Loop" is functional.
+**Verified Workflow:**
+1. `Scanner` $\rightarrow$ Finds file $\rightarrow$ Extracts EXIF $\rightarrow$ Copies to `storage/YYYY/MM/DD/` $\rightarrow$ Saves **relative path** to DB.
+2. `API` $\rightarrow$ Fetches relative path $\rightarrow$ `StorageService` resolves absolute path $\rightarrow$ `http.ServeFile` streams the file to the client.
+**Result:** System is stable, predictable, and ready for media processing.
