@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"steadyphoto/internal/domain"
+	"steadyphoto/internal/storage"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -12,15 +13,17 @@ import (
 
 // Server holds the dependencies for the API
 type Server struct {
-	router *chi.Mux
-	repo   domain.PhotoRepository
+	router  *chi.Mux
+	repo    domain.PhotoRepository
+	storage *storage.Service
 }
 
-// NewServer creates a new API server with the provided repository
-func NewServer(repo domain.PhotoRepository) *Server {
+// NewServer creates a new API server with the provided repository and storage service
+func NewServer(repo domain.PhotoRepository, storageSvc *storage.Service) *Server {
 	s := &Server{
-		router: chi.NewRouter(),
-		repo:   repo,
+		router:  chi.NewRouter(),
+		repo:    repo,
+		storage: storageSvc,
 	}
 
 	s.routes()
@@ -40,9 +43,9 @@ func (s *Server) routes() {
 	// API Versioning
 	s.router.Route("/api/v1", func(r chi.Router) {
 		r.Route("/photos", func(r chi.Router) {
-			// Future handlers:
-			// r.Get("/", s.handleListPhotos)
-			// r.Get("/{id}", s.handleGetPhoto)
+			r.Get("/", s.handleListPhotos)
+			r.Get("/{id}", s.handleGetPhoto)
+			r.Get("/{id}/original", s.handleGetOriginal)
 		})
 	})
 }

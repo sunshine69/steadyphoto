@@ -32,10 +32,10 @@ func (s *Server) handleListPhotos(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := struct {
-		Data  interface{} `json:"data"`
-		Total int         `json:"total"`
-		Limit int         `json:"limit"`
-		Offset int        `json:"offset"`
+		Data   interface{} `json:"data"`
+		Total  int         `json:"total"`
+		Limit  int         `json:"limit"`
+		Offset int         `json:"offset"`
 	}{
 		Data:   photos,
 		Total:  total,
@@ -58,13 +58,38 @@ func (s *Server) handleGetPhoto(w http.ResponseWriter, r *http.Request) {
 
 	photo, err := s.repo.GetByID(r.Context(), id)
 	if err != nil {
-		// In a production app, we would differentiate between 
-		// "not found" and "database error". 
-		// For now, we'll treat both as 404/500 generically.
 		http.Error(w, "Photo not found", http.StatusNotFound)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(photo)
+}
+
+// handleGetOriginal streams the original file from disk
+func (s *Server) handleGetOriginal(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		http.Error(w, "Invalid photo ID format", http.StatusBadRequest)
+		return
+	}
+
+	// 1. Look up the photo in the DB to get its path
+	photo, err := s.repo.GetByID(r.Context(), id)
+	if err != nil {
+		http.Error(w, "Photo not found", http.StatusNotFound)
+		return
+	}
+
+	// 2. Resolve the absolute path using the storage service
+	absPath, err := s.storage.GetAbsolutePath(photo.Path)
+	if err != nil {
+		http.Error(w, "Error accessing file", http.StatusInternalServerError)
+		return
+	}
+
+	// 3. Serve the file
+	// http.ServeFile handles Content-Type detection and Range requests (crucial for video seeking)
+	http.ServeFile(w, r, absPath)
 }
