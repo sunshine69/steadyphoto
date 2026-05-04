@@ -19,6 +19,7 @@
 * **API:** RESTful with versioning (`/api/v1/...`).
 * **Image Processing:** `libvips` (Fast, low memory).
 * **AI Engine:** ONNX Runtime (Local, high-performance AI inference).
+* **Frontend:** Web-based SPA (Single Page Application).
 
 ---
 
@@ -39,6 +40,7 @@
 ### C. API Layer
 * Provides metadata and file streaming.
 * Supports `Range` requests (crucial for video seeking).
+* Provides search capabilities (Text/Metadata/Date).
 
 ---
 
@@ -48,25 +50,28 @@
 * [x] **Domain Models**: Defined `Photo`, `Face`, and `Album` entities.
 * [x] **Database Schema**: PostgreSQL with UUIDs, JSONB, and `pgvector` support.
 * [x] **Scanner Engine**: Symlink-aware, deduplicating, EXIF-extracting scanner.
-* [x] **Storage Service**: Robust path resolution (handles relative/absolute/duplicate prefixes).
-* [x] **REST API**: 
-    * `GET /api/v1/photos` (List/Paginate)
-    * `GET /api/v1/photos/{id}` (Metadata)
-    * `GET /api/v1/photos/{id}/original` (File Stream)
+* [x] **Storage Service**: Robust path resolution.
+* [x] **REST API**: Basic photo listing and streaming.
 
-### Phase 2: Media Optimization & AI [IN PROGRESS]
-* [x] **Thumbnail Engine**: Decoupled architecture with `ImageEngine` interface; implemented `StandardImageEngine` (Go) and `ThumbnailProcessor`. Verified via unit tests.
+### Phase 2: Web Interface & UX [IN PROGRESS]
+* [ ] **Web Dashboard**: Simple, responsive grid view for browsing photos.
+* [ ] **Photo Viewer**: Lightbox component to view images and EXIF metadata.
+* [ ] **Timeline Navigation**: Ability to browse by Year/Month/Day.
+* [ ] **Basic Search**: Text-based search against filenames and metadata.
+
+### Phase 3: Media Optimization & AI [UPCOMING]
+* [x] **Thumbnail Engine**: Decoupled architecture with `ImageEngine` interface.
 * [ ] **AI Face Detection**: ONNX-based worker to find faces and store bounding boxes.
 * [ ] **Semantic Search**: CLIP embedding generation for "search by description."
 
-### Phase 3: Mobile & Sync [UPCOMING]
-* [ ] **Android Client**: Kotlin/Jetpack Compose app for background uploads.
+### Phase 4: Mobile & Sync [UPCOMING]
+* [ ] **Android/iOS Client**: Mobile apps for viewing and background uploads.
 * [ ] **Sync Protocol**: Efficient delta-based file uploading.
 
 ---
 
 ## 5. Current Milestone Summary
-**Status:** Media Optimization (Thumbnails) is implemented and verified. The system is transitioning to AI processing.
+**Status:** Transitioning from Backend Core to **Web User Interface**.
 
 **Verified Workflow (Media Optimization):**
 1. `Scanner` $\rightarrow$ Finds file $\rightarrow$ Extracts EXIF $\rightarrow$ Copies to `storage/YYYY/MM/DD/` $\rightarrow$ Saves **relative path** to DB.
