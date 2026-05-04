@@ -27,11 +27,70 @@ func TestPostgresPhotoRepository(t *testing.T) {
 	}
 	defer db.Close()
 
-	// --- IDEMPOTENCY STEP: Wipe the database before starting the tests ---
-	// We use CASCADE to ensure that all related records in faces and albums are also removed.
-	_, err = db.Exec("TRUNCATE TABLE photos, faces, albums RESTART IDENTITY CASCADE")
+	// --- IDEMPOTENCY STEP: Ensure schema exists and wipe data ---
+	
+	// 1. Check if 'photos' table exists
+	var exists bool
+	err = db.QueryRow("SELECT EXISTS (SELECT FROM pg_tables WHERE tablename = 'photos')").Scan(&exists)
 	if err != nil {
-		t.Fatalf("Failed to clean up database for idempotent testing: %v", err)
+		t.Fatalf("Failed to check if 'photos' table exists: %v", err)
+	}
+
+	if !exists {
+		t.Log("Tables not found, attempting to apply initial schema...")
+		// In a real test environment, migrations should be handled by a migration runner.
+		// For this test, we manually run the init migration to ensure the test can proceed.
+		// This addresses the "relation does not exist" error.
+		initSchema := `
+		CREATE EXTENSION IF NOT EXISTS vector;
+		CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+		CREATE TABLE IF NOT EXISTS photos (
+			id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+			path TEXT NOT NULL UNIQUE,
+			filename TEXT NOT NULL,
+			hash TEXT NOT NULL UNIQUE,
+			size_bytes BIGINT NOT NULL,
+			width INT,
+			height INT,
+			captured_at TIMESTAMPTZ,
+			metadata JSONB DEFAULT '{}',
+			created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+		);
+
+		CREATE TABLE IF NOT EXISTS faces (
+			id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+			photo_id UUID NOT NULL REFERENCES photos(id) ON DELETE CASCADE,
+			bounding_box JSONB NOT NULL,
+			embedding VECTOR(512),
+			created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+		);
+
+		CREATE TABLE IF NOT EXISTS albums (
+			id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+			name TEXT NOT NULL,
+			description TEXT,
+			created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+		);
+
+		CREATE TABLE IF NOT EXISTS album_photos (
+			album_id UUID REFERENCES albums(id) ON DELETE CASCADE,
+			photo_id UUID REFERENCES photos(id) ON DELETE CASCADE,
+			PRIMARY KEY (album_id, photo_id)
+		);
+		`
+		_, err = db.Exec(initSchema)
+		if err != nil {
+			t.Fatalf("Failed to apply initial schema: %v", err)
+		}
+	} else {
+		// 2. If tables exist, truncate them to ensure a clean state
+		_, err = db.Exec("TRUNCATE TABLE photos, faces, albums, album_photos RESTART IDENTITY CASCADE")
+		if err != nil {
+			t.Fatalf("Failed to clean up database for idempotent testing: %v", err)
+		}
 	}
 
 	repo := NewPostgresPhotoRepository(db)
@@ -44,7 +103,7 @@ func TestPostgresPhotoRepository(t *testing.T) {
 			Hash:       "hash123",
 			SizeBytes:  1024,
 			Width:      1920,
-			Height:    1080,
+			Height:     1080,
 			CapturedAt: time.Now().Truncate(time.Microsecond),
 			Metadata:   domain.Metadata{"camera": "sony"},
 			CreatedAt:  time.Now().Truncate(time.Microsecond),

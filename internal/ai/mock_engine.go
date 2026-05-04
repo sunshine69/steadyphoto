@@ -11,6 +11,13 @@ type MockFaceDetector struct {
 	ResultCount int
 }
 
+// NewMockFaceDetector creates a new MockFaceDetector.
+func NewMockFaceDetector(count int) *MockFaceDetector {
+	return &MockFaceDetector{
+		ResultCount: count,
+	}
+}
+
 // DetectFaces returns a predefined set of face detection results.
 func (m *MockFaceDetector) DetectFaces(ctx context.Context, imagePath string) ([]FaceDetectionResult, error) {
 	results := make([]FaceDetectionResult, m.ResultCount)
