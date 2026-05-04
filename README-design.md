@@ -54,8 +54,8 @@
     * `GET /api/v1/photos/{id}` (Metadata)
     * `GET /api/v1/photos/{id}/original` (File Stream)
 
-### Phase 2: Media Optimization & AI [NEXT]
-* [ ] **Thumbnail Engine**: Integration of `libvips` to generate preview sizes.
+### Phase 2: Media Optimization & AI [IN PROGRESS]
+* [x] **Thumbnail Engine**: Decoupled architecture with `ImageEngine` interface; implemented `StandardImageEngine` (Go) and `ThumbnailProcessor`. Verified via unit tests.
 * [ ] **AI Face Detection**: ONNX-based worker to find faces and store bounding boxes.
 * [ ] **Semantic Search**: CLIP embedding generation for "search by description."
 
@@ -66,8 +66,11 @@
 ---
 
 ## 5. Current Milestone Summary
-**Status:** The "Full Loop" is functional.
-**Verified Workflow:**
+**Status:** Media Optimization (Thumbnails) is implemented and verified. The system is transitioning to AI processing.
+
+**Verified Workflow (Media Optimization):**
 1. `Scanner` $\rightarrow$ Finds file $\rightarrow$ Extracts EXIF $\rightarrow$ Copies to `storage/YYYY/MM/DD/` $\rightarrow$ Saves **relative path** to DB.
-2. `API` $\rightarrow$ Fetches relative path $\rightarrow$ `StorageService` resolves absolute path $\rightarrow$ `http.ServeFile` streams the file to the client.
-**Result:** System is stable, predictable, and ready for media processing.
+2. `Worker` $\rightarrow$ Polls `pending` job $\rightarrow$ `ThumbnailProcessor` resolves paths $\rightarrow$ `ImageEngine` resizes $\rightarrow$ Saves to `storage/.thumbnails/YYYY/MM/DD/`.
+3. `API` $\rightarrow$ Fetches relative path $\rightarrow$ `StorageService` resolves absolute path $\rightarrow$ `http.ServeFile` streams the file to the client.
+
+**Result:** The background processing pipeline is stable, testable, and extensible.
