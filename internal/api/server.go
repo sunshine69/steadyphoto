@@ -30,6 +30,22 @@ func (s *Server) routes() {
 	// API Versioning
 	api := s.router.PathPrefix("/api/v1").Subrouter()
 
+	// CORS Middleware - Simple implementation
+	api.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
+
+			if r.Method == "OPTIONS" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	})
+
 	// Photo Routes
 	api.HandleFunc("/photos", s.handleListPhotos).Methods(http.MethodGet)
 	api.HandleFunc("/photos/{id}", s.handleGetPhoto).Methods(http.MethodGet)
