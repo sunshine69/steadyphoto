@@ -24,7 +24,7 @@
         class="group relative aspect-square overflow-hidden rounded-xl bg-zinc-900 cursor-pointer transition-all hover:ring-2 hover:ring-indigo-500"
       >
         <img 
-          :src="photoOriginalUrl(photo.id)" 
+          :src="photoThumbnailUrl(photo.id)" 
           :alt="photo.filename"
           class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
           loading="lazy"
@@ -88,6 +88,10 @@ onMounted(async () => {
     loading.value = false;
   }
 });
+
+const photoThumbnailUrl = (id) => {
+  return api.getPhotoThumbnail(id);
+};
 
 const photoOriginalUrl = (id) => {
   return api.getPhotoOriginal(id);

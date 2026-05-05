@@ -3,24 +3,30 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"steadyphoto/internal/domain"
+	"steadyphoto/internal/storage"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
-	"steadyphoto/internal/domain"
-	"steadyphoto/internal/storage"
 )
 
 type Server struct {
 	router         *mux.Router
 	photoRepo      domain.PhotoRepository
 	storageService *storage.StorageService
+	thumbRoot      string
 }
 
-func NewServer(photoRepo domain.PhotoRepository, storageService *storage.StorageService) *Server {
+func NewServer(photoRepo domain.PhotoRepository, storageService *storage.StorageService, thumbRoot string) *Server {
 	s := &Server{
 		router:         mux.NewRouter(),
 		photoRepo:      photoRepo,
 		storageService: storageService,
+		thumbRoot:      thumbRoot,
 	}
 	s.routes()
 	return s
@@ -50,12 +56,13 @@ func (s *Server) routes() {
 	api.HandleFunc("/photos", s.handleListPhotos).Methods(http.MethodGet)
 	api.HandleFunc("/photos/{id}", s.handleGetPhoto).Methods(http.MethodGet)
 	api.HandleFunc("/photos/{id}/original", s.handleGetOriginal).Methods(http.MethodGet)
+	api.HandleFunc("/photos/{id}/thumb", s.handleGetThumbnail).Methods(http.MethodGet)
 }
 
 // handleListPhotos returns a paginated list of photos
 func (s *Server) handleListPhotos(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	
+
 	// List returns (photos, total, error)
 	photos, _, err := s.photoRepo.List(ctx, 20, 0)
 	if err != nil {
@@ -116,6 +123,44 @@ func (s *Server) handleGetOriginal(w http.ResponseWriter, r *http.Request) {
 
 	// http.ServeFile handles Range requests automatically (crucial for video/seeking)
 	http.ServeFile(w, r, absPath)
+}
+
+// handleGetThumbnail streams the generated thumbnail
+func (s *Server) handleGetThumbnail(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	vars := mux.Vars(r)
+	idStr := vars["id"]
+
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		http.Error(w, "Invalid UUID format", http.StatusBadRequest)
+		return
+	}
+
+	photo, err := s.photoRepo.GetByID(ctx, id)
+	if err != nil {
+		http.Error(w, "Photo not found", http.StatusNotFound)
+		return
+	}
+
+	// Calculate thumbnail path
+	relPath := filepath.Clean(photo.Path)
+	ext := filepath.Ext(relPath)
+	base := strings.TrimSuffix(relPath, ext)
+	thumbRelPath := filepath.Join(base + "_thumb.webp")
+
+	// The thumbnail is stored relative to the thumbRoot
+	fullThumbPath := filepath.Join(s.thumbRoot, thumbRelPath)
+
+	// Check if file exists before serving
+	if _, err := os.Stat(fullThumbPath); os.IsNotExist(err) {
+		// Fallback: Try to serve the original if thumbnail is missing (optional, but helpful for debugging)
+		// For now, we stick to the design requirement: return 404 if thumb is missing
+		http.Error(w, "Thumbnail not found", http.StatusNotFound)
+		return
+	}
+
+	http.ServeFile(w, r, fullThumbPath)
 }
 
 // ServeHTTP makes our Server struct implement the http.Handler interface

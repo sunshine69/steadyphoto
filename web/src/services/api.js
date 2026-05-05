@@ -27,7 +27,10 @@ export const api = {
   },
 
   async getPhotoOriginal(id) {
-    // Reverted to /original based on user curl test
     return `${API_BASE_URL}/photos/${id}/original`;
+  },
+
+  async getPhotoThumbnail(id) {
+    return `${API_BASE_URL}/photos/${id}/thumb`;
   }
 };

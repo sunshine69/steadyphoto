@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"path/filepath"
+	"strings"
 
 	"steadyphoto/internal/domain"
 
@@ -15,6 +16,7 @@ type Handler struct {
 	photoRepo   domain.PhotoRepository
 	faceRepo    domain.FaceRepository
 	storageRoot string
+	thumbRoot   string
 }
 
 type ListPhotosResponse struct {
@@ -87,18 +89,45 @@ func (h *Handler) ServePhotoFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Security check: ensure the path is within storageRoot
-	absStorage, _ := filepath.Abs(h.storageRoot)
-	absPhoto, err := filepath.Abs(photo.Path)
+	h.serveFile(w, r, h.storageRoot, photo.Path)
+}
+
+func (h *Handler) ServeThumbnailFile(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	idStr := chi.URLParam(r, "id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		http.Error(w, "invalid uuid", http.StatusBadRequest)
+		return
+	}
+
+	photo, err := h.photoRepo.GetByID(ctx, id)
+	if err != nil {
+		http.Error(w, "photo not found", http.StatusNotFound)
+		return
+	}
+
+	// Calculate thumbnail path
+	relPath := filepath.Clean(photo.Path)
+	ext := filepath.Ext(relPath)
+	base := strings.TrimSuffix(relPath, ext)
+	thumbRelPath := filepath.Join(base + "_thumb.webp")
+
+	h.serveFile(w, r, h.thumbRoot, thumbRelPath)
+}
+
+func (h *Handler) serveFile(w http.ResponseWriter, r *http.Request, root string, relPath string) {
+	absRoot, _ := filepath.Abs(root)
+	absFile, err := filepath.Abs(filepath.Join(absRoot, relPath))
 	if err != nil {
 		http.Error(w, "invalid path", http.StatusInternalServerError)
 		return
 	}
 
-	if !filepath.HasPrefix(absPhoto, absStorage) {
+	if !filepath.HasPrefix(absFile, absRoot) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 
-	http.ServeFile(w, r, absPhoto)
+	http.ServeFile(w, r, absFile)
 }
