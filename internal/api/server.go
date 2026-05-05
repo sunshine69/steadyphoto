@@ -42,6 +42,7 @@ func (s *Server) routes() {
 			w.Header().Set("Access-Control-Allow-Origin", "*")
 			w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
+			w.Header().Set("Access-Control-Expose-Headers", "Content-Length, Content-Type")
 
 			if r.Method == "OPTIONS" {
 				w.WriteHeader(http.StatusOK)
