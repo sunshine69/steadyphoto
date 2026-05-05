@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"image"
-	"image/jpeg"
+	_ "image/gif"  // Register GIF decoder
+	"image/jpeg"   // Register JPEG decoder
+	_ "image/png"  // Register PNG decoder
 	"os"
 
 	"golang.org/x/image/draw"

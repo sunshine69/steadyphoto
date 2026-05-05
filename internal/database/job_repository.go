@@ -20,8 +20,8 @@ func NewPostgresJobRepository(db *sqlx.DB) *PostgresJobRepository {
 
 func (r *PostgresJobRepository) Create(ctx context.Context, job *domain.Job) error {
 	query := `
-		INSERT INTO jobs (id, type, status, photo_id, created_at, updated_at, error)
-		VALUES (:id, :type, :status, :photo_id, :created_at, :updated_at, :error)
+		INSERT INTO jobs (id, job_type, status, photo_id, created_at, updated_at, error_message)
+		VALUES (:id, :job_type, :status, :photo_id, :created_at, :updated_at, :error_message)
 	`
 	_, err := r.db.NamedExecContext(ctx, query, job)
 	return err
@@ -40,7 +40,7 @@ func (r *PostgresJobRepository) GetByID(ctx context.Context, id uuid.UUID) (*dom
 func (r *PostgresJobRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status domain.JobStatus, errStr string) error {
 	query := `
 		UPDATE jobs 
-		SET status = $1, error = $2, updated_at = $3 
+		SET status = $1, error_message = $2, updated_at = $3 
 		WHERE id = $4
 	`
 	_, err := r.db.ExecContext(ctx, query, status, errStr, time.Now(), id)
