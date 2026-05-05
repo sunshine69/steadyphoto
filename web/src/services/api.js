@@ -12,8 +12,8 @@ export const api = {
         console.error(`Fetch error: ${response.status} ${response.statusText} for URL: ${url}`);
         throw new Error('Failed to fetch photos');
     }
-    const data = await response.json();
-    console.log("DEBUG: Received photos data:", data);
+        const data = await response.json();
+    console.debug("[Frontend API] Received photos data:", data);
     return data;
   },
 
@@ -26,11 +26,11 @@ export const api = {
     return response.json();
   },
 
-  async getPhotoOriginal(id) {
-    return `${API_BASE_URL}/photos/${id}/original`;
+  getPhotoOriginal(id) {
+    return `${API_BASE_URL}/photos/${id}/file`;
   },
 
-  async getPhotoThumbnail(id) {
+  getPhotoThumbnail(id) {
     return `${API_BASE_URL}/photos/${id}/thumb`;
   }
 };

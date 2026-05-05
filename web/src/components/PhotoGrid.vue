@@ -24,11 +24,12 @@
         class="group relative aspect-square overflow-hidden rounded-xl bg-zinc-900 cursor-pointer transition-all hover:ring-2 hover:ring-indigo-500"
       >
         <img 
-          :src="photoThumbnailUrl(photo.id)" 
+          :src="photo.thumbnailUrl" 
           :alt="photo.filename"
           class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
           loading="lazy"
           @error="handleImageError"
+          @load="photo.loading = false"
         />
         
         <!-- Loading placeholder for large files -->
@@ -56,7 +57,7 @@
       <!-- Image Container -->
       <div class="relative max-w-full max-h-full flex flex-col items-center">
         <img 
-          :src="photoOriginalUrl(selectedPhoto.id)" 
+          :src="photo.originalUrl" 
           class="max-w-full max-h-[85vh] object-contain rounded-sm shadow-2xl"
           @click="selectedPhoto = null"
         />
@@ -80,8 +81,13 @@ const selectedPhoto = ref(null);
 onMounted(async () => {
   try {
     const data = await api.getPhotos();
-    // Map data to add a loading state property
-    photos.value = data.map(p => ({ ...p, loading: true }));
+    // Map data to include the resolved URLs immediately
+    photos.value = data.map(p => ({ 
+      ...p, 
+      thumbnailUrl: api.getPhotoThumbnail(p.id),
+      originalUrl: api.getPhotoOriginal(p.id),
+      loading: true 
+    }));
   } catch (err) {
     console.error("Error fetching photos:", err);
   } finally {
@@ -89,20 +95,16 @@ onMounted(async () => {
   }
 });
 
-const photoThumbnailUrl = (id) => {
-  return api.getPhotoThumbnail(id);
-};
+const photoThumbnailUrl = (id) => api.getPhotoThumbnail(id);
 
-const photoOriginalUrl = (id) => {
-  return api.getPhotoOriginal(id);
-};
+const photoOriginalUrl = (id) => api.getPhotoOriginal(id);
 
 const openLightbox = (photo) => {
   selectedPhoto.value = photo;
 };
 
 const handleImageError = (event) => {
-  // If image fails to load, we could show a placeholder icon
+  console.error(`[Frontend] Image Load Error for: ${event.target.src}`);
   event.target.classList.add('opacity-50');
 };
 
