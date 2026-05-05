@@ -27,13 +27,13 @@ const (
 
 // Job represents a unit of work to be processed by the background worker.
 type Job struct {
-	ID        uuid.UUID `json:"id"`
-	Type      JobType   `json:"type"`
-	Status    JobStatus `json:"status"`
-	PhotoID   uuid.UUID `json:"photo_id"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Error     string    `json:"error,omitempty"` // Stores error message if status is Failed
+	ID        uuid.UUID `json:"id" db:"id"`
+	Type      JobType   `json:"type" db:"job_type"`
+	Status    JobStatus `json:"status" db:"status"`
+	PhotoID   uuid.UUID `json:"photo_id" db:"photo_id"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
+	Error     string    `json:"error,omitempty" db:"error_message"` // Stores error message if status is Failed
 }
 
 // JobRepository defines the interface for job persistence and queue management.
