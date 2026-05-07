@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -112,6 +113,13 @@ func (h *Handler) ServeThumbnailFile(w http.ResponseWriter, r *http.Request) {
 	ext := filepath.Ext(relPath)
 	base := strings.TrimSuffix(relPath, ext)
 	thumbRelPath := filepath.Join(base + "_thumb.webp")
+
+	fullThumbPath := filepath.Join(h.thumbRoot, thumbRelPath)
+	if _, err := os.Stat(fullThumbPath); os.IsNotExist(err) {
+		// Fallback: serve the original file if thumbnail doesn't exist yet
+		h.serveFile(w, r, h.storageRoot, photo.Path)
+		return
+	}
 
 	h.serveFile(w, r, h.thumbRoot, thumbRelPath)
 }

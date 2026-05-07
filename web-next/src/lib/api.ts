@@ -16,7 +16,7 @@ function normalizePhoto(p: any): Photo {
     captured_at: p.CapturedAt ?? '',
     width: p.Width ?? 0,
     height: p.Height ?? 0,
-    size_bytes: p.SizeBytes ?? 0,
+    size: p.SizeBytes ?? 0,
     metadata: p.Metadata ?? {},
   };
 }
@@ -29,6 +29,8 @@ export const fetchPhotos = async (): Promise<ListPhotosResponse> => {
     return {
       photos: data.photos.map(normalizePhoto),
       total: data.totalCount ?? data.photos.length,
+      page: data.page ?? 0,
+      per_page: data.perPage ?? 20,
     };
   }
 
@@ -38,6 +40,8 @@ export const fetchPhotos = async (): Promise<ListPhotosResponse> => {
   return {
     photos: rawPhotos.map(normalizePhoto),
     total: rawPhotos.length,
+    page: 0,
+    per_page: 20,
   };
 };
 
