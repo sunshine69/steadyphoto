@@ -1,5 +1,7 @@
+**/node_modules/**
 *.log
 storage/*
+**/cache/**
 *.bak
 # Binaries for programs and plugins
 *.exe
