@@ -11,16 +11,18 @@ import { PhotoCardComponent } from '../photo-card/photo-card.component';
   standalone: true,
   imports: [CommonModule, RouterModule, PhotoCardComponent],
   template: `
-    <div class="photo-list">
+    <div class="photo-list-container">
       <div class="empty-state" *ngIf="!loading && (!photos || photos.length === 0)">
         <p>No photos found. Start by importing your photo library.</p>
       </div>
+      
       <div class="grid-container" *ngIf="!loading && photos && photos.length > 0">
         <div class="grid-item" *ngFor="let photo of photos">
           <app-photo-card [photo]="photo" (cardClick)="onPhotoClick(photo.id)"></app-photo-card>
-        </div >
-      </div >
-      <div class="text-center py-5" *ngIf="loading">
+        </div>
+      </div>
+
+      <div class="loading-spinner" *ngIf="loading">
         <div class="spinner-border text-primary" role="status">
           <span class="visually-hidden">Loading...</span>
         </div>
@@ -28,15 +30,31 @@ import { PhotoCardComponent } from '../photo-card/photo-card.component';
     </div>
   `,
   styles: [`
+    .photo-list-container {
+      padding: 1rem;
+      width: 100%;
+    }
     .grid-container {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-      gap: 1rem;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 1.5rem;
+      width: 100%;
+    }
+    .grid-item {
+      display: flex;
+      height: 100%;
     }
     .empty-state {
       text-align: center;
-      padding: 2rem;
+      padding: 4rem 2rem;
       color: #6c757d;
+      font-size: 1.2rem;
+    }
+    .loading-spinner {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 300px;
     }
   `]
 })
