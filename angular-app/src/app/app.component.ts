@@ -1,30 +1,17 @@
-import { Component, OnInit, OnDestroy, Inject, Optional } from '@angular/core';
+import { Component, Inject, Optional } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterModule } from '@angular/router';
 import { PhotoService } from './services/photo.service';
 import { PhotoListComponent } from './components/photo-list/photo-list.component';
+import { NavbarComponent } from './components/navbar/navbar.component';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, RouterModule, PhotoListComponent],
+  imports: [CommonModule, RouterModule, PhotoListComponent, NavbarComponent],
   template: `
     <!-- Navigation Bar -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark sticky-top">
-      <div class="container">
-        <a class="navbar-brand" routerLink="/">
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4"/><path d="m17 9-5-5-5 5"/><path d="m17 15-5 5-5-5"/></svg>
-          SteadyPhoto
-        </a>
-        <div class="collapse navbar-collapse" id="navbarNav">
-          <ul class="navbar-nav ms-auto">
-            <li class="nav-item">
-              <a class="nav-link" routerLink="/">Home</a>
-            </li>
-          </ul>
-        </div>
-      </div>
-    </nav>
+    <app-navbar></app-navbar>
 
     <!-- Main Content -->
     <main class="container py-4">

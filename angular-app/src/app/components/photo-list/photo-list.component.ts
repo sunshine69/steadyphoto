@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { Subscription } from 'rxjs';
 import { PhotoService } from '../../services/photo.service';
 import { GalleryStateService } from '../../services/gallery-state.service';
+import { SearchService } from '../../services/search.service';
 import { Photo, ListPhotosResponse } from '../../models/photo.model';
 import { Router, RouterModule } from '@angular/router';
 import { PhotoCardComponent } from '../photo-card/photo-card.component';
@@ -14,7 +15,8 @@ import { PhotoCardComponent } from '../photo-card/photo-card.component';
   template: `
     <div class="photo-list-container">
       <div class="empty-state" *ngIf="!loading && (!photos || photos.length === 0)">
-        <p>No photos found. Start by importing your photo library.</p>
+        <p *ngIf="!currentSearchTerm">No photos found. Start by importing your photo library.</p>
+        <p *ngIf="currentSearchTerm">No photos match "{{currentSearchTerm}}"</p>
       </div >
       
       <div class="grid-container" *ngIf="!loading && photos && photos.length > 0">
@@ -23,7 +25,7 @@ import { PhotoCardComponent } from '../photo-card/photo-card.component';
         </div >
       </div >
 
-      <div class="pagination-controls" *ngIf="!loading && totalPhotos > photos.length">
+      <div class="pagination-controls" *ngIf="!loading && totalPhotos > photos.length && !currentSearchTerm">
         <button class="btn btn-outline-primary me-2" 
                 [disabled]="offset === 0" 
                 (click)="changePage(-1)">
@@ -88,22 +90,30 @@ export class PhotoListComponent implements OnInit, OnDestroy {
   currentPage = 1;
 
   loading = true;
+  currentSearchTerm = '';
   private subscription?: Subscription;
+  private searchSubscription?: Subscription;
   
   private readonly SCROLL_KEY = 'photo_list_scroll_pos';
 
   constructor(
     @Optional() @Inject(PhotoService) private photoService: PhotoService,
     private router: Router,
-    private galleryState: GalleryStateService
+    private galleryState: GalleryStateService,
+    private searchService: SearchService
   ) {}
 
   ngOnInit(): void {
-    // 1. Restore page state from GalleryStateService to prevent reset to page 1
     const savedPage = this.galleryState.getCurrentPage();
     this.currentPage = savedPage;
     this.offset = (savedPage - 1) * this.limit;
     
+    // Subscribe to search term changes
+    this.searchSubscription = this.searchService.searchTerm$.subscribe(term => {
+      this.currentSearchTerm = term;
+      this.loadPhotos();
+    });
+
     this.loadPhotos();
   }
 
@@ -116,12 +126,25 @@ export class PhotoListComponent implements OnInit, OnDestroy {
     this.loading = true;
     this.subscription = this.photoService.listPhotos(this.limit, this.offset).subscribe({
       next: (response: ListPhotosResponse) => {
-        this.photos = response.photos;
-        this.totalPhotos = response.total;
+        // Client-side filter by filename for now as requested
+        const allPhotos = response.photos;
+        
+        if (this.currentSearchTerm.trim() !== '') {
+          const term = this.currentSearchTerm.toLowerCase();
+          this.photos = allPhotos.filter(p => 
+            p.filename.toLowerCase().includes(term)
+          );
+          // In a real search, the total count should come from the server
+          // For now, we'll just show the filtered count
+          this.totalPhotos = this.photos.length;
+        } else {
+          this.photos = allPhotos;
+          this.totalPhotos = response.total;
+        }
+
         this.loading = false;
 
-        // 2. RESTORE SCROLL POSITION
-        // We wait for the next tick to ensure the DOM has been updated with the new photos
+        // RESTORE SCROLL POSITION
         setTimeout(() => {
           const savedScrollPos = sessionStorage.getItem(this.SCROLL_KEY);
           if (savedScrollPos) {
@@ -144,19 +167,15 @@ export class PhotoListComponent implements OnInit, OnDestroy {
   changePage(direction: number): void {
     this.offset += (direction * this.limit);
     this.currentPage += direction;
-    
-    // Save page state to GalleryStateService
     this.galleryState.saveCurrentPage(this.currentPage);
-    
     this.loadPhotos();
     window.scrollTo(0, 0);
   }
 
   ngOnDestroy(): void {
-    // 3. SAVE SCROLL POSITION
-    // Before component is destroyed, save the current scroll position
     sessionStorage.setItem(this.SCROLL_KEY, window.scrollY.toString());
     this.subscription?.unsubscribe();
+    this.searchSubscription?.unsubscribe();
   }
 
   onPhotoClick(id: string): void {
