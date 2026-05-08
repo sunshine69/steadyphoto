@@ -2,7 +2,7 @@ import { Component, Input, Output, EventEmitter, OnInit, OnDestroy, Inject, Opti
 import { CommonModule } from '@angular/common';
 import { Subscription } from 'rxjs';
 import { PhotoService } from '../../services/photo.service';
-import { Photo } from '../../models/photo.model';
+import { Photo, ListPhotosResponse } from '../../models/photo.model';
 import { Router, RouterModule } from '@angular/router';
 import { PhotoCardComponent } from '../photo-card/photo-card.component';
 
@@ -73,8 +73,8 @@ export class PhotoListComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     if (this.photoService) {
       this.subscription = this.photoService.listPhotos().subscribe({
-        next: (photos) => {
-          this.photos = photos;
+        next: (response: ListPhotosResponse) => {
+          this.photos = response.photos;
           this.loading = false;
         },
         error: (err) => {

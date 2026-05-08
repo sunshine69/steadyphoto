@@ -1,7 +1,7 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { catchError, map, Observable, throwError } from 'rxjs';
-import { Photo } from '../models/photo.model';
+import { Photo, ListPhotosResponse } from '../models/photo.model';
 import { environment } from '../../environments/environment';
 
 @Injectable({
@@ -42,12 +42,34 @@ export class PhotoService {
     };
   }
 
-  listPhotos(): Observable<Photo[]> {
-    return this.http.get<any>(`${this.API_BASE_URL}/photos`)
+  /**
+   * Fetches a paginated list of photos.
+   * @param limit Number of photos to fetch
+   * @param offset Number of photos to skip
+   */
+  listPhotos(limit: number = 20, offset: number = 0): Observable<ListPhotosResponse> {
+    return this.http.get<any>(`${this.API_BASE_URL}/photos?limit=${limit}&offset=${offset}`)
       .pipe(
         map(response => {
-          const photosArray = Array.isArray(response) ? response : (response?.Photos || response?.photos || []);
-          return photosArray.map((p: any) => this.normalizePhoto(p));
+          // 1. Determine if the response is the new object or the old array
+          const isArray = Array.isArray(response);
+          
+          // 2. Extract photos array
+          // We check for 'photos' or 'Photos' to handle potential case differences in JSON keys
+          const photosArray = isArray 
+            ? response 
+            : (response?.photos || response?.Photos || []);
+          
+          // 3. Extract total count
+          const total = isArray 
+            ? photosArray.length 
+            : (response?.total ?? response?.Total ?? photosArray.length);
+
+          // 4. Return the standardized ListPhotosResponse
+          return {
+            photos: photosArray.map((p: any) => this.normalizePhoto(p)),
+            total: total
+          };
         }),
         catchError(this.handleError)
       );
@@ -57,7 +79,7 @@ export class PhotoService {
     return this.http.get<any>(`${this.API_BASE_URL}/photos/${id}`)
       .pipe(
         map(response => {
-          const photoData = response?.Photo || response;
+          const photoData = response?.Photo || response?.photo || response;
           return this.normalizePhoto(photoData);
         }),
         catchError(this.handleError)
