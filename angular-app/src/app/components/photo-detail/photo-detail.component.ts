@@ -13,14 +13,32 @@ import { Photo } from '../../models/photo.model';
     <div class="container mt-4">
       <div class="row">
         <div class="col-md-8">
-          <div class="photo-detail" *ngIf="photo; else loading">
-            <img [src]="photo.thumbnailUrl || photo.path" [alt]="photo.filename" class="img-fluid rounded">
-            <h3 class="mt-3">{{ photo.filename }}</h3>
-            <p class="text-muted">Captured: {{ photo.captured_at | date:'medium' }}</p>
-            <div class="mt-3">
-              <a [routerLink]="['/']" class="btn btn-primary">Back to Gallery</a>
+          <div class="photo-detail-container" *ngIf="photo; else loading">
+            <div class="image-viewer-wrapper">
+              <img 
+                [src]="photo.path" 
+                [alt]="photo.filename" 
+                class="main-image rounded shadow"
+              >
+            </div>
+            
+            <div class="mt-3 d-flex justify-content-between align-items-start">
+              <div>
+                <h3 class="mb-1">{{ photo.filename }}</h3>
+                <p class="text-muted mb-0">Captured: {{ photo.captured_at | date:'medium' }}</p>
+              </div>
+              <div class="btn-group">
+                <a [href]="photo.path" target="_blank" class="btn btn-outline-secondary">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                  Full Size
+                </a>
+                <button (click)="goBack()" class="btn btn-primary ms-2">
+                  Back to Gallery
+                </button>
+              </div>
             </div>
           </div>
+          
           <ng-template #loading>
             <div class="text-center py-5">
               <div class="spinner-border text-primary" role="status">
@@ -31,37 +49,59 @@ import { Photo } from '../../models/photo.model';
           </ng-template>
         </div>
         <div class="col-md-4">
-          <div class="card">
-            <div class="card-header">
+          <div class="card shadow-sm sticky-top" style="top: 100px;">
+            <div class="card-header bg-light">
               <h5 class="mb-0">Photo Details</h5>
             </div>
             <ul class="list-group list-group-flush">
               <li class="list-group-item d-flex justify-content-between align-items-center">
-                <span>Filename</span>
-                <code class="bg-light px-2 py-1 rounded">{{ photo?.filename }}</code>
+                <span class="text-muted">Filename</span>
+                <span class="text-end small text-break ms-2">{{ photo?.filename }}</span>
               </li>
               <li class="list-group-item d-flex justify-content-between align-items-center">
-                <span>Path</span>
-                <code class="bg-light px-2 py-1 rounded">{{ photo?.path }}</code>
+                <span class="text-muted">Path</span>
+                <span class="text-end small text-break ms-2">{{ photo?.path }}</span>
               </li>
               <li class="list-group-item d-flex justify-content-between align-items-center">
-                <span>Captured</span>
+                <span class="text-muted">Captured</span>
                 <span>{{ photo?.captured_at | date:'fullDate' }}</span>
               </li>
               <li class="list-group-item d-flex justify-content-between align-items-center">
-                <span>Dimensions</span>
-                <span>{{ photo?.width }}x{{ photo?.height }}</span>
+                <span class="text-muted">Dimensions</span>
+                <span>{{ photo?.width }} x {{ photo?.height }}</span>
               </li>
               <li class="list-group-item d-flex justify-content-between align-items-center">
-                <span>Type</span>
+                <span class="text-muted">Type</span>
                 <span>{{ photo?.type || 'Unknown' }}</span>
+              </li>
+              <li class="list-group-item d-flex justify-content-between align-items-center">
+                <span class="text-muted">Size</span>
+                <span>{{ (photo?.size || 0) / 1024 | number:'1.0-2' }} KB</span>
               </li>
             </ul>
           </div>
         </div>
       </div>
     </div>
-  `
+  `,
+  styles: [`
+    .image-viewer-wrapper {
+      width: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background-color: #f8f9fa;
+      border-radius: 8px;
+      overflow: hidden;
+      min-height: 300px;
+    }
+    .main-image {
+      max-width: 100%;
+      max-height: 75vh; /* Keeps the image within the viewport height */
+      object-fit: contain; /* Ensures the whole image is visible without cropping */
+      display: block;
+    }
+  `]
 })
 export class PhotoDetailComponent implements OnInit, OnDestroy {
   photo: Photo | null = null;
@@ -89,5 +129,9 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.subscription?.unsubscribe();
+  }
+
+  goBack(): void {
+    window.history.back();
   }
 }
