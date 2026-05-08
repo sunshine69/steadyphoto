@@ -19,7 +19,7 @@
 * **API:** RESTful with versioning (`/api/v1/...`).
 * **Image Processing:** `libvips` (Fast, low memory).
 * **AI Engine:** ONNX Runtime (Local, high-performance AI inference).
-* **Frontend:** **Next.js (React) + Tailwind CSS** (Robust, SSR/ISR capabilities, excellent developer experience).
+* **Frontend:** **Angular** (Current Implementation) / **Next.js (Planned Pivot)**.
 
 ---
 
@@ -53,13 +53,15 @@
 * [x] **Storage Service**: Robust path resolution.
 * [x] **REST API**: Basic photo listing and streaming.
 
-### Phase 2: Modern Web Interface [IN PROGRESS]
-* [ ] **Next.js Scaffolding**: Initialize project with Tailwind CSS and TypeScript.
-* [ ] **API Integration Layer**: Robust fetching service using TanStack Query (React Query).
-* [ ] **Photo Grid**: High-performance, infinite-scroll masonry grid.
+### Phase 2: Web Interface [IN PROGRESS]
+* [x] **Angular Scaffolding**: Initial project setup.
+* [x] **Photo Grid**: Responsive grid layout.
+* [x] **Navigation**: Top navbar with search and main content routing.
+* [x] **Search**: Client-side filename search implemented.
+* [x] **Pagination**: Bottom bar with "Jump to Page" functionality.
+* [x] **Scroll Restoration**: Maintains position when returning from photo details.
 * [ ] **Advanced Photo Viewer**: Full-screen immersive viewer with EXIF details.
 * [ ] **Timeline/Calendar Navigation**: Interactive time-based browsing.
-* [ ] **Search Interface**: Real-time search for filenames and metadata.
 
 ### Phase 3: Media Optimization & AI [UPCOMING]
 * [x] **Thumbnail Engine**: Decoupled architecture with `ImageEngine` interface.
@@ -73,38 +75,17 @@
 ---
 
 ## 5. Current Milestone Summary
-**Status:** Pivoting Frontend from Vue/Vite to **Next.js/Tailwind** for better reliability and scale.
+**Status:** Basic Web UI is functional and implemented using **Angular**.
 
-**Next Immediate Goal:** Scaffolding the Next.js application.
+**Key Accomplishments:**
+* Stable background processing pipeline (Scanner $\rightarrow$ Worker $\rightarrow$ API).
+* Functional photo gallery with pagination and jump-to-page.
+* Real-time filename search.
+* Smooth user experience with scroll position preservation.
+
+**Next Immediate Goal:** Implement the Advanced Photo Viewer (Lightbox) with EXIF metadata display.
 
 **Verified Workflow (Media Optimization):**
 1. `Scanner` $\rightarrow$ Finds file $\rightarrow$ Extracts EXIF $\rightarrow$ Copies to `storage/YYYY/MM/DD/` $\rightarrow$ Saves **relative path** to DB.
 2. `Worker` $\rightarrow$ Polls `pending` job $\rightarrow$ `ThumbnailProcessor` resolves paths $\rightarrow$ `ImageEngine` resizes $\rightarrow$ Saves to `storage/.thumbnails/YYYY/MM/DD/`.
 3. `API` $\rightarrow$ Fetches relative path $\rightarrow$ `StorageService` resolves absolute path $\rightarrow$ `http.ServeFile` streams the file to the client.
-
-**Result:** The background processing pipeline is stable, testable, and extensible.
-
-## 🚀 Next.js Frontend Implementation Plan
-
-Since we are starting fresh, we will follow a structured approach to ensure stability and high performance (essential for a photo app).
-
-### **Step 1: Scaffolding & Environment (Immediate)**
-*   **Action:** Initialize a new Next.js project using `npx create-next-app@latest`.
-*   **Config:** TypeScript, Tailwind CSS, ESLint, and `src/` directory.
-*   **Clean up:** Remove the old `web/` directory (once we are sure we don't need anything from it).
-*   **Env Setup:** Create `.env.local` with `NEXT_PUBLIC_API_BASE_URL=http://localhost:8081/api/v1`.
-
-### **Step 2: The Data Layer (Reliability)**
-*   **Tooling:** Install `@tanstack/react-query` (React Query). This is non-negotiable for a photo app to handle caching, background refetching, and loading states without manual headache.
-*   **Service Layer:** Create a `lib/api.ts` file that mimics the logic of the previous service but with strict TypeScript types.
-*   **Types:** Define `Photo` and `ListPhotosResponse` interfaces to ensure end-to-end type safety.
-
-### **Step 3: Core UI Components (The "Wow" Factor)**
-*   **Masonry Grid:** Implement a high-performance grid using `react-plock` or a similar lightweight masonry library. This is much better than a standard CSS grid for photos of varying aspect ratios.
-*   **Image Optimization:** Utilize Next.js `<Image />` component for smart resizing and lazy loading (though for external API images, we'll use standard `<img>` with `loading="lazy"` or a custom implementation to avoid complex domain configuration).
-*   **The "Lightbox":** A high-quality, full-screen modal using `framer-motion` for smooth transitions (the "pop" effect when clicking a photo).
-
-### **Step 4: Advanced Features (Phase 2 Completion)**
-*   **Infinite Scroll:** Integrate `react-intersection-observer` to trigger the next page fetch automatically.
-*   **Search/Filter:** A command-palette style search (like macOS Spotlight/Raycast) for finding photos by date or name.
-
