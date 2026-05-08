@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"steadyphoto/internal/domain"
@@ -72,16 +73,42 @@ func (s *Server) routes() {
 // handleListPhotos returns a paginated list of photos
 func (s *Server) handleListPhotos(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	query := r.URL.Query()
+
+	// Parse limit
+	limit := 20
+	if lStr := query.Get("limit"); lStr != "" {
+		if l, err := strconv.Atoi(lStr); err == nil && l > 0 {
+			limit = l
+		}
+	}
+
+	// Parse offset
+	offset := 0
+	if oStr := query.Get("offset"); oStr != "" {
+		if o, err := strconv.Atoi(oStr); err == nil && o >= 0 {
+			offset = o
+		}
+	}
 
 	// List returns (photos, total, error)
-	photos, _, err := s.photoRepo.List(ctx, 20, 0)
+	photos, total, err := s.photoRepo.List(ctx, limit, offset)
 	if err != nil {
 		http.Error(w, "Failed to list photos: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	// Return both photos and the total count for the frontend to manage pagination
+	response := struct {
+		Photos []*domain.Photo `json:"photos"`
+		Total  int             `json:"total"`
+	}{
+		Photos: photos,
+		Total:  total,
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(photos)
+	json.NewEncoder(w).Encode(response)
 }
 
 // handleGetPhoto returns metadata for a single photo
