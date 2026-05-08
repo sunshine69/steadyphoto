@@ -1,5 +1,6 @@
 import { Component, Inject, OnInit, OnDestroy, Optional } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
 import { PhotoService } from '../../services/photo.service';
 import { GalleryStateService } from '../../services/gallery-state.service';
@@ -11,7 +12,7 @@ import { PhotoCardComponent } from '../photo-card/photo-card.component';
 @Component({
   selector: 'app-photo-list',
   standalone: true,
-  imports: [CommonModule, RouterModule, PhotoCardComponent],
+  imports: [CommonModule, RouterModule, PhotoCardComponent, FormsModule],
   template: `
     <div class="photo-list-container">
       <div class="empty-state" *ngIf="!loading && (!photos || photos.length === 0)">
@@ -31,7 +32,23 @@ import { PhotoCardComponent } from '../photo-card/photo-card.component';
                 (click)="changePage(-1)">
           Previous
         </button>
-        <span class="mx-3">Page {{ currentPage }}</span>
+
+        <div class="pagination-jump d-flex align-items-center mx-3">
+          <span class="me-2 text-nowrap">Page</span>
+          <div class="input-group input-group-sm" style="width: 130px;">
+            <input 
+              type="number" 
+              class="form-control text-center jump-input" 
+              [(ngModel)]="jumpPageInput"
+              (keyup.enter)="onJumpToPage()"
+              min="1"
+              [max]="totalPages"
+            >
+            <button class="btn btn-primary jump-btn" type="button" (click)="onJumpToPage()">Go</button>
+          </div >
+          <span class="ms-2 text-nowrap">of {{ totalPages }}</span>
+        </div >
+
         <button class="btn btn-outline-primary ms-2" 
                 [disabled]="offset + limit >= totalPhotos" 
                 (click)="changePage(1)">
@@ -80,6 +97,25 @@ import { PhotoCardComponent } from '../photo-card/photo-card.component';
       margin-top: 2rem;
       padding-bottom: 2rem;
     }
+    
+    /* Fix for the visibility issue */
+    .jump-input {
+      background-color: #ffffff !important;
+      color: #000000 !important; /* Force black text */
+      border: 1px solid #dee2e6 !important;
+      font-weight: bold;
+    }
+
+    .jump-btn {
+      font-weight: 500;
+    }
+
+    /* Remove spin buttons for a cleaner look if desired, 
+       but keeping them for UX if they don't block the text */
+    .jump-input::-webkit-inner-spin-button,
+    .jump-input::-webkit-outer-spin-button {
+      opacity: 1;
+    }
   `]
 })
 export class PhotoListComponent implements OnInit, OnDestroy {
@@ -88,6 +124,7 @@ export class PhotoListComponent implements OnInit, OnDestroy {
   limit = 20;
   offset = 0;
   currentPage = 1;
+  jumpPageInput: number | null = null;
 
   loading = true;
   currentSearchTerm = '';
@@ -103,12 +140,15 @@ export class PhotoListComponent implements OnInit, OnDestroy {
     private searchService: SearchService
   ) {}
 
+  get totalPages(): number {
+    return Math.ceil(this.totalPhotos / this.limit) || 1;
+  }
+
   ngOnInit(): void {
     const savedPage = this.galleryState.getCurrentPage();
     this.currentPage = savedPage;
     this.offset = (savedPage - 1) * this.limit;
     
-    // Subscribe to search term changes
     this.searchSubscription = this.searchService.searchTerm$.subscribe(term => {
       this.currentSearchTerm = term;
       this.loadPhotos();
@@ -126,7 +166,6 @@ export class PhotoListComponent implements OnInit, OnDestroy {
     this.loading = true;
     this.subscription = this.photoService.listPhotos(this.limit, this.offset).subscribe({
       next: (response: ListPhotosResponse) => {
-        // Client-side filter by filename for now as requested
         const allPhotos = response.photos;
         
         if (this.currentSearchTerm.trim() !== '') {
@@ -134,8 +173,6 @@ export class PhotoListComponent implements OnInit, OnDestroy {
           this.photos = allPhotos.filter(p => 
             p.filename.toLowerCase().includes(term)
           );
-          // In a real search, the total count should come from the server
-          // For now, we'll just show the filtered count
           this.totalPhotos = this.photos.length;
         } else {
           this.photos = allPhotos;
@@ -144,7 +181,6 @@ export class PhotoListComponent implements OnInit, OnDestroy {
 
         this.loading = false;
 
-        // RESTORE SCROLL POSITION
         setTimeout(() => {
           const savedScrollPos = sessionStorage.getItem(this.SCROLL_KEY);
           if (savedScrollPos) {
@@ -170,6 +206,20 @@ export class PhotoListComponent implements OnInit, OnDestroy {
     this.galleryState.saveCurrentPage(this.currentPage);
     this.loadPhotos();
     window.scrollTo(0, 0);
+  }
+
+  onJumpToPage(): void {
+    const targetPage = this.jumpPageInput;
+    if (targetPage && targetPage >= 1 && targetPage <= this.totalPages) {
+      this.currentPage = targetPage;
+      this.offset = (this.currentPage - 1) * this.limit;
+      this.galleryState.saveCurrentPage(this.currentPage);
+      this.loadPhotos();
+      this.jumpPageInput = null;
+      window.scrollTo(0, 0);
+    } else {
+      alert(`Please enter a valid page between 1 and ${this.totalPages}`);
+    }
   }
 
   ngOnDestroy(): void {
