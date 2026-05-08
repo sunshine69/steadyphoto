@@ -10,12 +10,13 @@ import (
 	"steadyphoto/internal/domain"
 	"steadyphoto/internal/storage"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/google/uuid"
-	"github.com/gorilla/mux"
 )
 
 type Server struct {
-	router         *mux.Router
+	router         *chi.Mux
 	photoRepo      domain.PhotoRepository
 	storageService *storage.StorageService
 	thumbRoot      string
@@ -23,7 +24,7 @@ type Server struct {
 
 func NewServer(photoRepo domain.PhotoRepository, storageService *storage.StorageService, thumbRoot string) *Server {
 	s := &Server{
-		router:         mux.NewRouter(),
+		router:         chi.NewRouter(),
 		photoRepo:      photoRepo,
 		storageService: storageService,
 		thumbRoot:      thumbRoot,
@@ -33,31 +34,39 @@ func NewServer(photoRepo domain.PhotoRepository, storageService *storage.Storage
 }
 
 func (s *Server) routes() {
+	// Standard middleware
+	s.router.Use(middleware.RequestID)
+	s.router.Use(middleware.RealIP)
+	s.router.Use(middleware.Logger)
+	s.router.Use(middleware.Recoverer)
+
 	// API Versioning
-	api := s.router.PathPrefix("/api/v1").Subrouter()
+	s.router.Route("/api/v1", func(r chi.Router) {
+		// CORS Middleware
+		r.Use(func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Access-Control-Allow-Origin", "*")
+				w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+				w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
+				w.Header().Set("Access-Control-Expose-Headers", "Content-Length, Content-Type")
 
-	// CORS Middleware - Simple implementation
-	api.Use(func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Access-Control-Allow-Origin", "*")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
-			w.Header().Set("Access-Control-Expose-Headers", "Content-Length, Content-Type")
+				if r.Method == "OPTIONS" {
+					w.WriteHeader(http.StatusOK)
+					return
+				}
 
-			if r.Method == "OPTIONS" {
-				w.WriteHeader(http.StatusOK)
-				return
-			}
+				next.ServeHTTP(w, r)
+			})
+		})
 
-			next.ServeHTTP(w, r)
+		// Photo Routes
+		r.Get("/photos", s.handleListPhotos)
+		r.Route("/photos/{id}", func(r chi.Router) {
+			r.Get("/", s.handleGetPhoto)
+			r.Get("/original", s.handleGetOriginal)
+			r.Get("/thumb", s.handleGetThumbnail)
 		})
 	})
-
-	// Photo Routes
-	api.HandleFunc("/photos", s.handleListPhotos).Methods(http.MethodGet)
-	api.HandleFunc("/photos/{id}", s.handleGetPhoto).Methods(http.MethodGet)
-	api.HandleFunc("/photos/{id}/original", s.handleGetOriginal).Methods(http.MethodGet)
-	api.HandleFunc("/photos/{id}/thumb", s.handleGetThumbnail).Methods(http.MethodGet)
 }
 
 // handleListPhotos returns a paginated list of photos
@@ -78,8 +87,7 @@ func (s *Server) handleListPhotos(w http.ResponseWriter, r *http.Request) {
 // handleGetPhoto returns metadata for a single photo
 func (s *Server) handleGetPhoto(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	vars := mux.Vars(r)
-	idStr := vars["id"]
+	idStr := chi.URLParam(r, "id")
 
 	id, err := uuid.Parse(idStr)
 	if err != nil {
@@ -100,8 +108,7 @@ func (s *Server) handleGetPhoto(w http.ResponseWriter, r *http.Request) {
 // handleGetOriginal streams the actual file
 func (s *Server) handleGetOriginal(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	vars := mux.Vars(r)
-	idStr := vars["id"]
+	idStr := chi.URLParam(r, "id")
 
 	id, err := uuid.Parse(idStr)
 	if err != nil {
@@ -129,8 +136,7 @@ func (s *Server) handleGetOriginal(w http.ResponseWriter, r *http.Request) {
 // handleGetThumbnail streams the generated thumbnail
 func (s *Server) handleGetThumbnail(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	vars := mux.Vars(r)
-	idStr := vars["id"]
+	idStr := chi.URLParam(r, "id")
 
 	id, err := uuid.Parse(idStr)
 	if err != nil {
