@@ -1,4 +1,4 @@
-import { Component, Input, Output, EventEmitter, OnInit, OnDestroy, Inject, Optional } from '@angular/core';
+import { Component, Inject, OnInit, OnDestroy, Optional } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Subscription } from 'rxjs';
 import { PhotoService } from '../../services/photo.service';
@@ -15,7 +15,7 @@ import { PhotoCardComponent } from '../photo-card/photo-card.component';
     <div class="photo-list-container">
       <div class="empty-state" *ngIf="!loading && (!photos || photos.length === 0)">
         <p>No photos found. Start by importing your photo library.</p>
-      </div>
+      </div >
       
       <div class="grid-container" *ngIf="!loading && photos && photos.length > 0">
         <div class="grid-item" *ngFor="let photo of photos">
@@ -35,7 +35,7 @@ import { PhotoCardComponent } from '../photo-card/photo-card.component';
                 (click)="changePage(1)">
           Next
         </button>
-      </div>
+      </div >
 
       <div class="loading-spinner" *ngIf="loading">
         <div class="spinner-border text-primary" role="status">
@@ -89,6 +89,8 @@ export class PhotoListComponent implements OnInit, OnDestroy {
 
   loading = true;
   private subscription?: Subscription;
+  
+  private readonly SCROLL_KEY = 'photo_list_scroll_pos';
 
   constructor(
     @Optional() @Inject(PhotoService) private photoService: PhotoService,
@@ -97,7 +99,7 @@ export class PhotoListComponent implements OnInit, OnDestroy {
   ) {}
 
   ngOnInit(): void {
-    // Restore page state from localStorage to prevent reset to page 1
+    // 1. Restore page state from GalleryStateService to prevent reset to page 1
     const savedPage = this.galleryState.getCurrentPage();
     this.currentPage = savedPage;
     this.offset = (savedPage - 1) * this.limit;
@@ -117,6 +119,18 @@ export class PhotoListComponent implements OnInit, OnDestroy {
         this.photos = response.photos;
         this.totalPhotos = response.total;
         this.loading = false;
+
+        // 2. RESTORE SCROLL POSITION
+        // We wait for the next tick to ensure the DOM has been updated with the new photos
+        setTimeout(() => {
+          const savedScrollPos = sessionStorage.getItem(this.SCROLL_KEY);
+          if (savedScrollPos) {
+            window.scrollTo({
+              top: parseInt(savedScrollPos, 10),
+              behavior: 'instant'
+            });
+          }
+        }, 0);
       },
       error: (err) => {
         console.error('Error fetching photos', err);
@@ -131,7 +145,7 @@ export class PhotoListComponent implements OnInit, OnDestroy {
     this.offset += (direction * this.limit);
     this.currentPage += direction;
     
-    // Save page state to localStorage
+    // Save page state to GalleryStateService
     this.galleryState.saveCurrentPage(this.currentPage);
     
     this.loadPhotos();
@@ -139,6 +153,9 @@ export class PhotoListComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    // 3. SAVE SCROLL POSITION
+    // Before component is destroyed, save the current scroll position
+    sessionStorage.setItem(this.SCROLL_KEY, window.scrollY.toString());
     this.subscription?.unsubscribe();
   }
 
