@@ -19,15 +19,29 @@ import { PhotoCardComponent } from '../photo-card/photo-card.component';
       <div class="grid-container" *ngIf="!loading && photos && photos.length > 0">
         <div class="grid-item" *ngFor="let photo of photos">
           <app-photo-card [photo]="photo" (cardClick)="onPhotoClick(photo.id)"></app-photo-card>
-        </div>
+        </div >
+      </div >
+
+      <div class="pagination-controls" *ngIf="!loading && totalPhotos > photos.length">
+        <button class="btn btn-outline-primary me-2" 
+                [disabled]="offset === 0" 
+                (click)="changePage(-1)">
+          Previous
+        </button>
+        <span class="mx-3">Page {{ currentPage }}</span>
+        <button class="btn btn-outline-primary ms-2" 
+                [disabled]="offset + limit >= totalPhotos" 
+                (click)="changePage(1)">
+          Next
+        </button>
       </div>
 
       <div class="loading-spinner" *ngIf="loading">
         <div class="spinner-border text-primary" role="status">
           <span class="visually-hidden">Loading...</span>
-        </div>
-      </div>
-    </div>
+        </div >
+      </div >
+    </div >
   `,
   styles: [`
     .photo-list-container {
@@ -56,11 +70,21 @@ import { PhotoCardComponent } from '../photo-card/photo-card.component';
       align-items: center;
       min-height: 300px;
     }
+    .pagination-controls {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin-top: 2rem;
+      padding-bottom: 2rem;
+    }
   `]
 })
 export class PhotoListComponent implements OnInit, OnDestroy {
-  @Input() photos: Photo[] = [];
-  @Output() photoClick = new EventEmitter<string>();
+  photos: Photo[] = [];
+  totalPhotos = 0;
+  limit = 20;
+  offset = 0;
+  currentPage = 1;
 
   loading = true;
   private subscription?: Subscription;
@@ -71,21 +95,36 @@ export class PhotoListComponent implements OnInit, OnDestroy {
   ) {}
 
   ngOnInit(): void {
-    if (this.photoService) {
-      this.subscription = this.photoService.listPhotos().subscribe({
-        next: (response: ListPhotosResponse) => {
-          this.photos = response.photos;
-          this.loading = false;
-        },
-        error: (err) => {
-          console.error('Error fetching photos', err);
-          this.photos = [];
-          this.loading = false;
-        }
-      });
-    } else {
+    this.loadPhotos();
+  }
+
+  loadPhotos(): void {
+    if (!this.photoService) {
       this.loading = false;
+      return;
     }
+
+    this.loading = true;
+    this.subscription = this.photoService.listPhotos(this.limit, this.offset).subscribe({
+      next: (response: ListPhotosResponse) => {
+        this.photos = response.photos;
+        this.totalPhotos = response.total;
+        this.loading = false;
+      },
+      error: (err) => {
+        console.error('Error fetching photos', err);
+        this.photos = [];
+        this.totalPhotos = 0;
+        this.loading = false;
+      }
+    });
+  }
+
+  changePage(direction: number): void {
+    this.offset += (direction * this.limit);
+    this.currentPage += direction;
+    this.loadPhotos();
+    window.scrollTo(0, 0);
   }
 
   ngOnDestroy(): void {

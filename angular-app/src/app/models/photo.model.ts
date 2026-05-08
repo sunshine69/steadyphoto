@@ -19,8 +19,7 @@ export interface Photo {
   };
 }
 
-// If the API returns { "photos": [...] }, keep this. 
-// If it returns [...], we don't need this, but it doesn't hurt.
 export interface ListPhotosResponse {
   photos: Photo[];
+  total: number;
 }
