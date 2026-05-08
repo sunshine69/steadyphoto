@@ -16,21 +16,24 @@ import { Photo } from '../../models/photo.model';
           class="photo-thumb"
           loading="lazy"
         >
-      </div>
+      </div >
       <div class="photo-info">
         <p class="photo-filename" [title]="photo.filename">{{ photo.filename }}</p>
         <p class="photo-date">{{ photo.captured_at | date:'shortDate' }}</p>
-      </div>
-    </div>
+      </div >
+    </div >
   `,
   styles: [`
     :host {
       display: block;
-      height: 100%;
+      width: 100%;
+      max-width: 100%;
+      min-width: 0; /* Prevents the component from pushing the grid cell width */
     }
     .photo-card {
       display: flex;
       flex-direction: column;
+      width: 100%;
       height: 100%;
       background: #fff;
       border-radius: 8px;
@@ -38,6 +41,7 @@ import { Photo } from '../../models/photo.model';
       box-shadow: 0 2px 4px rgba(0,0,0,0.1);
       cursor: pointer;
       transition: transform 0.2s, box-shadow 0.2s;
+      box-sizing: border-box;
     }
     .photo-card:hover {
       transform: translateY(-4px);
@@ -46,17 +50,27 @@ import { Photo } from '../../models/photo.model';
     .photo-wrapper {
       position: relative;
       width: 100%;
-      padding-top: 100%; /* 1:1 Aspect Ratio */
+      aspect-ratio: 1 / 1; /* Modern way to force square aspect ratio */
       overflow: hidden;
       background-color: #f0f0f0;
+      flex-shrink: 0;
+    }
+    /* Fallback for older browsers that don't support aspect-ratio */
+    @supports not (aspect-ratio: 1 / 1) {
+      .photo-wrapper {
+        padding-top: 100%;
+      }
+      .photo-thumb {
+        position: absolute;
+        top: 0;
+        left: 0;
+      }
     }
     .photo-thumb {
-      position: absolute;
-      top: 0;
-      left: 0;
       width: 100%;
       height: 100%;
-      object-fit: cover; /* This ensures images fill the area without distortion */
+      object-fit: cover; /* Ensures the image covers the square area without distortion */
+      display: block;
     }
     .photo-info {
       padding: 0.75rem;
@@ -65,6 +79,8 @@ import { Photo } from '../../models/photo.model';
       flex-direction: column;
       justify-content: space-between;
       background: white;
+      min-height: 60px;
+      box-sizing: border-box;
     }
     .photo-filename {
       margin: 0;
