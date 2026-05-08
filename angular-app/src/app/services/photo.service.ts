@@ -2,6 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { catchError, map, Observable, throwError } from 'rxjs';
 import { Photo, ListPhotosResponse } from '../models/photo.model';
+import { environment } from '../../environments/environment';
 
 @Injectable({
   providedIn: 'root'
@@ -9,9 +10,14 @@ import { Photo, ListPhotosResponse } from '../models/photo.model';
 export class PhotoService {
   private http = inject(HttpClient);
   
-  private API_BASE_URL = 'http://localhost:8081/api/v1';
+  private API_BASE_URL = environment.apiBaseUrl;
   // The base URL for serving static files/images
-  private MEDIA_BASE_URL = 'http://localhost:8081';
+  // Since API_BASE_URL is http://localhost:8081/api/v1, we can derive MEDIA_BASE_URL
+  // or just use the same base if we want to be safe. 
+  // However, API_BASE_URL contains /api/v1. 
+  // Let's assume MEDIA_BASE_URL is the same base but without /api/v1 if needed.
+  // But the original code had MEDIA_BASE_URL = 'http://localhost:8081'.
+  private MEDIA_BASE_URL = environment.apiBaseUrl.replace('/api/v1', '');
 
   /**
    * Maps backend PascalCase properties to frontend camelCase properties
