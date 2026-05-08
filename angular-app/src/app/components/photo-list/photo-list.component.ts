@@ -2,6 +2,7 @@ import { Component, Input, Output, EventEmitter, OnInit, OnDestroy, Inject, Opti
 import { CommonModule } from '@angular/common';
 import { Subscription } from 'rxjs';
 import { PhotoService } from '../../services/photo.service';
+import { GalleryStateService } from '../../services/gallery-state.service';
 import { Photo, ListPhotosResponse } from '../../models/photo.model';
 import { Router, RouterModule } from '@angular/router';
 import { PhotoCardComponent } from '../photo-card/photo-card.component';
@@ -91,10 +92,16 @@ export class PhotoListComponent implements OnInit, OnDestroy {
 
   constructor(
     @Optional() @Inject(PhotoService) private photoService: PhotoService,
-    private router: Router
+    private router: Router,
+    private galleryState: GalleryStateService
   ) {}
 
   ngOnInit(): void {
+    // Restore page state from localStorage to prevent reset to page 1
+    const savedPage = this.galleryState.getCurrentPage();
+    this.currentPage = savedPage;
+    this.offset = (savedPage - 1) * this.limit;
+    
     this.loadPhotos();
   }
 
@@ -123,6 +130,10 @@ export class PhotoListComponent implements OnInit, OnDestroy {
   changePage(direction: number): void {
     this.offset += (direction * this.limit);
     this.currentPage += direction;
+    
+    // Save page state to localStorage
+    this.galleryState.saveCurrentPage(this.currentPage);
+    
     this.loadPhotos();
     window.scrollTo(0, 0);
   }
