@@ -33,7 +33,7 @@ type Job struct {
 	MediaID   uuid.UUID `json:"media_id" db:"media_id"`
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
-	Error     string    `json:"error,omitempty" db:"error_message"` // Stores error message if status is Failed
+	Error     *string   `json:"error,omitempty" db:"error_message"` // Stores error message if status is Failed
 }
 
 // JobRepository defines the interface for job persistence and queue management.

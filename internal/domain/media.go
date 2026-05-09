@@ -80,6 +80,24 @@ const (
 	MediaTypeVideo MediaType = "video"
 )
 
+// Scan implements the sql.Scanner interface to ensure proper deserialization
+// from the database, handling potential NULL values or type mismatches.
+func (m *MediaType) Scan(value interface{}) error {
+	if value == nil {
+		*m = ""
+		return nil
+	}
+	switch v := value.(type) {
+	case string:
+		*m = MediaType(v)
+	case []byte:
+		*m = MediaType(string(v))
+	default:
+		return fmt.Errorf("type assertion failed: %T", value)
+	}
+	return nil
+}
+
 // Media represents a single image/video asset
 type Media struct {
 	ID            uuid.UUID      `db:"id"`

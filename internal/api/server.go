@@ -107,9 +107,10 @@ func (s *Server) handleListPhotos(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Filter to only photos
+	// Note: We treat empty MediaType as photo for backward compatibility
 	photoList := make([]*domain.Media, 0, len(mediaList))
 	for _, m := range mediaList {
-		if m.MediaType == domain.MediaTypePhoto {
+		if m.MediaType == domain.MediaTypePhoto || m.MediaType == "" {
 			photoList = append(photoList, m)
 		}
 	}
@@ -144,7 +145,7 @@ func (s *Server) handleGetPhoto(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if media.MediaType != domain.MediaTypePhoto {
+	if media.MediaType != domain.MediaTypePhoto && media.MediaType != "" {
 		http.Error(w, "Not a photo", http.StatusNotFound)
 		return
 	}
@@ -170,7 +171,7 @@ func (s *Server) handleGetPhotoFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if media.MediaType != domain.MediaTypePhoto {
+	if media.MediaType != domain.MediaTypePhoto && media.MediaType != "" {
 		http.Error(w, "Not a photo", http.StatusNotFound)
 		return
 	}

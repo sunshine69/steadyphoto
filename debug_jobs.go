@@ -25,14 +25,14 @@ func main() {
 		ID        string `db:"id"`
 		Type      string `db:"job_type"`
 		Status    string `db:"status"`
-		PhotoID   string `db:"photo_id"`
+		PhotoID   string `db:"media_id"`
 		CreatedAt string `db:"created_at"`
 		Error     string `db:"error_message"`
 	}
 
 	var rows []JobRow
 	// Using raw query to avoid any struct mapping issues during debugging
-	err = db.Select(&rows, "SELECT id, job_type, status, photo_id, created_at, error_message FROM jobs")
+	err = db.Select(&rows, "SELECT id, job_type, status, media_id, created_at, error_message FROM jobs")
 	if err != nil {
 		log.Fatalf("Query failed: %v", err)
 	}

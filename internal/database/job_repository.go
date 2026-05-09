@@ -20,8 +20,8 @@ func NewPostgresJobRepository(db *sqlx.DB) *PostgresJobRepository {
 
 func (r *PostgresJobRepository) Create(ctx context.Context, job *domain.Job) error {
 	query := `
-		INSERT INTO jobs (id, job_type, status, photo_id, created_at, updated_at, error_message)
-		VALUES (:id, :job_type, :status, :photo_id, :created_at, :updated_at, :error_message)
+		INSERT INTO jobs (id, job_type, status, media_id, created_at, updated_at, error_message)
+		VALUES (:id, :job_type, :status, :media_id, :created_at, :updated_at, :error_message)
 	`
 	_, err := r.db.NamedExecContext(ctx, query, job)
 	return err

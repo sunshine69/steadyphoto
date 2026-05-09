@@ -65,7 +65,7 @@ func main() {
 		// For simplicity in this repair script, we'll query the jobs table directly.
 		
 		var exists bool
-		query := `SELECT EXISTS(SELECT 1 FROM jobs WHERE photo_id = $1 AND job_type = $2 AND status IN ('pending', 'processing'))`
+		query := `SELECT EXISTS(SELECT 1 FROM jobs WHERE media_id = $1 AND job_type = $2 AND status IN ('pending', 'processing'))`
 		err := db.GetContext(ctx, &exists, query, photo.ID, string(domain.JobTypeThumbnail))
 		if err != nil {
 			log.Printf("Error checking job status for photo %s: %v", photo.ID, err)

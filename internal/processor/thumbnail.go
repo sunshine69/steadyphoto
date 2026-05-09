@@ -36,6 +36,18 @@ func (p *ThumbnailProcessor) ProcessJob(ctx context.Context, job *domain.Job, ph
 		return fmt.Errorf("photo path is empty")
 	}
 
+	// Skip video files for now - they require frame extraction logic
+	// Check MediaType first, then fallback to file extension if MediaType is empty/unknown
+	isVideo := photo.MediaType == domain.MediaTypeVideo
+	if !isVideo && photo.Path != "" {
+		ext := strings.ToLower(filepath.Ext(photo.Path))
+		isVideo = ext == ".mp4" || ext == ".mov" || ext == ".avi" || ext == ".mkv" || ext == ".webm" || ext == ".flv"
+	}
+	
+	if isVideo {
+		return fmt.Errorf("skipping video thumbnail generation - frame extraction not yet implemented")
+	}
+
 	// 1. Resolve the absolute path of the original photo
 	inputAbsPath := filepath.Join(p.storageRoot, photo.Path)
 
