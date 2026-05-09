@@ -100,7 +100,7 @@ func (s *Server) handleListPhotos(w http.ResponseWriter, r *http.Request) {
 	// List returns (mediaList, total, error)
 	mediaList, total, err := s.mediaRepo.List(ctx, limit, offset)
 
-	_ = total
+	// Use total count from database for pagination
 	if err != nil {
 		http.Error(w, "Failed to list media: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -121,7 +121,7 @@ func (s *Server) handleListPhotos(w http.ResponseWriter, r *http.Request) {
 		Total int             `json:"total"`
 	}{
 		Media: photoList,
-		Total: len(photoList),
+		Total: total,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -211,7 +211,7 @@ func (s *Server) handleListMedia(w http.ResponseWriter, r *http.Request) {
 	// List returns (mediaList, total, error)
 	mediaList, total, err := s.mediaRepo.List(ctx, limit, offset)
 
-	_ = total
+	// Use total count from database for pagination
 	if err != nil {
 		http.Error(w, "Failed to list media: "+err.Error(), http.StatusInternalServerError)
 		return

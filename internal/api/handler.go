@@ -81,7 +81,7 @@ func (h *Handler) ListPhotos(w http.ResponseWriter, r *http.Request) {
 
 	resp := ListMediaResponse{
 		Media:       photoList,
-		TotalCount:  len(photoList),
+		TotalCount:  total,
 		CurrentPage: (offset / limit) + 1,
 		TotalPages:  totalPages,
 	}

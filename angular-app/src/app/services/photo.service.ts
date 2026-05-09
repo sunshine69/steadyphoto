@@ -23,7 +23,7 @@ export class PhotoService {
     
     return {
       id: id,
-      path: id ? `${this.API_BASE_URL}/photos/${id}/original` : '',
+      path: id ? `${this.API_BASE_URL}/photos/${id}/file` : '',
       thumbnailUrl: id ? `${this.API_BASE_URL}/photos/${id}/thumb` : '',
       filename: p.Filename ?? p.filename ?? '',
       captured_at: p.CapturedAt ?? p.captured_at ?? '',
@@ -58,7 +58,7 @@ export class PhotoService {
           // We check for 'photos' or 'Photos' to handle potential case differences in JSON keys
           const photosArray = isArray 
             ? response 
-            : (response?.photos || response?.Photos || []);
+            : (response?.media || response?.photos || response?.Photos || []);
           
           // 3. Extract total count
           const total = isArray 
