@@ -102,10 +102,12 @@ func runUpMigrations() {
 
 		fmt.Printf("Applying migration version %d...\n", version)
 
-		// Use a closure to handle transaction logic cleanly
+		// Use the underlying *sql.DB for transaction management
+		// This avoids potential "unexpected transaction status idle" errors from sqlx.Tx
+		sqlDB := db.DB
 		err = func() error {
-			// Begin transaction
-			tx, err := db.Begin()
+			// Begin transaction using standard database/sql
+			tx, err := sqlDB.Begin()
 			if err != nil {
 				return fmt.Errorf("transaction begin failed: %w", err)
 			}
@@ -113,7 +115,6 @@ func runUpMigrations() {
 			// Execute migration content
 			_, err = tx.Exec(string(content))
 			if err != nil {
-				// Ensure rollback on exec failure
 				_ = tx.Rollback()
 				return fmt.Errorf("migration %d execution failed: %w", version, err)
 			}
@@ -121,7 +122,6 @@ func runUpMigrations() {
 			// Record migration version
 			_, err = tx.Exec(fmt.Sprintf("INSERT INTO %s (version) VALUES ($1)", tableName), version)
 			if err != nil {
-				// Ensure rollback on record failure
 				_ = tx.Rollback()
 				return fmt.Errorf("failed to record migration %d: %w", version, err)
 			}
@@ -129,7 +129,7 @@ func runUpMigrations() {
 			// Commit transaction
 			err = tx.Commit()
 			if err != nil {
-				// If commit fails, try to rollback to clean up state
+				// Try rollback on commit failure
 				_ = tx.Rollback()
 				return fmt.Errorf("commit failed for migration %d: %w", version, err)
 			}
@@ -179,13 +179,12 @@ func createMigrationTable(db *sql.DB) error {
 }
 
 func getCurrentVersion(db *sql.DB) (int, error) {
-	var version *int // Use pointer to detect NULL
+	var version *int
 	err := db.QueryRow(fmt.Sprintf("SELECT MAX(version) FROM %s", tableName)).Scan(&version)
 	if err != nil {
 		return 0, fmt.Errorf("query failed: %w", err)
 	}
 	
-	// If version is nil (no rows or all NULL), return 0 as base case
 	if version == nil {
 		return 0, nil
 	}
