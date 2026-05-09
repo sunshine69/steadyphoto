@@ -102,23 +102,43 @@ func runUpMigrations() {
 
 		fmt.Printf("Applying migration version %d...\n", version)
 
-		tx, err := db.Beginx()
+		// Use a closure to handle transaction logic cleanly
+		err = func() error {
+			// Begin transaction
+			tx, err := db.Begin()
+			if err != nil {
+				return fmt.Errorf("transaction begin failed: %w", err)
+			}
+
+			// Execute migration content
+			_, err = tx.Exec(string(content))
+			if err != nil {
+				// Ensure rollback on exec failure
+				_ = tx.Rollback()
+				return fmt.Errorf("migration %d execution failed: %w", version, err)
+			}
+
+			// Record migration version
+			_, err = tx.Exec(fmt.Sprintf("INSERT INTO %s (version) VALUES ($1)", tableName), version)
+			if err != nil {
+				// Ensure rollback on record failure
+				_ = tx.Rollback()
+				return fmt.Errorf("failed to record migration %d: %w", version, err)
+			}
+
+			// Commit transaction
+			err = tx.Commit()
+			if err != nil {
+				// If commit fails, try to rollback to clean up state
+				_ = tx.Rollback()
+				return fmt.Errorf("commit failed for migration %d: %w", version, err)
+			}
+
+			return nil
+		}()
+
 		if err != nil {
-			log.Fatalf("Transaction begin failed: %v", err)
-		}
-
-		if _, err := tx.Exec(string(content)); err != nil {
-			tx.Rollback()
-			log.Fatalf("Migration %d execution failed: %v", version, err)
-		}
-
-		if _, err := tx.Exec(fmt.Sprintf("INSERT INTO %s (version) VALUES ($1)", tableName), version); err != nil {
-			tx.Rollback()
-			log.Fatalf("Failed to record migration %d: %v", version, err)
-		}
-
-		if err := tx.Commit(); err != nil {
-			log.Fatalf("Commit failed for migration %d: %v", version, err)
+			log.Fatalf("%v", err)
 		}
 
 		fmt.Printf("Successfully applied migration %d.\n", version)

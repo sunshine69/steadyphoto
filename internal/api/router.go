@@ -21,6 +21,13 @@ func NewRouter(mediaRepo domain.MediaRepository, faceRepo domain.FaceRepository,
 	}
 
 	r.Route("/api/v1", func(r chi.Router) {
+		// Photo-specific endpoints (backward compatible)
+		r.Get("/photos", h.ListPhotos)
+		r.Get("/photos/{id}", h.GetPhoto)
+		r.Get("/photos/{id}/file", h.ServePhotoFile)
+		r.Get("/photos/{id}/thumb", h.ServeThumbnailFile)
+		
+		// Unified media endpoints (for video support)
 		r.Get("/media", h.ListMedia)
 		r.Get("/media/{id}", h.GetMedia)
 		r.Get("/media/{id}/file", h.ServeMediaFile)

@@ -27,6 +27,7 @@ type ListMediaResponse struct {
 	TotalPages  int
 }
 
+// ListMedia handles GET /api/v1/media
 func (h *Handler) ListMedia(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -51,6 +52,93 @@ func (h *Handler) ListMedia(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
+}
+
+// ListPhotos handles GET /api/v1/photos
+// Backward compatible endpoint for frontend photo listing
+func (h *Handler) ListPhotos(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// Simple pagination parsing
+	limit := 20
+	offset := 0
+
+	mediaList, total, err := h.mediaRepo.List(ctx, limit, offset)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Filter to only photos
+	photoList := make([]*domain.Media, 0, len(mediaList))
+	for _, m := range mediaList {
+		if m.MediaType == domain.MediaTypePhoto {
+			photoList = append(photoList, m)
+		}
+	}
+
+	totalPages := (total + limit - 1) / limit
+
+	resp := ListMediaResponse{
+		Media:       photoList,
+		TotalCount:  len(photoList),
+		CurrentPage: (offset / limit) + 1,
+		TotalPages:  totalPages,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+// GetPhoto handles GET /api/v1/photos/{id}
+// Backward compatible endpoint for frontend photo retrieval
+func (h *Handler) GetPhoto(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	idStr := chi.URLParam(r, "id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		http.Error(w, "invalid uuid", http.StatusBadRequest)
+		return
+	}
+
+	media, err := h.mediaRepo.GetByID(ctx, id)
+	if err != nil {
+		http.Error(w, "media not found", http.StatusNotFound)
+		return
+	}
+	
+	if media.MediaType != domain.MediaTypePhoto {
+		http.Error(w, "not a photo", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(media)
+}
+
+// ServePhotoFile handles GET /api/v1/photos/{id}/file
+// Backward compatible endpoint for serving photo files
+func (h *Handler) ServePhotoFile(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	idStr := chi.URLParam(r, "id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		http.Error(w, "invalid uuid", http.StatusBadRequest)
+		return
+	}
+
+	media, err := h.mediaRepo.GetByID(ctx, id)
+	if err != nil {
+		http.Error(w, "media not found", http.StatusNotFound)
+		return
+	}
+	
+	if media.MediaType != domain.MediaTypePhoto {
+		http.Error(w, "not a photo", http.StatusNotFound)
+		return
+	}
+
+	h.serveFile(w, r, h.storageRoot, media.Path)
 }
 
 func (h *Handler) GetMedia(w http.ResponseWriter, r *http.Request) {

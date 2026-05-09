@@ -60,7 +60,13 @@ func (s *Server) routes() {
 			})
 		})
 
-		// Media Routes
+		// Photo-specific endpoints (backward compatible)
+		r.Get("/photos", s.handleListPhotos)
+		r.Get("/photos/{id}", s.handleGetPhoto)
+		r.Get("/photos/{id}/file", s.handleGetPhotoFile)
+		r.Get("/photos/{id}/thumb", s.handleGetThumbnail)
+
+		// Unified media endpoints (for video support)
 		r.Get("/media", s.handleListMedia)
 		r.Route("/media/{id}", func(r chi.Router) {
 			r.Get("/", s.handleGetMedia)
@@ -70,7 +76,117 @@ func (s *Server) routes() {
 	})
 }
 
-// handleListMedia returns a paginated list of media items
+// handleListPhotos returns a paginated list of photos only
+func (s *Server) handleListPhotos(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	query := r.URL.Query()
+
+	// Parse limit
+	limit := 20
+	if lStr := query.Get("limit"); lStr != "" {
+		if l, err := strconv.Atoi(lStr); err == nil && l > 0 {
+			limit = l
+		}
+	}
+
+	// Parse offset
+	offset := 0
+	if oStr := query.Get("offset"); oStr != "" {
+		if o, err := strconv.Atoi(oStr); err == nil && o >= 0 {
+			offset = o
+		}
+	}
+
+	// List returns (mediaList, total, error)
+	mediaList, total, err := s.mediaRepo.List(ctx, limit, offset)
+
+	_ = total
+	if err != nil {
+		http.Error(w, "Failed to list media: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Filter to only photos
+	photoList := make([]*domain.Media, 0, len(mediaList))
+	for _, m := range mediaList {
+		if m.MediaType == domain.MediaTypePhoto {
+			photoList = append(photoList, m)
+		}
+	}
+
+	// Return both the media and the total count for the frontend to manage pagination
+	response := struct {
+		Media []*domain.Media `json:"media"`
+		Total int             `json:"total"`
+	}{
+		Media: photoList,
+		Total: len(photoList),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleGetPhoto returns metadata for a single photo
+func (s *Server) handleGetPhoto(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	idStr := chi.URLParam(r, "id")
+
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		http.Error(w, "Invalid UUID format", http.StatusBadRequest)
+		return
+	}
+
+	media, err := s.mediaRepo.GetByID(ctx, id)
+	if err != nil {
+		http.Error(w, "Media not found", http.StatusNotFound)
+		return
+	}
+
+	if media.MediaType != domain.MediaTypePhoto {
+		http.Error(w, "Not a photo", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(media)
+}
+
+// handleGetPhotoFile streams the photo file
+func (s *Server) handleGetPhotoFile(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	idStr := chi.URLParam(r, "id")
+
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		http.Error(w, "Invalid UUID format", http.StatusBadRequest)
+		return
+	}
+
+	media, err := s.mediaRepo.GetByID(ctx, id)
+	if err != nil {
+		http.Error(w, "Media not found", http.StatusNotFound)
+		return
+	}
+
+	if media.MediaType != domain.MediaTypePhoto {
+		http.Error(w, "Not a photo", http.StatusNotFound)
+		return
+	}
+
+	// Resolve the absolute path using our Storage Service
+	absPath, err := s.storageService.ResolvePath(media.Path)
+	if err != nil {
+		http.Error(w, "Could not locate file: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// http.ServeFile handles Range requests automatically
+	http.ServeFile(w, r, absPath)
+}
+
+// handleListMedia returns a paginated list of media items (photos + videos)
 func (s *Server) handleListMedia(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	query := r.URL.Query()
@@ -93,6 +209,8 @@ func (s *Server) handleListMedia(w http.ResponseWriter, r *http.Request) {
 
 	// List returns (mediaList, total, error)
 	mediaList, total, err := s.mediaRepo.List(ctx, limit, offset)
+
+	_ = total
 	if err != nil {
 		http.Error(w, "Failed to list media: "+err.Error(), http.StatusInternalServerError)
 		return
