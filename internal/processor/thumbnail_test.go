@@ -53,7 +53,7 @@ func TestThumbnailProcessor_ProcessJob(t *testing.T) {
 	thumbProc := processor.NewThumbnailProcessor(mockEngine, storageRoot, thumbRoot)
 
 	photoID := uuid.New()
-	photo := &domain.Photo{
+	photo := &domain.Media{
 		ID:   photoID,
 		Path: inputRelPath,
 	}
@@ -61,7 +61,7 @@ func TestThumbnailProcessor_ProcessJob(t *testing.T) {
 	job := &domain.Job{
 		ID:      uuid.New(),
 		Type:    domain.JobTypeThumbnail,
-		PhotoID: photoID,
+		MediaID: photoID,
 	}
 
 	// 3. Execute

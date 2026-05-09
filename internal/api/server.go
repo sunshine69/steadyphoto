@@ -18,15 +18,15 @@ import (
 
 type Server struct {
 	router         *chi.Mux
-	photoRepo      domain.PhotoRepository
+	mediaRepo      domain.MediaRepository
 	storageService *storage.StorageService
 	thumbRoot      string
 }
 
-func NewServer(photoRepo domain.PhotoRepository, storageService *storage.StorageService, thumbRoot string) *Server {
+func NewServer(mediaRepo domain.MediaRepository, storageService *storage.StorageService, thumbRoot string) *Server {
 	s := &Server{
 		router:         chi.NewRouter(),
-		photoRepo:      photoRepo,
+		mediaRepo:      mediaRepo,
 		storageService: storageService,
 		thumbRoot:      thumbRoot,
 	}
@@ -60,18 +60,18 @@ func (s *Server) routes() {
 			})
 		})
 
-		// Photo Routes
-		r.Get("/photos", s.handleListPhotos)
-		r.Route("/photos/{id}", func(r chi.Router) {
-			r.Get("/", s.handleGetPhoto)
+		// Media Routes
+		r.Get("/media", s.handleListMedia)
+		r.Route("/media/{id}", func(r chi.Router) {
+			r.Get("/", s.handleGetMedia)
 			r.Get("/original", s.handleGetOriginal)
 			r.Get("/thumb", s.handleGetThumbnail)
 		})
 	})
 }
 
-// handleListPhotos returns a paginated list of photos
-func (s *Server) handleListPhotos(w http.ResponseWriter, r *http.Request) {
+// handleListMedia returns a paginated list of media items
+func (s *Server) handleListMedia(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	query := r.URL.Query()
 
@@ -91,28 +91,28 @@ func (s *Server) handleListPhotos(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// List returns (photos, total, error)
-	photos, total, err := s.photoRepo.List(ctx, limit, offset)
+	// List returns (mediaList, total, error)
+	mediaList, total, err := s.mediaRepo.List(ctx, limit, offset)
 	if err != nil {
-		http.Error(w, "Failed to list photos: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Failed to list media: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// Return both photos and the total count for the frontend to manage pagination
+	// Return both the media and the total count for the frontend to manage pagination
 	response := struct {
-		Photos []*domain.Photo `json:"photos"`
-		Total  int             `json:"total"`
+		Media []*domain.Media `json:"media"`
+		Total int             `json:"total"`
 	}{
-		Photos: photos,
-		Total:  total,
+		Media: mediaList,
+		Total: total,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
 }
 
-// handleGetPhoto returns metadata for a single photo
-func (s *Server) handleGetPhoto(w http.ResponseWriter, r *http.Request) {
+// handleGetMedia returns metadata for a single media item
+func (s *Server) handleGetMedia(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	idStr := chi.URLParam(r, "id")
 
@@ -122,14 +122,14 @@ func (s *Server) handleGetPhoto(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	photo, err := s.photoRepo.GetByID(ctx, id)
+	media, err := s.mediaRepo.GetByID(ctx, id)
 	if err != nil {
-		http.Error(w, "Photo not found", http.StatusNotFound)
+		http.Error(w, "Media not found", http.StatusNotFound)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(photo)
+	json.NewEncoder(w).Encode(media)
 }
 
 // handleGetOriginal streams the actual file
@@ -143,14 +143,14 @@ func (s *Server) handleGetOriginal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	photo, err := s.photoRepo.GetByID(ctx, id)
+	media, err := s.mediaRepo.GetByID(ctx, id)
 	if err != nil {
-		http.Error(w, "Photo not found", http.StatusNotFound)
+		http.Error(w, "Media not found", http.StatusNotFound)
 		return
 	}
 
 	// Resolve the absolute path using our Storage Service
-	absPath, err := s.storageService.ResolvePath(photo.Path)
+	absPath, err := s.storageService.ResolvePath(media.Path)
 	if err != nil {
 		http.Error(w, "Could not locate file: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -171,25 +171,30 @@ func (s *Server) handleGetThumbnail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	photo, err := s.photoRepo.GetByID(ctx, id)
+	media, err := s.mediaRepo.GetByID(ctx, id)
 	if err != nil {
-		http.Error(w, "Photo not found", http.StatusNotFound)
+		http.Error(w, "Media not found", http.StatusNotFound)
 		return
 	}
 
 	// Calculate thumbnail path
-	relPath := filepath.Clean(photo.Path)
+	relPath := filepath.Clean(media.Path)
 	ext := filepath.Ext(relPath)
 	base := strings.TrimSuffix(relPath, ext)
-	thumbRelPath := filepath.Join(base + "_thumb.webp")
+	
+	var thumbRelPath string
+	if media.MediaType == domain.MediaTypeVideo {
+		// For videos, thumbnails are in .thumbnails/ directory
+		thumbRelPath = filepath.Join(".thumbnails", base+".webp")
+	} else {
+		thumbRelPath = filepath.Join(base+"_thumb.webp")
+	}
 
 	// The thumbnail is stored relative to the thumbRoot
 	fullThumbPath := filepath.Join(s.thumbRoot, thumbRelPath)
 
 	// Check if file exists before serving
 	if _, err := os.Stat(fullThumbPath); os.IsNotExist(err) {
-		// Fallback: Try to serve the original if thumbnail is missing (optional, but helpful for debugging)
-		// For now, we stick to the design requirement: return 404 if thumb is missing
 		http.Error(w, "Thumbnail not found", http.StatusNotFound)
 		return
 	}

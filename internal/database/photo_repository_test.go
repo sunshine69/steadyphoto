@@ -14,7 +14,7 @@ import (
 	_ "github.com/lib/pq"
 )
 
-func TestPostgresPhotoRepository(t *testing.T) {
+func TestPostgresMediaRepository(t *testing.T) {
 	// Setup database connection using environment variable
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
@@ -29,11 +29,11 @@ func TestPostgresPhotoRepository(t *testing.T) {
 
 	// --- IDEMPOTENCY STEP: Ensure schema exists and wipe data ---
 	
-	// 1. Check if 'photos' table exists
+	// 1. Check if 'media' table exists
 	var exists bool
-	err = db.QueryRow("SELECT EXISTS (SELECT FROM pg_tables WHERE tablename = 'photos')").Scan(&exists)
+	err = db.QueryRow("SELECT EXISTS (SELECT FROM pg_tables WHERE tablename = 'media')").Scan(&exists)
 	if err != nil {
-		t.Fatalf("Failed to check if 'photos' table exists: %v", err)
+		t.Fatalf("Failed to check if 'media' table exists: %v", err)
 	}
 
 	if !exists {
@@ -45,7 +45,7 @@ func TestPostgresPhotoRepository(t *testing.T) {
 		CREATE EXTENSION IF NOT EXISTS vector;
 		CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
-		CREATE TABLE IF NOT EXISTS photos (
+		CREATE TABLE IF NOT EXISTS media (
 			id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
 			path TEXT NOT NULL UNIQUE,
 			filename TEXT NOT NULL,
@@ -54,14 +54,16 @@ func TestPostgresPhotoRepository(t *testing.T) {
 			width INT,
 			height INT,
 			captured_at TIMESTAMPTZ,
+			media_type VARCHAR(20) DEFAULT 'photo',
 			metadata JSONB DEFAULT '{}',
+			video_metadata JSONB DEFAULT '{}',
 			created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 		);
 
 		CREATE TABLE IF NOT EXISTS faces (
 			id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-			photo_id UUID NOT NULL REFERENCES photos(id) ON DELETE CASCADE,
+			media_id UUID NOT NULL REFERENCES media(id) ON DELETE CASCADE,
 			bounding_box JSONB NOT NULL,
 			embedding VECTOR(512),
 			created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
@@ -75,10 +77,10 @@ func TestPostgresPhotoRepository(t *testing.T) {
 			updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 		);
 
-		CREATE TABLE IF NOT EXISTS album_photos (
+		CREATE TABLE IF NOT EXISTS album_media (
 			album_id UUID REFERENCES albums(id) ON DELETE CASCADE,
-			photo_id UUID REFERENCES photos(id) ON DELETE CASCADE,
-			PRIMARY KEY (album_id, photo_id)
+			media_id UUID REFERENCES media(id) ON DELETE CASCADE,
+			PRIMARY KEY (album_id, media_id)
 		);
 		`
 		_, err = db.Exec(initSchema)
@@ -87,16 +89,16 @@ func TestPostgresPhotoRepository(t *testing.T) {
 		}
 	} else {
 		// 2. If tables exist, truncate them to ensure a clean state
-		_, err = db.Exec("TRUNCATE TABLE photos, faces, albums, album_photos RESTART IDENTITY CASCADE")
+		_, err = db.Exec("TRUNCATE TABLE media, faces, albums, album_media RESTART IDENTITY CASCADE")
 		if err != nil {
 			t.Fatalf("Failed to clean up database for idempotent testing: %v", err)
 		}
 	}
 
-	repo := NewPostgresPhotoRepository(db)
+	repo := NewPostgresMediaRepository(db)
 
 	t.Run("Create_and_GetByID", func(t *testing.T) {
-		photo := &domain.Photo{
+		media := &domain.Media{
 			ID:         uuid.New(),
 			Path:       "/tmp/test/img.jpg",
 			Filename:   "img.jpg",
@@ -110,21 +112,21 @@ func TestPostgresPhotoRepository(t *testing.T) {
 			UpdatedAt:  time.Now().Truncate(time.Microsecond),
 		}
 
-		err := repo.Create(context.Background(), photo)
+		err := repo.Create(context.Background(), media)
 		if err != nil {
-			t.Fatalf("Failed to create photo: %v", err)
+			t.Fatalf("Failed to create media: %v", err)
 		}
 
-		retrieved, err := repo.GetByID(context.Background(), photo.ID)
+		retrieved, err := repo.GetByID(context.Background(), media.ID)
 		if err != nil {
-			t.Fatalf("Failed to get photo: %v", err)
+			t.Fatalf("Failed to get media: %v", err)
 		}
 
-		if retrieved.Hash != photo.Hash {
-			t.Errorf("Expected hash %s, got %s", photo.Hash, retrieved.Hash)
+		if retrieved.Hash != media.Hash {
+			t.Errorf("Expected hash %s, got %s", media.Hash, retrieved.Hash)
 		}
-		if retrieved.SizeBytes != photo.SizeBytes {
-			t.Errorf("Expected size %d, got %d", photo.SizeBytes, retrieved.SizeBytes)
+		if retrieved.SizeBytes != media.SizeBytes {
+			t.Errorf("Expected size %d, got %d", media.SizeBytes, retrieved.SizeBytes)
 		}
 		if retrieved.Metadata["camera"] != "sony" {
 			t.Errorf("Expected metadata camera=sony, got %s", retrieved.Metadata["camera"])
@@ -133,7 +135,7 @@ func TestPostgresPhotoRepository(t *testing.T) {
 
 	t.Run("GetByHash", func(t *testing.T) {
 		hash := "unique_hash_999"
-		photo := &domain.Photo{
+		media := &domain.Media{
 			ID:         uuid.New(),
 			Path:       "/tmp/test/img2.jpg",
 			Filename:   "img2.jpg",
@@ -142,26 +144,26 @@ func TestPostgresPhotoRepository(t *testing.T) {
 			CapturedAt: time.Now().Truncate(time.Microsecond),
 		}
 
-		err := repo.Create(context.Background(), photo)
+		err := repo.Create(context.Background(), media)
 		if err != nil {
-			t.Fatalf("Failed to create photo: %v", err)
+			t.Fatalf("Failed to create media: %v", err)
 		}
 
 		retrieved, err := repo.GetByHash(context.Background(), hash)
 		if err != nil {
-			t.Fatalf("Failed to get photo by hash: %v", err)
+			t.Fatalf("Failed to get media by hash: %v", err)
 		}
 
-		if retrieved.ID != photo.ID {
-			t.Errorf("Expected ID %s, got %s", photo.ID, retrieved.ID)
+		if retrieved.ID != media.ID {
+			t.Errorf("Expected ID %s, got %s", media.ID, retrieved.ID)
 		}
 	})
 
 	t.Run("List", func(t *testing.T) {
-		// Create multiple photos
+		// Create multiple media
 		count := 5
 		for i := 0; i < count; i++ {
-			p := &domain.Photo{
+			m := &domain.Media{
 				ID:         uuid.New(),
 				Path:       fmt.Sprintf("/tmp/test/list_%d.jpg", i),
 				Filename:   fmt.Sprintf("list_%d.jpg", i),
@@ -169,18 +171,18 @@ func TestPostgresPhotoRepository(t *testing.T) {
 				SizeBytes:  100,
 				CapturedAt: time.Now().Add(time.Duration(i) * time.Second),
 			}
-			if err := repo.Create(context.Background(), p); err != nil {
-				t.Fatalf("Failed to create photo in List test index %d: %v", i, err)
+			if err := repo.Create(context.Background(), m); err != nil {
+				t.Fatalf("Failed to create media in List test index %d: %v", i, err)
 			}
 		}
 
-		photos, total, err := repo.List(context.Background(), 2, 0)
+		mediaList, total, err := repo.List(context.Background(), 2, 0)
 		if err != nil {
-			t.Fatalf("Failed to list photos: %v", err)
+			t.Fatalf("Failed to list media: %v", err)
 		}
 
-		if len(photos) != 2 {
-			t.Errorf("Expected 2 photos, got %d", len(photos))
+		if len(mediaList) != 2 {
+			t.Errorf("Expected 2 media, got %d", len(mediaList))
 		}
 		if total < count {
 			t.Errorf("Expected total at least %d, got %d", count, total)
@@ -188,7 +190,7 @@ func TestPostgresPhotoRepository(t *testing.T) {
 	})
 
 	t.Run("Update", func(t *testing.T) {
-		photo := &domain.Photo{
+		media := &domain.Media{
 			ID:         uuid.New(),
 			Path:       "/tmp/test/upd.jpg",
 			Filename:   "upd.jpg",
@@ -196,18 +198,18 @@ func TestPostgresPhotoRepository(t *testing.T) {
 			SizeBytes:  500,
 			CapturedAt: time.Now().Truncate(time.Microsecond),
 		}
-		if err := repo.Create(context.Background(), photo); err != nil {
-			t.Fatalf("Failed to create photo for update test: %v", err)
+		if err := repo.Create(context.Background(), media); err != nil {
+			t.Fatalf("Failed to create media for update test: %v", err)
 		}
 
-		photo.SizeBytes = 9999
-		photo.Metadata = domain.Metadata{"updated": "true"}
-		err := repo.Update(context.Background(), photo)
+		media.SizeBytes = 9999
+		media.Metadata = domain.Metadata{"updated": "true"}
+		err := repo.Update(context.Background(), media)
 		if err != nil {
-			t.Fatalf("Failed to update photo: %v", err)
+			t.Fatalf("Failed to update media: %v", err)
 		}
 
-		retrieved, _ := repo.GetByID(context.Background(), photo.ID)
+		retrieved, _ := repo.GetByID(context.Background(), media.ID)
 		if retrieved.SizeBytes != 9999 {
 			t.Errorf("Expected size 9999, got %d", retrieved.SizeBytes)
 		}
@@ -217,25 +219,25 @@ func TestPostgresPhotoRepository(t *testing.T) {
 	})
 
 	t.Run("Delete", func(t *testing.T) {
-		photo := &domain.Photo{
+		media := &domain.Media{
 			ID:         uuid.New(),
 			Path:       "/tmp/test/del.jpg",
 			Filename:   "del.jpg",
 			Hash:       "hash_del",
 			CapturedAt: time.Now(),
 		}
-		if err := repo.Create(context.Background(), photo); err != nil {
-			t.Fatalf("Failed to create photo for delete test: %v", err)
+		if err := repo.Create(context.Background(), media); err != nil {
+			t.Fatalf("Failed to create media for delete test: %v", err)
 		}
 
-		err := repo.Delete(context.Background(), photo.ID)
+		err := repo.Delete(context.Background(), media.ID)
 		if err != nil {
-			t.Fatalf("Failed to delete photo: %v", err)
+			t.Fatalf("Failed to delete media: %v", err)
 		}
 
-		_, err = repo.GetByID(context.Background(), photo.ID)
+		_, err = repo.GetByID(context.Background(), media.ID)
 		if err == nil {
-			t.Error("Expected error getting deleted photo, got nil")
+			t.Error("Expected error getting deleted media, got nil")
 		}
 	})
 }

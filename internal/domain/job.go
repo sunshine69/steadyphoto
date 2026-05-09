@@ -30,7 +30,7 @@ type Job struct {
 	ID        uuid.UUID `json:"id" db:"id"`
 	Type      JobType   `json:"type" db:"job_type"`
 	Status    JobStatus `json:"status" db:"status"`
-	PhotoID   uuid.UUID `json:"photo_id" db:"photo_id"`
+	MediaID   uuid.UUID `json:"media_id" db:"media_id"`
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
 	Error     string    `json:"error,omitempty" db:"error_message"` // Stores error message if status is Failed

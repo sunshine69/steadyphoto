@@ -14,30 +14,27 @@ import (
 )
 
 type Handler struct {
-	photoRepo   domain.PhotoRepository
+	mediaRepo   domain.MediaRepository
 	faceRepo    domain.FaceRepository
 	storageRoot string
 	thumbRoot   string
 }
 
-type ListPhotosResponse struct {
-	Photos      []*domain.Photo
+type ListMediaResponse struct {
+	Media       []*domain.Media
 	TotalCount  int
 	CurrentPage int
 	TotalPages  int
 }
 
-func (h *Handler) ListPhotos(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) ListMedia(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	// Simple pagination parsing
 	limit := 20
 	offset := 0
 
-	// In a real app, we'd parse query params properly
-	// For now, just a hardcoded example of the logic
-
-	photos, total, err := h.photoRepo.List(ctx, limit, offset)
+	mediaList, total, err := h.mediaRepo.List(ctx, limit, offset)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -45,8 +42,8 @@ func (h *Handler) ListPhotos(w http.ResponseWriter, r *http.Request) {
 
 	totalPages := (total + limit - 1) / limit
 
-	resp := ListPhotosResponse{
-		Photos:      photos,
+	resp := ListMediaResponse{
+		Media:       mediaList,
 		TotalCount:  total,
 		CurrentPage: (offset / limit) + 1,
 		TotalPages:  totalPages,
@@ -56,7 +53,7 @@ func (h *Handler) ListPhotos(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(resp)
 }
 
-func (h *Handler) GetPhoto(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) GetMedia(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	idStr := chi.URLParam(r, "id")
 	id, err := uuid.Parse(idStr)
@@ -65,17 +62,17 @@ func (h *Handler) GetPhoto(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	photo, err := h.photoRepo.GetByID(ctx, id)
+	media, err := h.mediaRepo.GetByID(ctx, id)
 	if err != nil {
-		http.Error(w, "photo not found", http.StatusNotFound)
+		http.Error(w, "media not found", http.StatusNotFound)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(photo)
+	json.NewEncoder(w).Encode(media)
 }
 
-func (h *Handler) ServePhotoFile(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) ServeMediaFile(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	idStr := chi.URLParam(r, "id")
 	id, err := uuid.Parse(idStr)
@@ -84,13 +81,13 @@ func (h *Handler) ServePhotoFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	photo, err := h.photoRepo.GetByID(ctx, id)
+	media, err := h.mediaRepo.GetByID(ctx, id)
 	if err != nil {
-		http.Error(w, "photo not found", http.StatusNotFound)
+		http.Error(w, "media not found", http.StatusNotFound)
 		return
 	}
 
-	h.serveFile(w, r, h.storageRoot, photo.Path)
+	h.serveFile(w, r, h.storageRoot, media.Path)
 }
 
 func (h *Handler) ServeThumbnailFile(w http.ResponseWriter, r *http.Request) {
@@ -102,22 +99,29 @@ func (h *Handler) ServeThumbnailFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	photo, err := h.photoRepo.GetByID(ctx, id)
+	media, err := h.mediaRepo.GetByID(ctx, id)
 	if err != nil {
-		http.Error(w, "photo not found", http.StatusNotFound)
+		http.Error(w, "media not found", http.StatusNotFound)
 		return
 	}
 
 	// Calculate thumbnail path
-	relPath := filepath.Clean(photo.Path)
+	relPath := filepath.Clean(media.Path)
 	ext := filepath.Ext(relPath)
 	base := strings.TrimSuffix(relPath, ext)
-	thumbRelPath := filepath.Join(base + "_thumb.webp")
+	
+	var thumbRelPath string
+	if media.MediaType == domain.MediaTypeVideo {
+		// For videos, thumbnails are in .thumbnails/ directory
+		thumbRelPath = filepath.Join(".thumbnails", base+".webp")
+	} else {
+		thumbRelPath = filepath.Join(base+"_thumb.webp")
+	}
 
 	fullThumbPath := filepath.Join(h.thumbRoot, thumbRelPath)
 	if _, err := os.Stat(fullThumbPath); os.IsNotExist(err) {
 		// Fallback: serve the original file if thumbnail doesn't exist yet
-		h.serveFile(w, r, h.storageRoot, photo.Path)
+		h.serveFile(w, r, h.storageRoot, media.Path)
 		return
 	}
 

@@ -27,7 +27,7 @@ func NewThumbnailProcessor(engine ImageEngine, storageRoot string, thumbRoot str
 }
 
 // ProcessJob takes a background job and performs the thumbnail generation.
-func (p *ThumbnailProcessor) ProcessJob(ctx context.Context, job *domain.Job, photo *domain.Photo) error {
+func (p *ThumbnailProcessor) ProcessJob(ctx context.Context, job *domain.Job, photo *domain.Media) error {
 	if job.Type != domain.JobTypeThumbnail {
 		return fmt.Errorf("invalid job type: %s", job.Type)
 	}

@@ -21,60 +21,60 @@ func (m *MockFaceRepository) Create(ctx context.Context, face *domain.Face) erro
 	return args.Error(0)
 }
 
-func (m *MockFaceRepository) GetByPhotoID(ctx context.Context, photoID uuid.UUID) ([]*domain.Face, error) {
+func (m *MockFaceRepository) GetByMediaID(ctx context.Context, photoID uuid.UUID) ([]*domain.Face, error) {
 	args := m.Called(ctx, photoID)
 	return args.Get(0).([]*domain.Face), args.Error(1)
 }
 
-func (m *MockFaceRepository) DeleteByPhotoID(ctx context.Context, photoID uuid.UUID) error {
+func (m *MockFaceRepository) DeleteByMediaID(ctx context.Context, photoID uuid.UUID) error {
 	args := m.Called(ctx, photoID)
 	return args.Error(0)
 }
 
-// MockPhotoRepository is a mock for domain.PhotoRepository
-type MockPhotoRepository struct {
+// MockMediaRepository is a mock for domain.MediaRepository
+type MockMediaRepository struct {
 	mock.Mock
 }
 
-func (m *MockPhotoRepository) Create(ctx context.Context, photo *domain.Photo) error {
+func (m *MockMediaRepository) Create(ctx context.Context, photo *domain.Media) error {
 	args := m.Called(ctx, photo)
 	return args.Error(0)
 }
 
-func (m *MockPhotoRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Photo, error) {
+func (m *MockMediaRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Media, error) {
 	args := m.Called(ctx, id)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*domain.Photo), args.Error(1)
+	return args.Get(0).(*domain.Media), args.Error(1)
 }
 
-func (m *MockPhotoRepository) GetByHash(ctx context.Context, hash string) (*domain.Photo, error) {
+func (m *MockMediaRepository) GetByHash(ctx context.Context, hash string) (*domain.Media, error) {
 	args := m.Called(ctx, hash)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*domain.Photo), args.Error(1)
+	return args.Get(0).(*domain.Media), args.Error(1)
 }
 
-func (m *MockPhotoRepository) Update(ctx context.Context, photo *domain.Photo) error {
+func (m *MockMediaRepository) Update(ctx context.Context, photo *domain.Media) error {
 	args := m.Called(ctx, photo)
 	return args.Error(0)
 }
 
-func (m *MockPhotoRepository) Delete(ctx context.Context, id uuid.UUID) error {
+func (m *MockMediaRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	args := m.Called(ctx, id)
 	return args.Error(0)
 }
 
-func (m *MockPhotoRepository) DeleteByPhotoID(ctx context.Context, photoID uuid.UUID) error {
+func (m *MockMediaRepository) DeleteByMediaID(ctx context.Context, photoID uuid.UUID) error {
 	args := m.Called(ctx, photoID)
 	return args.Error(0)
 }
 
-func (m *MockPhotoRepository) List(ctx context.Context, limit, offset int) ([]*domain.Photo, int, error) {
+func (m *MockMediaRepository) List(ctx context.Context, limit, offset int) ([]*domain.Media, int, error) {
 	args := m.Called(ctx, limit, offset)
-	return args.Get(0).([]*domain.Photo), args.Int(1), args.Error(2)
+	return args.Get(0).([]*domain.Media), args.Int(1), args.Error(2)
 }
 
 // MockFaceDetector is a mock for ai.FaceDetector
@@ -96,20 +96,20 @@ func TestFaceDetectionProcessor_ProcessJob(t *testing.T) {
 	photoPath := "2023/01/01/test.jpg"
 	storageRoot := "/tmp/storage"
 
-	photo := &domain.Photo{
+	photo := &domain.Media{
 		ID:   photoID,
 		Path: photoPath,
 	}
 
 	job := &domain.Job{
 		ID:      uuid.New(),
-		PhotoID: photoID,
+		MediaID: photoID,
 		Type:    domain.JobTypeFaceDetection,
 	}
 
 	mockDetector := new(MockFaceDetector)
 	mockFaceRepo := new(MockFaceRepository)
-	mockPhotoRepo := new(MockPhotoRepository)
+	mockMediaRepo := new(MockMediaRepository)
 
 	// Setup mock expectations
 	expectedAbsPath := "/tmp/storage/2023/01/01/test.jpg"
@@ -122,7 +122,7 @@ func TestFaceDetectionProcessor_ProcessJob(t *testing.T) {
 
 	mockFaceRepo.On("Create", ctx, mock.AnythingOfType("*domain.Face")).Return(nil)
 
-	processor := NewFaceDetectionProcessor(mockDetector, mockFaceRepo, mockPhotoRepo, storageRoot)
+	processor := NewFaceDetectionProcessor(mockDetector, mockFaceRepo, mockMediaRepo, storageRoot)
 
 	// Execute
 	err := processor.ProcessJob(ctx, job, photo)
@@ -136,7 +136,7 @@ func TestFaceDetectionProcessor_ProcessJob(t *testing.T) {
 func TestFaceDetectionProcessor_ProcessJob_InvalidType(t *testing.T) {
 	ctx := context.Background()
 	photoID := uuid.New()
-	photo := &domain.Photo{ID: photoID}
+	photo := &domain.Media{ID: photoID}
 	job := &domain.Job{Type: domain.JobTypeThumbnail} // Wrong type
 
 	processor := NewFaceDetectionProcessor(nil, nil, nil, "/tmp")

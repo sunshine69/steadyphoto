@@ -18,17 +18,17 @@ func NewPostgresFaceRepository(db *sqlx.DB) *PostgresFaceRepository {
 
 func (r *PostgresFaceRepository) Create(ctx context.Context, face *domain.Face) error {
 	query := `
-		INSERT INTO faces (id, photo_id, bounding_box, embedding, created_at)
-		VALUES (:id, :photo_id, :bounding_box, :embedding, :created_at)
+		INSERT INTO faces (id, media_id, bounding_box, embedding, created_at)
+		VALUES (:id, :media_id, :bounding_box, :embedding, :created_at)
 	`
 	// Note: bounding_box and embedding will be handled by JSONB/pgvector via the domain model
 	_, err := r.db.NamedExecContext(ctx, query, face)
 	return err
 }
 
-func (r *PostgresFaceRepository) GetByPhotoID(ctx context.Context, photoID uuid.UUID) ([]*domain.Face, error) {
+func (r *PostgresFaceRepository) GetByMediaID(ctx context.Context, photoID uuid.UUID) ([]*domain.Face, error) {
 	var faces []*domain.Face
-	query := `SELECT * FROM faces WHERE photo_id = $1`
+	query := `SELECT * FROM faces WHERE media_id = $1`
 	err := r.db.SelectContext(ctx, &faces, query, photoID)
 	if err != nil {
 		return nil, err
@@ -36,8 +36,8 @@ func (r *PostgresFaceRepository) GetByPhotoID(ctx context.Context, photoID uuid.
 	return faces, nil
 }
 
-func (r *PostgresFaceRepository) DeleteByPhotoID(ctx context.Context, photoID uuid.UUID) error {
-	query := `DELETE FROM faces WHERE photo_id = $1`
+func (r *PostgresFaceRepository) DeleteByMediaID(ctx context.Context, photoID uuid.UUID) error {
+	query := `DELETE FROM faces WHERE media_id = $1`
 	_, err := r.db.ExecContext(ctx, query, photoID)
 	return err
 }

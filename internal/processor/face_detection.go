@@ -14,7 +14,7 @@ import (
 type FaceDetectionProcessor struct {
 	detector    ai.FaceDetector
 	faceRepo    domain.FaceRepository
-	photoRepo   domain.PhotoRepository
+	photoRepo   domain.MediaRepository
 	storageRoot string
 }
 
@@ -22,7 +22,7 @@ type FaceDetectionProcessor struct {
 func NewFaceDetectionProcessor(
 	detector ai.FaceDetector,
 	faceRepo domain.FaceRepository,
-	photoRepo domain.PhotoRepository,
+	photoRepo domain.MediaRepository,
 	storageRoot string,
 ) *FaceDetectionProcessor {
 	return &FaceDetectionProcessor{
@@ -34,7 +34,7 @@ func NewFaceDetectionProcessor(
 }
 
 // ProcessJob takes a background job and performs the face detection.
-func (p *FaceDetectionProcessor) ProcessJob(ctx context.Context, job *domain.Job, photo *domain.Photo) error {
+func (p *FaceDetectionProcessor) ProcessJob(ctx context.Context, job *domain.Job, photo *domain.Media) error {
 	if job.Type != domain.JobTypeFaceDetection {
 		return fmt.Errorf("invalid job type: %s", job.Type)
 	}
@@ -56,7 +56,7 @@ func (p *FaceDetectionProcessor) ProcessJob(ctx context.Context, job *domain.Job
 	for _, res := range results {
 		face := &domain.Face{
 			ID:          uuid.New(),
-			PhotoID:     photo.ID,
+			MediaID:     photo.ID,
 			BoundingBox: res.BoundingBox,
 			Embedding:   res.Embedding,
 		}

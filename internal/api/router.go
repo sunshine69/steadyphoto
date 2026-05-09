@@ -7,24 +7,24 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-func NewRouter(photoRepo domain.PhotoRepository, faceRepo domain.FaceRepository, storageRoot string, thumbRoot string) *chi.Mux {
+func NewRouter(mediaRepo domain.MediaRepository, faceRepo domain.FaceRepository, storageRoot string, thumbRoot string) *chi.Mux {
 	r := chi.NewRouter()
 
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 
 	h := &Handler{
-		photoRepo:   photoRepo,
+		mediaRepo:   mediaRepo,
 		faceRepo:    faceRepo,
 		storageRoot: storageRoot,
 		thumbRoot:   thumbRoot,
 	}
 
 	r.Route("/api/v1", func(r chi.Router) {
-		r.Get("/photos", h.ListPhotos)
-		r.Get("/photos/{id}", h.GetPhoto)
-		r.Get("/photos/{id}/file", h.ServePhotoFile)
-		r.Get("/photos/{id}/thumb", h.ServeThumbnailFile)
+		r.Get("/media", h.ListMedia)
+		r.Get("/media/{id}", h.GetMedia)
+		r.Get("/media/{id}/file", h.ServeMediaFile)
+		r.Get("/media/{id}/thumb", h.ServeThumbnailFile)
 	})
 
 	return r

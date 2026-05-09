@@ -36,7 +36,7 @@ func main() {
 	defer db.Close()
 
 	// 2. Initialize Repositories
-	photoRepo := database.NewPostgresPhotoRepository(db)
+	photoRepo := database.NewPostgresMediaRepository(db)
 	jobRepo := database.NewPostgresJobRepository(db)
 
 	fmt.Println("🔍 Scanning database for missing thumbnail jobs...")
@@ -60,7 +60,7 @@ func main() {
 		// We check for 'pending' or 'processing' jobs to avoid duplicates
 		// In a real system, we might also check 'completed'
 		
-		// Since our JobRepository doesn't have a 'GetJobsByPhotoID', 
+		// Since our JobRepository doesn't have a 'GetJobsByMediaID', 
 		// we'll do a quick check via a raw query or assume we need to check status.
 		// For simplicity in this repair script, we'll query the jobs table directly.
 		
@@ -78,7 +78,7 @@ func main() {
 				ID:        uuid.New(),
 				Type:      domain.JobTypeThumbnail,
 				Status:    domain.JobStatusPending,
-				PhotoID:   photo.ID,
+				MediaID:   photo.ID,
 				CreatedAt: time.Now(),
 			}
 
