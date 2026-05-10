@@ -141,6 +141,7 @@ type MediaRepository interface {
 	Delete(ctx context.Context, id uuid.UUID) error
 	DeleteByMediaID(ctx context.Context, mediaID uuid.UUID) error
 	List(ctx context.Context, limit, offset int) ([]*Media, int, error)
+	ListByType(ctx context.Context, mediaType MediaType, limit, offset int) ([]*Media, int, error)
 }
 
 // FaceRepository defines the interface for face storage

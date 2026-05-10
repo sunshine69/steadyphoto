@@ -63,6 +63,14 @@ func (m *MockMediaRepository) List(ctx context.Context, limit, offset int) ([]*d
 	return args.Get(0).([]*domain.Media), args.Int(1), args.Error(2)
 }
 
+func (m *MockMediaRepository) ListByType(ctx context.Context, mediaType domain.MediaType, limit, offset int) ([]*domain.Media, int, error) {
+	args := m.Called(ctx, mediaType, limit, offset)
+	if args.Get(0) == nil {
+		return nil, args.Int(1), args.Error(2)
+	}
+	return args.Get(0).([]*domain.Media), args.Int(1), args.Error(2)
+}
+
 type MockFaceRepository struct {
 	mock.Mock
 }
@@ -98,14 +106,15 @@ func TestHandler_ListMedia(t *testing.T) {
 	r := chi.NewRouter()
 	r.Get("/media", handler.ListMedia)
 
-	t.Run("success", func(t *testing.T) {
+	t.Run("success_with_pagination", func(t *testing.T) {
 		mediaList := []*domain.Media{
 			{ID: uuid.New(), MediaType: domain.MediaTypeVideo},
 			{ID: uuid.New(), MediaType: domain.MediaTypeVideo},
 		}
-		mediaRepo.On("List", mock.Anything, 20, 0).Return(mediaList, 2, nil)
+		// Testing with limit=10 and offset=0
+		mediaRepo.On("List", mock.Anything, 10, 0).Return(mediaList, 2, nil)
 
-		req := httptest.NewRequest("GET", "/media", nil)
+		req := httptest.NewRequest("GET", "/media?limit=10&offset=0", nil)
 		rr := httptest.NewRecorder()
 		r.ServeHTTP(rr, req)
 
@@ -118,6 +127,45 @@ func TestHandler_ListMedia(t *testing.T) {
 	})
 }
 
+func TestHandler_ListPhotos(t *testing.T) {
+	mediaRepo := new(MockMediaRepository)
+	faceRepo := new(MockFaceRepository)
+	handler := &Handler{
+		mediaRepo:   mediaRepo,
+		faceRepo:    faceRepo,
+		storageRoot: "/tmp",
+		thumbRoot:   "/tmp/thumbs",
+	}
+
+	r := chi.NewRouter()
+	r.Get("/photos", handler.ListPhotos)
+
+	t.Run("success_filtering_photos", func(t *testing.T) {
+		id2 := uuid.New()
+		id3 := uuid.New()
+		
+		// We expect ListByType to be called for photos
+		// Note: The total count returned by ListByType should be the count of PHOTOS
+		mediaRepo.On("ListByType", mock.Anything, domain.MediaTypePhoto, 20, 0).Return([]*domain.Media{
+			{ID: id2, MediaType: domain.MediaTypePhoto},
+			{ID: id3, MediaType: domain.MediaTypePhoto},
+		}, 2, nil)
+
+		req := httptest.NewRequest("GET", "/photos?limit=20&offset=0", nil)
+		rr := httptest.NewRecorder()
+		r.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		var resp ListMediaResponse
+		err := json.Unmarshal(rr.Body.Bytes(), &resp)
+		assert.NoError(t, err)
+		assert.Equal(t, 2, len(resp.Media))
+		assert.Equal(t, 2, resp.TotalCount)
+		assert.Equal(t, id2, resp.Media[0].ID)
+		assert.Equal(t, id3, resp.Media[1].ID)
+	})
+}
+
 func TestHandler_GetMedia(t *testing.T) {
 	mediaRepo := new(MockMediaRepository)
 	faceRepo := new(MockFaceRepository)
@@ -125,7 +173,7 @@ func TestHandler_GetMedia(t *testing.T) {
 		mediaRepo:   mediaRepo,
 		faceRepo:    faceRepo,
 		storageRoot: "/tmp",
-		thumbRoot: "/tmp/thumbs",
+		thumbRoot:   "/tmp/thumbs",
 	}
 
 	r := chi.NewRouter()
@@ -151,17 +199,7 @@ func TestHandler_GetMedia(t *testing.T) {
 
 	t.Run("not_found", func(t *testing.T) {
 		id := uuid.New()
-		// The issue was likely because GetByID returned (nil, nil) but the handler expects (nil, error) or something?
-		// Wait, if GetByID returns (nil, nil), then media is nil.
-		// In GetMedia:
-		// media, err := h.mediaRepo.GetByID(ctx, id)
-		// if err != nil { ... }
-		// If err is nil, it proceeds to encode nil media.
-		// encoding nil media results in 200 OK with null body.
-		// The design says if not found, return 404.
-		// So GetByID should return an error if not found.
-		// Or the handler should check if media is nil.
-		mediaRepo.On("GetByID", mock.Anything, id).Return(nil, context.DeadlineExceeded) // Using an error to trigger 404
+		mediaRepo.On("GetByID", mock.Anything, id).Return(nil, context.DeadlineExceeded)
 
 		req := httptest.NewRequest("GET", "/media/"+id.String(), nil)
 		rr := httptest.NewRecorder()

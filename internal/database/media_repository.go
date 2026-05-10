@@ -91,6 +91,27 @@ func (r *PostgresMediaRepository) List(ctx context.Context, limit, offset int) (
 	return mediaList, total, nil
 }
 
+func (r *PostgresMediaRepository) ListByType(ctx context.Context, mediaType domain.MediaType, limit, offset int) ([]*domain.Media, int, error) {
+	var mediaList []*domain.Media
+	var total int
+
+	// Get total count for pagination
+	countQuery := `SELECT COUNT(*) FROM media WHERE media_type = $1`
+	err := r.db.GetContext(ctx, &total, countQuery, mediaType)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Get paginated list
+	listQuery := `SELECT * FROM media WHERE media_type = $1 ORDER BY captured_at DESC LIMIT $2 OFFSET $3`
+	err = r.db.SelectContext(ctx, &mediaList, listQuery, mediaType, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return mediaList, total, nil
+}
+
 // Album Repository Implementation
 
 type PostgresAlbumRepository struct {

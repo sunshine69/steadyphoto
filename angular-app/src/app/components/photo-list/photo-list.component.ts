@@ -26,7 +26,7 @@ import { PhotoCardComponent } from '../photo-card/photo-card.component';
         </div >
       </div >
 
-      <div class="pagination-controls" *ngIf="!loading && totalPhotos > photos.length && !currentSearchTerm">
+      <div class="pagination-controls" *ngIf="!loading && totalPhotos > limit">
         <button class="btn btn-outline-primary me-2" 
                 [disabled]="offset === 0" 
                 (click)="changePage(-1)">
@@ -173,6 +173,9 @@ export class PhotoListComponent implements OnInit, OnDestroy {
           this.photos = allPhotos.filter(p => 
             p.filename.toLowerCase().includes(term)
           );
+          // In a real search, total should be the number of matches. 
+          // However, our backend currently returns total photos/media.
+          // For now, we'll just use the filtered length.
           this.totalPhotos = this.photos.length;
         } else {
           this.photos = allPhotos;

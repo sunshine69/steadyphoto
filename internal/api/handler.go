@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"steadyphoto/internal/domain"
@@ -31,9 +32,19 @@ type ListMediaResponse struct {
 func (h *Handler) ListMedia(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// Simple pagination parsing
+		// Parse pagination parameters
+	limitStr := r.URL.Query().Get("limit")
+	offsetStr := r.URL.Query().Get("offset")
+
 	limit := 20
+	if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+		limit = l
+	}
+
 	offset := 0
+	if o, err := strconv.Atoi(offsetStr); err == nil && o >= 0 {
+		offset = o
+	}
 
 	mediaList, total, err := h.mediaRepo.List(ctx, limit, offset)
 	if err != nil {
@@ -59,28 +70,33 @@ func (h *Handler) ListMedia(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListPhotos(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// Simple pagination parsing
-	limit := 20
-	offset := 0
+	// Parse pagination parameters
+	limitStr := r.URL.Query().Get("limit")
+	offsetStr := r.URL.Query().Get("offset")
 
-	mediaList, total, err := h.mediaRepo.List(ctx, limit, offset)
+	limit := 20
+	if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+		limit = l
+	}
+
+	offset := 0
+	if o, err := strconv.Atoi(offsetStr); err == nil && o >= 0 {
+		offset = o
+	}
+
+	mediaList, total, err := h.mediaRepo.ListByType(ctx, domain.MediaTypePhoto, limit, offset)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// Filter to only photos
-	photoList := make([]*domain.Media, 0, len(mediaList))
-	for _, m := range mediaList {
-		if m.MediaType == domain.MediaTypePhoto {
-			photoList = append(photoList, m)
-		}
-	}
+	// Note: total here is the total number of photos, not all media
+	// The ListByType implementation returns the total count of photos
 
 	totalPages := (total + limit - 1) / limit
 
 	resp := ListMediaResponse{
-		Media:       photoList,
+		Media:       mediaList,
 		TotalCount:  total,
 		CurrentPage: (offset / limit) + 1,
 		TotalPages:  totalPages,
@@ -107,11 +123,7 @@ func (h *Handler) GetPhoto(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	
-	if media.MediaType != domain.MediaTypePhoto {
-		http.Error(w, "not a photo", http.StatusNotFound)
-		return
-	}
-
+	// We allow videos too as they are part of the same media collection
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(media)
 }
@@ -133,11 +145,6 @@ func (h *Handler) ServePhotoFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	
-	if media.MediaType != domain.MediaTypePhoto {
-		http.Error(w, "not a photo", http.StatusNotFound)
-		return
-	}
-
 	h.serveFile(w, r, h.storageRoot, media.Path)
 }
 

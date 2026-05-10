@@ -55,7 +55,7 @@ export class PhotoService {
           const isArray = Array.isArray(response);
           
           // 2. Extract photos array
-          // We check for 'photos' or 'Photos' to handle potential case differences in JSON keys
+          // We check for 'media' or 'photos' or 'Photos' to handle potential case differences in JSON keys
           const photosArray = isArray 
             ? response 
             : (response?.media || response?.photos || response?.Photos || []);
@@ -63,7 +63,7 @@ export class PhotoService {
           // 3. Extract total count
           const total = isArray 
             ? photosArray.length 
-            : (response?.total ?? response?.Total ?? photosArray.length);
+            : (response?.total ?? response?.Total ?? 0);
 
           // 4. Return the standardized ListPhotosResponse
           return {
