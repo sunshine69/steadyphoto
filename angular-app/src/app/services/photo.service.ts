@@ -21,16 +21,31 @@ export class PhotoService {
   private normalizePhoto(p: any): Photo {
     const id = p.ID ?? p.id ?? '';
     
+    // Determine media type - check multiple possible field names
+    let mediaType: 'photo' | 'video' | undefined;
+    if (p.MediaType || p.media_type) {
+      const mt = (p.MediaType || p.media_type).toLowerCase();
+      if (mt === 'video') {
+        mediaType = 'video';
+      } else {
+        mediaType = 'photo';
+      }
+    }
+    
+    // Use /media/{id}/original for all files to support both photos and videos with Range requests
+    const filePath = id ? `${this.API_BASE_URL}/media/${id}/original` : '';
+    
     return {
       id: id,
-      path: id ? `${this.API_BASE_URL}/photos/${id}/file` : '',
-      thumbnailUrl: id ? `${this.API_BASE_URL}/photos/${id}/thumb` : '',
+      path: filePath,
+      thumbnailUrl: id ? `${this.API_BASE_URL}/media/${id}/thumb` : '',
       filename: p.Filename ?? p.filename ?? '',
       captured_at: p.CapturedAt ?? p.captured_at ?? '',
       width: p.Width ?? p.width,
       height: p.Height ?? p.height,
       size: p.Size ?? p.size,
       type: p.Type ?? p.type,
+      mediaType: mediaType,
       metadata: p.Metadata ? {
         camera: p.Metadata.Camera,
         iso: p.Metadata.Iso,
@@ -38,6 +53,13 @@ export class PhotoService {
         focal_length: p.Metadata.FocalLength,
         gps_lat: p.Metadata.GpsLat,
         gps_lon: p.Metadata.GpsLon,
+      } : undefined,
+      videoMetadata: p.VideoMetadata ? {
+        duration: p.VideoMetadata.Duration ?? p.VideoMetadata.duration,
+        bitrate: p.VideoMetadata.Bitrate ?? p.VideoMetadata.bitrate,
+        video_codec: p.VideoMetadata.VideoCodec ?? p.VideoMetadata.video_codec,
+        audio_codec: p.VideoMetadata.AudioCodec ?? p.VideoMetadata.audio_codec,
+        frame_rate: p.VideoMetadata.FrameRate ?? p.VideoMetadata.frame_rate,
       } : undefined
     };
   }
@@ -47,29 +69,67 @@ export class PhotoService {
    * @param limit Number of photos to fetch
    * @param offset Number of photos to skip
    */
+  /**
+   * Fetches a paginated list of all media (photos and videos).
+   * @param limit Number of items to fetch
+   * @param offset Number of items to skip
+   */
+  listMedia(limit: number = 20, offset: number = 0): Observable<ListPhotosResponse> {
+    return this.http.get<any>(`${this.API_BASE_URL}/media?limit=${limit}&offset=${offset}`)
+      .pipe(
+        map(response => {
+          const isArray = Array.isArray(response);
+          const mediaArray = isArray 
+            ? response 
+            : (response?.photos || response?.media || response?.Photos || []);
+          
+          const total = isArray 
+            ? mediaArray.length 
+            : (response?.total ?? response?.Total ?? 0);
+
+          return {
+            photos: mediaArray.map((p: any) => this.normalizePhoto(p)),
+            total: total
+          };
+        }),
+        catchError(this.handleError)
+      );
+  }
+
+  /**
+   * Fetches a paginated list of photos only.
+   * @param limit Number of photos to fetch
+   * @param offset Number of photos to skip
+   */
   listPhotos(limit: number = 20, offset: number = 0): Observable<ListPhotosResponse> {
     return this.http.get<any>(`${this.API_BASE_URL}/photos?limit=${limit}&offset=${offset}`)
       .pipe(
         map(response => {
-          // 1. Determine if the response is the new object or the old array
           const isArray = Array.isArray(response);
-          
-          // 2. Extract photos array
-          // We check for 'media' or 'photos' or 'Photos' to handle potential case differences in JSON keys
           const photosArray = isArray 
             ? response 
-            : (response?.media || response?.photos || response?.Photos || []);
+            : (response?.photos || response?.media || response?.Photos || []);
           
-          // 3. Extract total count
           const total = isArray 
             ? photosArray.length 
             : (response?.total ?? response?.Total ?? 0);
 
-          // 4. Return the standardized ListPhotosResponse
           return {
             photos: photosArray.map((p: any) => this.normalizePhoto(p)),
             total: total
           };
+        }),
+        catchError(this.handleError)
+      );
+  }
+
+  getMedia(id: string): Observable<Photo> {
+    // Use /media/{id} endpoint which works for both photos and videos
+    return this.http.get<any>(`${this.API_BASE_URL}/media/${id}`)
+      .pipe(
+        map(response => {
+          const mediaData = response?.Media || response?.media || response;
+          return this.normalizePhoto(mediaData);
         }),
         catchError(this.handleError)
       );

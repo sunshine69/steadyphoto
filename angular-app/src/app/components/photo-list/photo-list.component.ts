@@ -164,21 +164,27 @@ export class PhotoListComponent implements OnInit, OnDestroy {
     }
 
     this.loading = true;
-    this.subscription = this.photoService.listPhotos(this.limit, this.offset).subscribe({
+    
+    // If there is no search term, we want to list all media (including videos)
+    // If there IS a search term, we can continue using listPhotos (which is filtered by type in backend)
+    // or we can use listMedia and filter client-side. 
+    // To show videos in the main list, we should use listMedia.
+    const request$ = this.currentSearchTerm.trim() !== '' 
+      ? this.photoService.listPhotos(this.limit, this.offset)
+      : this.photoService.listMedia(this.limit, this.offset);
+
+    this.subscription = request$.subscribe({
       next: (response: ListPhotosResponse) => {
-        const allPhotos = response.photos;
+        const allMedia = response.photos;
         
         if (this.currentSearchTerm.trim() !== '') {
           const term = this.currentSearchTerm.toLowerCase();
-          this.photos = allPhotos.filter(p => 
+          this.photos = allMedia.filter(p => 
             p.filename.toLowerCase().includes(term)
           );
-          // In a real search, total should be the number of matches. 
-          // However, our backend currently returns total photos/media.
-          // For now, we'll just use the filtered length.
           this.totalPhotos = this.photos.length;
         } else {
-          this.photos = allPhotos;
+          this.photos = allMedia;
           this.totalPhotos = response.total;
         }
 

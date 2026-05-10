@@ -22,17 +22,15 @@ type Handler struct {
 }
 
 type ListMediaResponse struct {
-	Media       []*domain.Media
-	TotalCount  int
-	CurrentPage int
-	TotalPages  int
+	Photos []*domain.Media `json:"photos"`
+	Total  int              `json:"total"`
 }
 
 // ListMedia handles GET /api/v1/media
 func (h *Handler) ListMedia(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-		// Parse pagination parameters
+	// Parse pagination parameters
 	limitStr := r.URL.Query().Get("limit")
 	offsetStr := r.URL.Query().Get("offset")
 
@@ -52,13 +50,9 @@ func (h *Handler) ListMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	totalPages := (total + limit - 1) / limit
-
 	resp := ListMediaResponse{
-		Media:       mediaList,
-		TotalCount:  total,
-		CurrentPage: (offset / limit) + 1,
-		TotalPages:  totalPages,
+		Photos: mediaList,
+		Total:  total,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -90,16 +84,9 @@ func (h *Handler) ListPhotos(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Note: total here is the total number of photos, not all media
-	// The ListByType implementation returns the total count of photos
-
-	totalPages := (total + limit - 1) / limit
-
 	resp := ListMediaResponse{
-		Media:       mediaList,
-		TotalCount:  total,
-		CurrentPage: (offset / limit) + 1,
-		TotalPages:  totalPages,
+		Photos: mediaList,
+		Total:  total,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

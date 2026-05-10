@@ -1,3 +1,11 @@
+export interface VideoMetadata {
+  duration?: number;
+  bitrate?: number;
+  video_codec?: string;
+  audio_codec?: string;
+  frame_rate?: number;
+}
+
 export interface Photo {
   id: string;
   path: string;
@@ -7,6 +15,7 @@ export interface Photo {
   height?: number;
   size?: number;
   type?: string;
+  mediaType?: 'photo' | 'video';
   thumbnailUrl?: string;
   metadata?: {
     camera?: string;
@@ -17,6 +26,7 @@ export interface Photo {
     gps_lon?: number;
     [key: string]: any;
   };
+  videoMetadata?: VideoMetadata;
 }
 
 export interface ListPhotosResponse {

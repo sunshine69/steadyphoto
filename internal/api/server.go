@@ -43,13 +43,13 @@ func (s *Server) routes() {
 
 	// API Versioning
 	s.router.Route("/api/v1", func(r chi.Router) {
-		// CORS Middleware
+		// CORS Middleware - exposed headers must include Accept-Ranges and Content-Range for video seeking to work cross-origin
 		r.Use(func(next http.Handler) http.Handler {
 			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Access-Control-Allow-Origin", "*")
 				w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-				w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
-				w.Header().Set("Access-Control-Expose-Headers", "Content-Length, Content-Type")
+				w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, Range")
+				w.Header().Set("Access-Control-Expose-Headers", "Content-Length, Content-Type, Accept-Ranges, Content-Range")
 
 				if r.Method == "OPTIONS" {
 					w.WriteHeader(http.StatusOK)
@@ -154,7 +154,7 @@ func (s *Server) handleGetPhoto(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(media)
 }
 
-// handleGetPhotoFile streams the photo file
+// handleGetPhotoFile streams the photo file with Range request support for backward compatibility
 func (s *Server) handleGetPhotoFile(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	idStr := chi.URLParam(r, "id")
@@ -183,7 +183,14 @@ func (s *Server) handleGetPhotoFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// http.ServeFile handles Range requests automatically
+	// Set Content-Type based on media type and filename
+	contentType := s.getContentType(media.MediaType, media.Filename)
+	w.Header().Set("Content-Type", contentType)
+	
+	// Enable Range requests for video seeking (browsers need Accept-Ranges header)
+	w.Header().Set("Accept-Ranges", "bytes")
+
+	// http.ServeFile handles Range requests automatically (crucial for video/seeking)
 	http.ServeFile(w, r, absPath)
 }
 
@@ -251,7 +258,53 @@ func (s *Server) handleGetMedia(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(media)
 }
 
-// handleGetOriginal streams the actual file
+// getContentType returns the appropriate Content-Type based on media type or file extension
+func (s *Server) getContentType(mediaType domain.MediaType, filename string) string {
+	mediaTypeStr := strings.ToLower(string(mediaType))
+	
+	// If we have explicit media type from database, use it
+	if mediaType == domain.MediaTypeVideo {
+		ext := strings.ToLower(filepath.Ext(filename))
+		switch ext {
+		case ".mp4":
+			return "video/mp4"
+		case ".webm":
+			return "video/webm"
+		case ".ogg":
+			return "video/ogg"
+		case ".mov":
+			return "video/quicktime"
+		case ".avi":
+			return "video/x-msvideo"
+		case ".mkv":
+			return "video/x-matroska"
+		default:
+			return "video/mp4"
+		}
+	}
+	
+	if mediaType == domain.MediaTypePhoto || mediaTypeStr == "" {
+		ext := strings.ToLower(filepath.Ext(filename))
+		switch ext {
+		case ".jpg", ".jpeg":
+			return "image/jpeg"
+		case ".png":
+			return "image/png"
+		case ".gif":
+			return "image/gif"
+		case ".webp":
+			return "image/webp"
+		case ".heic", ".heif":
+			return "image/heic"
+		default:
+			return "application/octet-stream"
+		}
+	}
+	
+	return "application/octet-stream"
+}
+
+// handleGetOriginal streams the actual file with Range request support for video seeking
 func (s *Server) handleGetOriginal(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	idStr := chi.URLParam(r, "id")
@@ -274,6 +327,16 @@ func (s *Server) handleGetOriginal(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not locate file: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	// Set Content-Type based on media type and filename
+	contentType := s.getContentType(media.MediaType, media.Filename)
+	w.Header().Set("Content-Type", contentType)
+	
+	// Enable Range requests for video seeking (browsers need Accept-Ranges header)
+	w.Header().Set("Accept-Ranges", "bytes")
+	
+	// Expose Content-Range header via CORS so browsers can use Range requests from different origins
+	w.Header().Set("Access-Control-Expose-Headers", "Content-Length, Content-Type, Accept-Ranges, Content-Range")
 
 	// http.ServeFile handles Range requests automatically (crucial for video/seeking)
 	http.ServeFile(w, r, absPath)
