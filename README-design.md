@@ -4,14 +4,8 @@
 
 SteadyPhoto is a comprehensive photo management system with AI-powered capabilities. The platform allows users to organize, search, and manage their media collections efficiently.
 
-## Current Status
 
-- **Core Features**: Photo scanning, deduplication via SHA256 hashing, EXIF extraction, and metadata management
-- **Storage Architecture**: Relative path-based storage with `storage/YYYY/MM/DD/` directory structure
-- **API Layer**: RESTful API supporting Range requests for efficient file streaming
-- **Database**: PostgreSQL with JSONB for metadata and pgvector for AI capabilities
-
-## New Feature: Video Support in Scanner
+## Video Support in Scanner
 
 ### Overview
 
@@ -56,19 +50,6 @@ We are extending the scanner to support video files alongside existing photo sup
   - Metadata endpoint: `/api/media/{id}/metadata` returns video-specific info
 - **Thumbnail Endpoint**: `/api/media/{id}/thumbnail` serves extracted frame
 
-#### 5. Database Schema Changes
-- **Media Type Field**:
-  ```sql
-  ALTER TABLE media ADD COLUMN media_type VARCHAR(20) CHECK (media_type IN ('photo', 'video'));
-  ```
-- **Video Metadata JSONB**:
-  ```sql
-  ALTER TABLE media ADD COLUMN video_metadata JSONB;
-  CREATE INDEX idx_media_video_metadata ON media USING GIN(video_metadata);
-  ```
-- **Index Updates**:
-  - Add composite index on `(media_type, created_at)` for efficient filtering
-
 #### 6. Frontend Integration Requirements
 - **Media Type Display**: Show video icon alongside photo icons
 - **Playback Controls**: Implement video player component with seek functionality
@@ -108,10 +89,15 @@ We are extending the scanner to support video files alongside existing photo sup
 - **Path Sanitization**: Ensure no directory traversal vulnerabilities
 - **Access Control**: Maintain existing permission model for video files
 
-## Next Steps
+## Current Status
 
-1. Review and approve this design document
-2. Begin implementation starting with Phase 1 (Scanner modifications)
-3. Update CI/CD pipeline to include video testing
-4. Prepare migration scripts for database changes
-5. Coordinate with frontend team for UI updates
+- **Core Features**: Photo scanning, deduplication via SHA256 hashing, EXIF extraction, and metadata management
+- **Storage Architecture**: Relative path-based storage with `storage/YYYY/MM/DD/` directory structure
+- **API Layer**: RESTful API supporting Range requests for efficient file streaming
+- **Database**: PostgreSQL with JSONB for metadata and pgvector for AI capabilities
+- Front end using angular app. 
+  - Images and Video display - done
+  - Pagination with page number jump - done (two button Previous / Next and in the middle there is a input box and button for page jump 
+  - Video playing when clikcing video - done with seekable support 
+  - Image open - done and with full size display 
+  - Image search by name only - done - search box at teh top.
