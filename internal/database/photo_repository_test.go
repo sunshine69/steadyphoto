@@ -54,7 +54,7 @@ func TestPostgresMediaRepository(t *testing.T) {
 			width INT,
 			height INT,
 			captured_at TIMESTAMPTZ,
-			media_type VARCHAR(20) DEFAULT 'photo',
+			media_type VARCHAR(20) DEFAULT 'photo' CHECK (media_type IN ('photo', 'video')),
 			metadata JSONB DEFAULT '{}',
 			video_metadata JSONB DEFAULT '{}',
 			created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
@@ -77,7 +77,7 @@ func TestPostgresMediaRepository(t *testing.T) {
 			updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 		);
 
-		CREATE TABLE IF NOT EXISTS album_media (
+		CREATE TABLE IF NOT EXISTS album_photos (
 			album_id UUID REFERENCES albums(id) ON DELETE CASCADE,
 			media_id UUID REFERENCES media(id) ON DELETE CASCADE,
 			PRIMARY KEY (album_id, media_id)
@@ -89,7 +89,7 @@ func TestPostgresMediaRepository(t *testing.T) {
 		}
 	} else {
 		// 2. If tables exist, truncate them to ensure a clean state
-		_, err = db.Exec("TRUNCATE TABLE media, faces, albums, album_media RESTART IDENTITY CASCADE")
+		_, err = db.Exec("TRUNCATE TABLE media, faces, albums, album_photos RESTART IDENTITY CASCADE")
 		if err != nil {
 			t.Fatalf("Failed to clean up database for idempotent testing: %v", err)
 		}
@@ -106,6 +106,7 @@ func TestPostgresMediaRepository(t *testing.T) {
 			SizeBytes:  1024,
 			Width:      1920,
 			Height:     1080,
+			MediaType:  domain.MediaTypePhoto,
 			CapturedAt: time.Now().Truncate(time.Microsecond),
 			Metadata:   domain.Metadata{"camera": "sony"},
 			CreatedAt:  time.Now().Truncate(time.Microsecond),
@@ -141,6 +142,7 @@ func TestPostgresMediaRepository(t *testing.T) {
 			Filename:   "img2.jpg",
 			Hash:       hash,
 			SizeBytes:  2048,
+			MediaType:  domain.MediaTypePhoto,
 			CapturedAt: time.Now().Truncate(time.Microsecond),
 		}
 
@@ -169,6 +171,7 @@ func TestPostgresMediaRepository(t *testing.T) {
 				Filename:   fmt.Sprintf("list_%d.jpg", i),
 				Hash:       uuid.New().String(),
 				SizeBytes:  100,
+				MediaType:  domain.MediaTypePhoto,
 				CapturedAt: time.Now().Add(time.Duration(i) * time.Second),
 			}
 			if err := repo.Create(context.Background(), m); err != nil {
@@ -196,6 +199,7 @@ func TestPostgresMediaRepository(t *testing.T) {
 			Filename:   "upd.jpg",
 			Hash:       "hash_upd",
 			SizeBytes:  500,
+			MediaType:  domain.MediaTypePhoto,
 			CapturedAt: time.Now().Truncate(time.Microsecond),
 		}
 		if err := repo.Create(context.Background(), media); err != nil {
@@ -224,6 +228,7 @@ func TestPostgresMediaRepository(t *testing.T) {
 			Path:       "/tmp/test/del.jpg",
 			Filename:   "del.jpg",
 			Hash:       "hash_del",
+			MediaType:  domain.MediaTypePhoto,
 			CapturedAt: time.Now(),
 		}
 		if err := repo.Create(context.Background(), media); err != nil {

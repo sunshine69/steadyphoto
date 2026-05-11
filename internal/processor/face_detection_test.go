@@ -77,6 +77,16 @@ func (m *MockMediaRepository) List(ctx context.Context, limit, offset int) ([]*d
 	return args.Get(0).([]*domain.Media), args.Int(1), args.Error(2)
 }
 
+func (m *MockMediaRepository) ListByType(ctx context.Context, mediaType domain.MediaType, limit, offset int) ([]*domain.Media, int, error) {
+	args := m.Called(ctx, mediaType, limit, offset)
+	return args.Get(0).([]*domain.Media), args.Int(1), args.Error(2)
+}
+
+func (m *MockMediaRepository) SearchByTags(ctx context.Context, tags string) ([]*domain.Media, error) {
+	args := m.Called(ctx, tags)
+	return args.Get(0).([]*domain.Media), args.Error(1)
+}
+
 // MockFaceDetector is a mock for ai.FaceDetector
 type MockFaceDetector struct {
 	mock.Mock

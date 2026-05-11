@@ -21,8 +21,8 @@ func NewPostgresMediaRepository(db *sqlx.DB) *PostgresMediaRepository {
 
 func (r *PostgresMediaRepository) Create(ctx context.Context, media *domain.Media) error {
 	query := `
-		INSERT INTO media (id, path, filename, hash, size_bytes, width, height, captured_at, media_type, metadata, video_metadata, created_at, updated_at)
-		VALUES (:id, :path, :filename, :hash, :size_bytes, :width, :height, :captured_at, :media_type, :metadata, :video_metadata, :created_at, :updated_at)
+		INSERT INTO media (id, path, filename, hash, size_bytes, width, height, captured_at, media_type, metadata, video_metadata, created_at, updated_at, tags)
+		VALUES (:id, :path, :filename, :hash, :size_bytes, :width, :height, :captured_at, :media_type, :metadata, :video_metadata, :created_at, :updated_at, :tags)
 	`
 	_, err := r.db.NamedExecContext(ctx, query, media)
 	return err
@@ -51,7 +51,7 @@ func (r *PostgresMediaRepository) GetByHash(ctx context.Context, hash string) (*
 func (r *PostgresMediaRepository) Update(ctx context.Context, media *domain.Media) error {
 	query := `
 		UPDATE media 
-		SET path = :path, filename = :filename, size_bytes = :size_bytes, width = :width, height = :height, media_type = :media_type, metadata = :metadata, video_metadata = :video_metadata, updated_at = :updated_at
+		SET path = :path, filename = :filename, size_bytes = :size_bytes, width = :width, height = :height, media_type = :media_type, metadata = :metadata, video_metadata = :video_metadata, updated_at = :updated_at, tags = :tags
 		WHERE id = :id
 	`
 	_, err := r.db.NamedExecContext(ctx, query, media)
@@ -110,6 +110,17 @@ func (r *PostgresMediaRepository) ListByType(ctx context.Context, mediaType doma
 	}
 
 	return mediaList, total, nil
+}
+
+func (r *PostgresMediaRepository) SearchByTags(ctx context.Context, tags string) ([]*domain.Media, error) {
+	var mediaList []*domain.Media
+	query := `SELECT * FROM media WHERE tags LIKE $1`
+	searchPattern := "%" + tags + "%"
+	err := r.db.SelectContext(ctx, &mediaList, query, searchPattern)
+	if err != nil {
+		return nil, err
+	}
+	return mediaList, nil
 }
 
 // Album Repository Implementation

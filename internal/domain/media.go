@@ -113,6 +113,7 @@ type Media struct {
 	VideoMetadata VideoMetadata  `db:"video_metadata"`
 	CreatedAt     time.Time      `db:"created_at"`
 	UpdatedAt     time.Time      `db:"updated_at"`
+	Tags          string         `db:"tags"`
 }
 
 // Face represents a detected face in a media item
@@ -142,6 +143,7 @@ type MediaRepository interface {
 	DeleteByMediaID(ctx context.Context, mediaID uuid.UUID) error
 	List(ctx context.Context, limit, offset int) ([]*Media, int, error)
 	ListByType(ctx context.Context, mediaType MediaType, limit, offset int) ([]*Media, int, error)
+	SearchByTags(ctx context.Context, tags string) ([]*Media, error)
 }
 
 // FaceRepository defines the interface for face storage

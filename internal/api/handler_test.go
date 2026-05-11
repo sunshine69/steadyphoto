@@ -71,6 +71,14 @@ func (m *MockMediaRepository) ListByType(ctx context.Context, mediaType domain.M
 	return args.Get(0).([]*domain.Media), args.Int(1), args.Error(2)
 }
 
+func (m *MockMediaRepository) SearchByTags(ctx context.Context, tags string) ([]*domain.Media, error) {
+	args := m.Called(ctx, tags)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*domain.Media), args.Error(1)
+}
+
 type MockFaceRepository struct {
 	mock.Mock
 }
@@ -122,8 +130,8 @@ func TestHandler_ListMedia(t *testing.T) {
 		var resp ListMediaResponse
 		err := json.Unmarshal(rr.Body.Bytes(), &resp)
 		assert.NoError(t, err)
-		assert.Equal(t, 2, len(resp.Media))
-		assert.Equal(t, 2, resp.TotalCount)
+		assert.Equal(t, 2, len(resp.Photos))
+		assert.Equal(t, 2, resp.Total)
 	})
 }
 
@@ -159,10 +167,10 @@ func TestHandler_ListPhotos(t *testing.T) {
 		var resp ListMediaResponse
 		err := json.Unmarshal(rr.Body.Bytes(), &resp)
 		assert.NoError(t, err)
-		assert.Equal(t, 2, len(resp.Media))
-		assert.Equal(t, 2, resp.TotalCount)
-		assert.Equal(t, id2, resp.Media[0].ID)
-		assert.Equal(t, id3, resp.Media[1].ID)
+		assert.Equal(t, 2, len(resp.Photos))
+		assert.Equal(t, 2, resp.Total)
+		assert.Equal(t, id2, resp.Photos[0].ID)
+		assert.Equal(t, id3, resp.Photos[1].ID)
 	})
 }
 

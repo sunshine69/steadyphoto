@@ -26,6 +26,11 @@ type ListMediaResponse struct {
 	Total  int              `json:"total"`
 }
 
+type SearchMediaResponse struct {
+	Photos []*domain.Media `json:"photos"`
+	Total  int              `json:"total"`
+}
+
 // ListMedia handles GET /api/v1/media
 func (h *Handler) ListMedia(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -53,6 +58,30 @@ func (h *Handler) ListMedia(w http.ResponseWriter, r *http.Request) {
 	resp := ListMediaResponse{
 		Photos: mediaList,
 		Total:  total,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+// SearchMedia handles GET /api/v1/media/search?tags=...
+func (h *Handler) SearchMedia(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	tags := r.URL.Query().Get("tags")
+	if tags == "" {
+		http.Error(w, "tags parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	mediaList, err := h.mediaRepo.SearchByTags(ctx, tags)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	resp := SearchMediaResponse{
+		Photos: mediaList,
+		Total:  len(mediaList),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
