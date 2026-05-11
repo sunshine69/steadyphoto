@@ -17,6 +17,7 @@ export interface Photo {
   type?: string;
   mediaType?: 'photo' | 'video';
   thumbnailUrl?: string;
+  tags?: string; // Comma-separated tags from backend
   metadata?: {
     camera?: string;
     iso?: string | number;
@@ -27,6 +28,10 @@ export interface Photo {
     [key: string]: any;
   };
   videoMetadata?: VideoMetadata;
+}
+
+export interface UpdateTagsRequest {
+  tags: string;
 }
 
 export interface ListPhotosResponse {

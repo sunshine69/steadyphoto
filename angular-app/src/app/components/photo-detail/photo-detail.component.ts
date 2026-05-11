@@ -1,5 +1,6 @@
 import { Component, OnInit, OnDestroy, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { PhotoService } from '../../services/photo.service';
@@ -8,7 +9,7 @@ import { Photo } from '../../models/photo.model';
 @Component({
   selector: 'app-photo-detail',
   standalone: true,
-  imports: [CommonModule, RouterModule],
+  imports: [CommonModule, RouterModule, FormsModule],
   template: `
     <div class="container mt-4">
       <div class="row">
@@ -104,6 +105,49 @@ import { Photo } from '../../models/photo.model';
                 <span class="text-muted">Size</span>
                 <span>{{ formatFileSize(photo.size) }}</span>
               </li>
+              
+              <!-- Tags Section -->
+              <li class="list-group-item">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <span class="text-muted">Tags</span>
+                  <button *ngIf="!isEditingTags" (click)="startEditingTags()" class="btn btn-sm btn-outline-primary">
+                    ✏️ Edit
+                  </button>
+                </div>
+                
+                <!-- Tag Display Mode -->
+                <div *ngIf="!isEditingTags">
+                  <span *ngIf="photo?.tags && getTagList(photo.tags).length > 0" class="d-flex flex-wrap gap-1 mb-2">
+                    <span 
+                      *ngFor="let tag of getTagList(photo.tags)" 
+                      (click)="searchByTag(tag)"
+                      class="badge bg-primary text-white cursor-pointer" 
+                      style="cursor: pointer;"
+                    >
+                      {{ tag }} ×
+                    </span>
+                  </span>
+                  <div *ngIf="!photo?.tags || getTagList(photo.tags).length === 0" class="text-muted small">
+                    No tags added yet. Click "Edit" to add tags.
+                  </div>
+                </div>
+                
+                <!-- Tag Edit Mode -->
+                <div *ngIf="isEditingTags">
+                  <input 
+                    type="text" 
+                    [(ngModel)]="tagInput" 
+                    (keyup.enter)="saveTags()"
+                    placeholder="Enter tags separated by commas..."
+                    class="form-control form-control-sm mb-2"
+                    #tagInputRef
+                  >
+                  <div class="btn-group btn-group-sm">
+                    <button (click)="saveTags()" class="btn btn-success">Save</button>
+                    <button (click)="cancelEditingTags()" class="btn btn-secondary">Cancel</button>
+                  </div>
+                </div>
+              </li>
             </ul>
           </div>
         </div>
@@ -148,6 +192,10 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
   private router = inject(Router);
   private photoService = inject(PhotoService);
   private subscription?: Subscription;
+
+  // Tag editing state
+  isEditingTags = false;
+  tagInput = '';
 
   ngOnInit(): void {
     const id = this.route.snapshot.paramMap.get('id');
@@ -204,5 +252,77 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
 
   goBack(): void {
     window.history.back();
+  }
+
+  // Tag editing methods
+  startEditingTags(): void {
+    this.isEditingTags = true;
+    if (this.photo?.tags) {
+      const tagList = this.getTagList(this.photo.tags);
+      this.tagInput = tagList.join(', ');
+    } else {
+      this.tagInput = '';
+    }
+  }
+
+  saveTags(): void {
+    if (!this.photo || !this.tagInput.trim()) return;
+    
+    // Join the parsed tags back into a comma-separated string for the API
+    const tags = this.parseTagString(this.tagInput).join(', ');
+    this.photoService.updateTags(this.photo.id, tags).subscribe({
+      next: (updated) => {
+        this.photo = updated;
+        this.isEditingTags = false;
+        this.tagInput = '';
+      },
+      error: (err) => {
+        console.error('Error updating tags', err);
+        alert('Failed to update tags');
+      }
+    });
+  }
+
+  cancelEditingTags(): void {
+    this.isEditingTags = false;
+    if (this.photo?.tags) {
+      const tagList = this.getTagList(this.photo.tags);
+      this.tagInput = tagList.join(', ');
+    } else {
+      this.tagInput = '';
+    }
+  }
+
+  getTagList(tags: any): string[] {
+    if (!tags) return [];
+    // Handle different possible formats for tags
+    if (Array.isArray(tags)) return tags;
+    if (typeof tags === 'string') {
+      try {
+        const parsed = JSON.parse(tags);
+        return Array.isArray(parsed) ? parsed : [parsed];
+      } catch {
+        return [tags];
+      }
+    }
+    // Handle object with tag array inside
+    if (typeof tags === 'object' && !Array.isArray(tags)) {
+      const possibleArrays = Object.values(tags);
+      for (const val of possibleArrays) {
+        if (Array.isArray(val)) return val;
+      }
+    }
+    return [];
+  }
+
+  parseTagString(input: string): string[] {
+    // Split by comma, trim whitespace, remove empty strings
+    return input.split(',')
+      .map(tag => tag.trim().toLowerCase())
+      .filter(tag => tag.length > 0);
+  }
+
+  searchByTag(tag: string): void {
+    this.router.navigate(['/'], { queryParams: { tag: tag } });
   }
 }

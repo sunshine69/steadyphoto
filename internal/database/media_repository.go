@@ -2,6 +2,8 @@ package database
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"time"
 
 	"steadyphoto/internal/domain"
@@ -35,6 +37,7 @@ func (r *PostgresMediaRepository) GetByID(ctx context.Context, id uuid.UUID) (*d
 	if err != nil {
 		return nil, err
 	}
+	fmt.Fprintf(os.Stderr, "[DEBUG] GetById %v\n", media)
 	return &media, nil
 }
 

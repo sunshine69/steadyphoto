@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -23,12 +24,12 @@ type Handler struct {
 
 type ListMediaResponse struct {
 	Photos []*domain.Media `json:"photos"`
-	Total  int              `json:"total"`
+	Total  int             `json:"total"`
 }
 
 type SearchMediaResponse struct {
 	Photos []*domain.Media `json:"photos"`
-	Total  int              `json:"total"`
+	Total  int             `json:"total"`
 }
 
 // ListMedia handles GET /api/v1/media
@@ -138,7 +139,7 @@ func (h *Handler) GetPhoto(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "media not found", http.StatusNotFound)
 		return
 	}
-	
+
 	// We allow videos too as they are part of the same media collection
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(media)
@@ -160,7 +161,7 @@ func (h *Handler) ServePhotoFile(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "media not found", http.StatusNotFound)
 		return
 	}
-	
+
 	h.serveFile(w, r, h.storageRoot, media.Path)
 }
 
@@ -212,31 +213,78 @@ func (h *Handler) ServeThumbnailFile(w http.ResponseWriter, r *http.Request) {
 
 	media, err := h.mediaRepo.GetByID(ctx, id)
 	if err != nil {
+		fmt.Printf("[ERROR] h.mediaRepo.GetByID - %s\n", err.Error())
 		http.Error(w, "media not found", http.StatusNotFound)
 		return
 	}
-
+	fmt.Printf("[DEBUG] h.mediaRepo.GetByID Output - %v\n", media)
 	// Calculate thumbnail path
-	relPath := filepath.Clean(media.Path)
-	ext := filepath.Ext(relPath)
-	base := strings.TrimSuffix(relPath, ext)
-	
+	cleanPath := strings.TrimPrefix(media.Path, "storage/")
+	extClean := filepath.Ext(cleanPath)
+	basePart := strings.TrimSuffix(cleanPath, extClean)
+
 	var thumbRelPath string
 	if media.MediaType == domain.MediaTypeVideo {
-		// For videos, thumbnails are in .thumbnails/ directory
-		thumbRelPath = filepath.Join(".thumbnails", base+".webp")
+		// For videos, thumbnails are in storage/.thumbnails/YYYY/MM/DD/filename.webp
+		// We strip '/.videos/' from the path to place it under '.thumbnails/'
+		thumbRelPath = strings.Replace(basePart, "/.videos/", "/", 1) + ".webp"
 	} else {
-		thumbRelPath = filepath.Join(base+"_thumb.webp")
+		// For photos, thumbnail is in storage/.thumbnails/YYYY/MM/DD/filename_thumb.webp
+		thumbRelPath = basePart + "_thumb.webp"
 	}
 
-	fullThumbPath := filepath.Join(h.thumbRoot, thumbRelPath)
+	// Construct the absolute-ish path within the storage directory structure
+	// Since we already have a clean relative path (starting with YYYY/...),
+	// joining it with storage/.thumbnails results in storage/.thumbnails/YYYY/...
+	fullThumbPath := filepath.Join(h.thumbRoot, ".thumbnails", thumbRelPath)
+
+	// Check if the calculated thumbnail exists
 	if _, err := os.Stat(fullThumbPath); os.IsNotExist(err) {
 		// Fallback: serve the original file if thumbnail doesn't exist yet
 		h.serveFile(w, r, h.storageRoot, media.Path)
 		return
 	}
 
-	h.serveFile(w, r, h.thumbRoot, thumbRelPath)
+	// Serve the thumbnail using its path relative to the thumbRoot
+	relToThumbRoot, _ := filepath.Rel(h.thumbRoot, fullThumbPath)
+	h.serveFile(w, r, h.thumbRoot, relToThumbRoot)
+}
+
+// UpdateMediaTags handles PATCH /api/v1/media/{id}/tags to update tags for a media item
+func (h *Handler) UpdateMediaTags(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	idStr := chi.URLParam(r, "id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		http.Error(w, "invalid uuid", http.StatusBadRequest)
+		return
+	}
+
+	var request struct {
+		Tags string `json:"tags"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	media, err := h.mediaRepo.GetByID(ctx, id)
+	if err != nil {
+		http.Error(w, "media not found", http.StatusNotFound)
+		return
+	}
+
+	// Update tags
+	media.Tags = request.Tags
+
+	if err := h.mediaRepo.Update(ctx, media); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 }
 
 func (h *Handler) serveFile(w http.ResponseWriter, r *http.Request, root string, relPath string) {
@@ -247,7 +295,7 @@ func (h *Handler) serveFile(w http.ResponseWriter, r *http.Request, root string,
 		return
 	}
 
-	if !filepath.HasPrefix(absFile, absRoot) {
+	if !strings.HasPrefix(absFile, absRoot) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}

@@ -38,6 +38,20 @@ import { SearchService } from '../../services/search.service';
           </div>
         </div>
 
+        <!-- Tag Filter -->
+        <div class="tag-filter d-flex align-items-center me-3">
+          <input 
+            type="text" 
+            class="form-control form-control-sm bg-secondary text-white border-0 tag-input"
+            placeholder="#Tag filter..."
+            [(ngModel)]="tagFilter"
+            (keyup.enter)="onTagFilter()"
+          >
+          <button *ngIf="tagFilter" (click)="clearTagFilter()" class="btn btn-sm btn-outline-light ms-1">
+            ×
+          </button>
+        </div>
+
         <!-- Right Side Actions -->
         <div class="navbar-nav ms-auto">
           <ul class="navbar-nav">
@@ -65,6 +79,7 @@ import { SearchService } from '../../services/search.service';
 })
 export class NavbarComponent {
   searchTerm = '';
+  tagFilter = '';
 
   constructor(
     private searchService: SearchService,
@@ -77,6 +92,25 @@ export class NavbarComponent {
     
     if (this.router.url !== '/') {
       this.router.navigate(['/']);
+    }
+  }
+
+  onTagFilter(): void {
+    if (this.tagFilter) {
+      // Normalize tag: remove leading # if present
+      const normalizedTag = this.tagFilter.replace(/^#/, '').toLowerCase().trim();
+      this.router.navigate(['/'], { queryParams: { tag: normalizedTag }, replaceUrl: true });
+    } else {
+      this.clearTagFilter();
+    }
+  }
+
+  clearTagFilter(): void {
+    this.tagFilter = '';
+    if (this.router.url.includes('?tag=')) {
+      // Remove query params and navigate to home
+      const urlWithoutQuery = this.router.url.split('?')[0];
+      this.router.navigate([urlWithoutQuery]);
     }
   }
 }

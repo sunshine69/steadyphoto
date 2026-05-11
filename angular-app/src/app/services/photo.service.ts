@@ -32,7 +32,7 @@ export class PhotoService {
       }
     }
     
-    // Use /media/{id}/original for all files to support both photos and videos with Range requests
+        // Use /media/{id}/original for all files to support both photos and videos with Range requests
     const filePath = id ? `${this.API_BASE_URL}/media/${id}/original` : '';
     
     return {
@@ -60,7 +60,8 @@ export class PhotoService {
         video_codec: p.VideoMetadata.VideoCodec ?? p.VideoMetadata.video_codec,
         audio_codec: p.VideoMetadata.AudioCodec ?? p.VideoMetadata.audio_codec,
         frame_rate: p.VideoMetadata.FrameRate ?? p.VideoMetadata.frame_rate,
-      } : undefined
+      } : undefined,
+      tags: p.Tags ?? p.tags ?? ''
     };
   }
 
@@ -128,7 +129,8 @@ export class PhotoService {
     return this.http.get<any>(`${this.API_BASE_URL}/media/${id}`)
       .pipe(
         map(response => {
-          const mediaData = response?.Media || response?.media || response;
+          // Backend returns media object directly, not wrapped
+          const mediaData = response?.Media || response;
           return this.normalizePhoto(mediaData);
         }),
         catchError(this.handleError)
@@ -139,8 +141,44 @@ export class PhotoService {
     return this.http.get<any>(`${this.API_BASE_URL}/photos/${id}`)
       .pipe(
         map(response => {
-          const photoData = response?.Photo || response?.photo || response;
+          // Backend returns media object directly, not wrapped
+          const photoData = response?.Photo || response;
           return this.normalizePhoto(photoData);
+        }),
+        catchError(this.handleError)
+      );
+  }
+
+  /**
+   * Updates tags for a media item
+   */
+  updateTags(id: string, tags: string): Observable<any> {
+    return this.http.patch(`${this.API_BASE_URL}/media/${id}/tags`, { tags })
+      .pipe(
+        catchError(this.handleError)
+      );
+  }
+
+  /**
+   * Searches media by tag
+   */
+  searchByTags(tag: string, limit: number = 50): Observable<ListPhotosResponse> {
+    return this.http.get<any>(`${this.API_BASE_URL}/media/search?tags=${encodeURIComponent(tag)}&limit=${limit}`)
+      .pipe(
+        map(response => {
+          const isArray = Array.isArray(response);
+          const mediaArray = isArray 
+            ? response 
+            : (response?.photos || response?.media || response?.Photos || []);
+          
+          const total = isArray 
+            ? mediaArray.length 
+            : (response?.total ?? response?.Total ?? 0);
+
+          return {
+            photos: mediaArray.map((p: any) => this.normalizePhoto(p)),
+            total: total
+          };
         }),
         catchError(this.handleError)
       );

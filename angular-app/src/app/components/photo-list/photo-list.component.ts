@@ -6,7 +6,7 @@ import { PhotoService } from '../../services/photo.service';
 import { GalleryStateService } from '../../services/gallery-state.service';
 import { SearchService } from '../../services/search.service';
 import { Photo, ListPhotosResponse } from '../../models/photo.model';
-import { Router, RouterModule } from '@angular/router';
+import { Router, RouterModule, ActivatedRoute } from '@angular/router';
 import { PhotoCardComponent } from '../photo-card/photo-card.component';
 
 @Component({
@@ -15,9 +15,17 @@ import { PhotoCardComponent } from '../photo-card/photo-card.component';
   imports: [CommonModule, RouterModule, PhotoCardComponent, FormsModule],
   template: `
     <div class="photo-list-container">
+      <!-- Active Tag Filter Display -->
+      <div *ngIf="activeTagFilter" class="alert alert-info d-flex align-items-center justify-content-between mb-3">
+        <span>Showing items with tag: <strong>#{{ activeTagFilter }}</strong></span>
+        <button (click)="clearTagFilter()" class="btn btn-sm btn-outline-danger">Clear Filter</button>
+      </div>
+
       <div class="empty-state" *ngIf="!loading && (!photos || photos.length === 0)">
-        <p *ngIf="!currentSearchTerm">No photos found. Start by importing your photo library.</p>
-        <p *ngIf="currentSearchTerm">No photos match "{{currentSearchTerm}}"</p>
+        <p *ngIf="!currentSearchTerm && !activeTagFilter">No photos found. Start by importing your photo library.</p>
+        <p *ngIf="currentSearchTerm && activeTagFilter">No items match search "{{currentSearchTerm}}" and tag "#{{activeTagFilter}}"</p>
+        <p *ngIf="!currentSearchTerm && activeTagFilter">No items match tag "#{{activeTagFilter}}"</p>
+        <p *ngIf="currentSearchTerm && !activeTagFilter">No photos match "{{currentSearchTerm}}"</p>
       </div >
       
       <div class="grid-container" *ngIf="!loading && photos && photos.length > 0">
@@ -128,8 +136,10 @@ export class PhotoListComponent implements OnInit, OnDestroy {
 
   loading = true;
   currentSearchTerm = '';
+  activeTagFilter: string | null = null;
   private subscription?: Subscription;
   private searchSubscription?: Subscription;
+  private routeSub?: Subscription;
   
   private readonly SCROLL_KEY = 'photo_list_scroll_pos';
 
@@ -137,7 +147,8 @@ export class PhotoListComponent implements OnInit, OnDestroy {
     @Optional() @Inject(PhotoService) private photoService: PhotoService,
     private router: Router,
     private galleryState: GalleryStateService,
-    private searchService: SearchService
+    private searchService: SearchService,
+    private route: ActivatedRoute
   ) {}
 
   get totalPages(): number {
@@ -149,8 +160,19 @@ export class PhotoListComponent implements OnInit, OnDestroy {
     this.currentPage = savedPage;
     this.offset = (savedPage - 1) * this.limit;
     
+    // Listen for search term changes
     this.searchSubscription = this.searchService.searchTerm$.subscribe(term => {
       this.currentSearchTerm = term;
+      this.loadPhotos();
+    });
+
+    // Listen for query params (tag filter)
+    this.routeSub = this.route.queryParams.subscribe(params => {
+      if (params['tag']) {
+        this.activeTagFilter = params['tag'];
+      } else {
+        this.activeTagFilter = null;
+      }
       this.loadPhotos();
     });
 
@@ -175,18 +197,26 @@ export class PhotoListComponent implements OnInit, OnDestroy {
 
     this.subscription = request$.subscribe({
       next: (response: ListPhotosResponse) => {
-        const allMedia = response.photos;
+        let allMedia = response.photos;
         
+        // Apply tag filter if active
+        if (this.activeTagFilter) {
+          const tagLower = this.activeTagFilter.toLowerCase();
+          allMedia = allMedia.filter(p => {
+            const tags = this.getTagsForPhoto(p);
+            return tags.some(tag => tag.toLowerCase().includes(tagLower));
+          });
+        }
+
         if (this.currentSearchTerm.trim() !== '') {
           const term = this.currentSearchTerm.toLowerCase();
-          this.photos = allMedia.filter(p => 
+          allMedia = allMedia.filter(p => 
             p.filename.toLowerCase().includes(term)
           );
-          this.totalPhotos = this.photos.length;
-        } else {
-          this.photos = allMedia;
-          this.totalPhotos = response.total;
         }
+
+        this.photos = allMedia;
+        this.totalPhotos = response.total;
 
         this.loading = false;
 
@@ -207,6 +237,33 @@ export class PhotoListComponent implements OnInit, OnDestroy {
         this.loading = false;
       }
     });
+  }
+
+  getTagsForPhoto(photo: Photo): string[] {
+    if (!photo.tags) return [];
+    // Handle different possible formats for tags
+    if (Array.isArray(photo.tags)) return photo.tags;
+    if (typeof photo.tags === 'string') {
+      try {
+        const parsed = JSON.parse(photo.tags);
+        return Array.isArray(parsed) ? parsed : [parsed];
+      } catch {
+        return [photo.tags];
+      }
+    }
+    // Handle object with tag array inside
+    if (typeof photo.tags === 'object' && !Array.isArray(photo.tags)) {
+      const possibleArrays = Object.values(photo.tags);
+      for (const val of possibleArrays) {
+        if (Array.isArray(val)) return val;
+      }
+    }
+    return [];
+  }
+
+  clearTagFilter(): void {
+    this.activeTagFilter = null;
+    this.router.navigate(['/'], { replaceUrl: true });
   }
 
   changePage(direction: number): void {
@@ -235,6 +292,7 @@ export class PhotoListComponent implements OnInit, OnDestroy {
     sessionStorage.setItem(this.SCROLL_KEY, window.scrollY.toString());
     this.subscription?.unsubscribe();
     this.searchSubscription?.unsubscribe();
+    this.routeSub?.unsubscribe();
   }
 
   onPhotoClick(id: string): void {

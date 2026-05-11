@@ -32,6 +32,7 @@ func NewRouter(mediaRepo domain.MediaRepository, faceRepo domain.FaceRepository,
 		r.Get("/media/{id}", h.GetMedia)
 		r.Get("/media/{id}/file", h.ServeMediaFile)
 		r.Get("/media/{id}/thumb", h.ServeThumbnailFile)
+		r.Patch("/media/{id}/tags", h.UpdateMediaTags)
 		r.Get("/media/search", h.SearchMedia)
 	})
 
