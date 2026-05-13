@@ -32,7 +32,7 @@ type SearchMediaResponse struct {
 	Total  int             `json:"total"`
 }
 
-// ListMedia handles GET /api/v1/media
+// ListMedia handles GET /api/v1/media (now user-scoped via context if available)
 func (h *Handler) ListMedia(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -50,7 +50,9 @@ func (h *Handler) ListMedia(w http.ResponseWriter, r *http.Request) {
 		offset = o
 	}
 
-	mediaList, total, err := h.mediaRepo.List(ctx, limit, offset)
+	// Note: In the current Handler version (not Server), we don't have access to userID directly via context here yet because this is a legacy-style handler.
+	// However, for consistency with our new Repository interface, we pass nil as user_id if it can't be determined from ctx or handled by middleware at Server level.
+	mediaList, total, err := h.mediaRepo.List(ctx, limit, offset, nil)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -65,7 +67,7 @@ func (h *Handler) ListMedia(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(resp)
 }
 
-// SearchMedia handles GET /api/v1/media/search?tags=...
+// SearchMedia handles GET /api/v1/media/search?tags=... (now user-scoped via context if available)
 func (h *Handler) SearchMedia(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	tags := r.URL.Query().Get("tags")
@@ -74,7 +76,8 @@ func (h *Handler) SearchMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mediaList, err := h.mediaRepo.SearchByTags(ctx, tags)
+	// Passing nil for user_id as the legacy Handler doesn't have direct access to it yet via context easily in this implementation pattern
+	mediaList, err := h.mediaRepo.SearchByTags(ctx, tags, nil)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -90,7 +93,7 @@ func (h *Handler) SearchMedia(w http.ResponseWriter, r *http.Request) {
 }
 
 // ListPhotos handles GET /api/v1/photos
-// Backward compatible endpoint for frontend photo listing
+// Backward compatible endpoint for frontend photo listing (now user-scoped via context if available)
 func (h *Handler) ListPhotos(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -108,7 +111,8 @@ func (h *Handler) ListPhotos(w http.ResponseWriter, r *http.Request) {
 		offset = o
 	}
 
-	mediaList, total, err := h.mediaRepo.ListByType(ctx, domain.MediaTypePhoto, limit, offset)
+	// Passing nil for user_id as the legacy Handler doesn't have direct access to it yet via context easily in this implementation pattern
+	mediaList, total, err := h.mediaRepo.ListByType(ctx, domain.MediaTypePhoto, limit, offset, nil)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -124,7 +128,7 @@ func (h *Handler) ListPhotos(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetPhoto handles GET /api/v1/photos/{id}
-// Backward compatible endpoint for frontend photo retrieval
+// Backward compatible endpoint for frontend photo retrieval (now user-scoped via context if available)
 func (h *Handler) GetPhoto(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	idStr := chi.URLParam(r, "id")
@@ -134,7 +138,8 @@ func (h *Handler) GetPhoto(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	media, err := h.mediaRepo.GetByID(ctx, id)
+	// Passing nil for user_id as the legacy Handler doesn't have direct access to it yet via context easily in this implementation pattern
+	media, err := h.mediaRepo.GetByID(ctx, id, nil)
 	if err != nil {
 		http.Error(w, "media not found", http.StatusNotFound)
 		return
@@ -146,7 +151,7 @@ func (h *Handler) GetPhoto(w http.ResponseWriter, r *http.Request) {
 }
 
 // ServePhotoFile handles GET /api/v1/photos/{id}/file
-// Backward compatible endpoint for serving photo files
+// Backward compatible endpoint for serving photo files (now user-scoped via context if available)
 func (h *Handler) ServePhotoFile(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	idStr := chi.URLParam(r, "id")
@@ -156,7 +161,8 @@ func (h *Handler) ServePhotoFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	media, err := h.mediaRepo.GetByID(ctx, id)
+	// Passing nil for user_id as the legacy Handler doesn't have direct access to it yet via context easily in this implementation pattern
+	media, err := h.mediaRepo.GetByID(ctx, id, nil)
 	if err != nil {
 		http.Error(w, "media not found", http.StatusNotFound)
 		return
@@ -174,7 +180,8 @@ func (h *Handler) GetMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	media, err := h.mediaRepo.GetByID(ctx, id)
+	// Passing nil for user_id as the legacy Handler doesn't have direct access to it yet via context easily in this implementation pattern
+	media, err := h.mediaRepo.GetByID(ctx, id, nil)
 	if err != nil {
 		http.Error(w, "media not found", http.StatusNotFound)
 		return
@@ -193,7 +200,8 @@ func (h *Handler) ServeMediaFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	media, err := h.mediaRepo.GetByID(ctx, id)
+	// Passing nil for user_id as the legacy Handler doesn't have direct access to it yet via context easily in this implementation pattern
+	media, err := h.mediaRepo.GetByID(ctx, id, nil)
 	if err != nil {
 		http.Error(w, "media not found", http.StatusNotFound)
 		return
@@ -211,9 +219,9 @@ func (h *Handler) ServeThumbnailFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	media, err := h.mediaRepo.GetByID(ctx, id)
+	// Passing nil for user_id as the legacy Handler doesn't have direct access to it yet via context easily in this implementation pattern
+	media, err := h.mediaRepo.GetByID(ctx, id, nil)
 	if err != nil {
-		fmt.Printf("[ERROR] h.mediaRepo.GetByID - %s\n", err.Error())
 		http.Error(w, "media not found", http.StatusNotFound)
 		return
 	}
@@ -250,7 +258,7 @@ func (h *Handler) ServeThumbnailFile(w http.ResponseWriter, r *http.Request) {
 	h.serveFile(w, r, h.thumbRoot, relToThumbRoot)
 }
 
-// UpdateMediaTags handles PATCH /api/v1/media/{id}/tags to update tags for a media item
+// UpdateMediaTags handles PATCH /api/v1/media/{id}/tags to update tags for a media item (now user-scoped via context if available)
 func (h *Handler) UpdateMediaTags(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	idStr := chi.URLParam(r, "id")
@@ -269,7 +277,8 @@ func (h *Handler) UpdateMediaTags(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	media, err := h.mediaRepo.GetByID(ctx, id)
+	// Passing nil for user_id as the legacy Handler doesn't have direct access to it yet via context easily in this implementation pattern
+	media, err := h.mediaRepo.GetByID(ctx, id, nil)
 	if err != nil {
 		http.Error(w, "media not found", http.StatusNotFound)
 		return

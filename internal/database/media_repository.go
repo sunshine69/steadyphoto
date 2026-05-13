@@ -30,10 +30,17 @@ func (r *PostgresMediaRepository) Create(ctx context.Context, media *domain.Medi
 	return err
 }
 
-func (r *PostgresMediaRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Media, error) {
+func (r *PostgresMediaRepository) GetByID(ctx context.Context, id uuid.UUID, userID *uuid.UUID) (*domain.Media, error) {
 	var media domain.Media
 	query := `SELECT * FROM media WHERE id = $1`
-	err := r.db.GetContext(ctx, &media, query, id)
+	args := []interface{}{id}
+
+	if userID != nil {
+		query += ` AND user_id = $2`
+		args = append(args, *userID)
+	}
+
+	err := r.db.GetContext(ctx, &media, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -55,15 +62,35 @@ func (r *PostgresMediaRepository) Update(ctx context.Context, media *domain.Medi
 	query := `
 		UPDATE media 
 		SET path = :path, filename = :filename, size_bytes = :size_bytes, width = :width, height = :height, media_type = :media_type, metadata = :metadata, video_metadata = :video_metadata, updated_at = :updated_at, tags = :tags
-		WHERE id = :id
+		WHERE id = :id AND user_id = :user_id
 	`
-	_, err := r.db.NamedExecContext(ctx, query, media)
-	return err
+	result, err := r.db.NamedExecContext(ctx, query, media)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("no record updated (id not found or ownership mismatch)")
+	}
+
+	return nil
 }
 
-func (r *PostgresMediaRepository) Delete(ctx context.Context, id uuid.UUID) error {
+func (r *PostgresMediaRepository) Delete(ctx context.Context, id uuid.UUID, userID *uuid.UUID) error {
 	query := `DELETE FROM media WHERE id = $1`
-	_, err := r.db.ExecContext(ctx, query, id)
+	args := []interface{}{id}
+
+	if userID != nil {
+		query += ` AND user_id = $2`
+		args = append(args, *userID)
+	}
+
+	_, err := r.db.ExecContext(ctx, query, args...)
 	return err
 }
 
@@ -73,20 +100,37 @@ func (r *PostgresMediaRepository) DeleteByMediaID(ctx context.Context, mediaID u
 	return err
 }
 
-func (r *PostgresMediaRepository) List(ctx context.Context, limit, offset int) ([]*domain.Media, int, error) {
+func (r *PostgresMediaRepository) List(ctx context.Context, limit, offset int, userID *uuid.UUID) ([]*domain.Media, int, error) {
 	var mediaList []*domain.Media
 	var total int
 
 	// Get total count for pagination
 	countQuery := `SELECT COUNT(*) FROM media`
-	err := r.db.GetContext(ctx, &total, countQuery)
+	argsCount := []interface{}{}
+
+	if userID != nil {
+		countQuery += ` WHERE user_id = $1`
+		argsCount = append(argsCount, *userID)
+	}
+
+	err := r.db.GetContext(ctx, &total, countQuery, argsCount...)
 	if err != nil {
 		return nil, 0, err
 	}
 
 	// Get paginated list
-	listQuery := `SELECT * FROM media ORDER BY captured_at DESC LIMIT $1 OFFSET $2`
-	err = r.db.SelectContext(ctx, &mediaList, listQuery, limit, offset)
+	listQuery := `SELECT * FROM media`
+	argsList := []interface{}{}
+
+	if userID != nil {
+		listQuery += ` WHERE user_id = $1`
+		argsList = append(argsList, *userID)
+	}
+
+	listQuery += fmt.Sprintf(` ORDER BY captured_at DESC LIMIT $%d OFFSET $%d`, len(argsList)+1, len(argsList)+2)
+	argsList = append(argsList, limit, offset)
+
+	err = r.db.SelectContext(ctx, &mediaList, listQuery, argsList...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -94,20 +138,37 @@ func (r *PostgresMediaRepository) List(ctx context.Context, limit, offset int) (
 	return mediaList, total, nil
 }
 
-func (r *PostgresMediaRepository) ListByType(ctx context.Context, mediaType domain.MediaType, limit, offset int) ([]*domain.Media, int, error) {
+func (r *PostgresMediaRepository) ListByType(ctx context.Context, mediaType domain.MediaType, limit, offset int, userID *uuid.UUID) ([]*domain.Media, int, error) {
 	var mediaList []*domain.Media
 	var total int
 
 	// Get total count for pagination
 	countQuery := `SELECT COUNT(*) FROM media WHERE media_type = $1`
-	err := r.db.GetContext(ctx, &total, countQuery, mediaType)
+	argsCount := []interface{}{mediaType}
+
+	if userID != nil {
+		countQuery += ` AND user_id = $2`
+		argsCount = append(argsCount, *userID)
+	}
+
+	err := r.db.GetContext(ctx, &total, countQuery, argsCount...)
 	if err != nil {
 		return nil, 0, err
 	}
 
 	// Get paginated list
-	listQuery := `SELECT * FROM media WHERE media_type = $1 ORDER BY captured_at DESC LIMIT $2 OFFSET $3`
-	err = r.db.SelectContext(ctx, &mediaList, listQuery, mediaType, limit, offset)
+	listQuery := `SELECT * FROM media WHERE media_type = $1`
+	argsList := []interface{}{mediaType}
+
+	if userID != nil {
+		listQuery += ` AND user_id = $2`
+		argsList = append(argsList, *userID)
+	}
+
+	listQuery += fmt.Sprintf(` ORDER BY captured_at DESC LIMIT $%d OFFSET $%d`, len(argsList)+1, len(argsList)+2)
+	argsList = append(argsList, limit, offset)
+
+	err = r.db.SelectContext(ctx, &mediaList, listQuery, argsList...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -115,11 +176,17 @@ func (r *PostgresMediaRepository) ListByType(ctx context.Context, mediaType doma
 	return mediaList, total, nil
 }
 
-func (r *PostgresMediaRepository) SearchByTags(ctx context.Context, tags string) ([]*domain.Media, error) {
+func (r *PostgresMediaRepository) SearchByTags(ctx context.Context, tags string, userID *uuid.UUID) ([]*domain.Media, error) {
 	var mediaList []*domain.Media
 	query := `SELECT * FROM media WHERE tags LIKE $1`
-	searchPattern := "%" + tags + "%"
-	err := r.db.SelectContext(ctx, &mediaList, query, searchPattern)
+	args := []interface{}{"%" + tags + "%"}
+
+	if userID != nil {
+		query += ` AND user_id = $2`
+		args = append(args, *userID)
+	}
+
+	err := r.db.SelectContext(ctx, &mediaList, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -136,10 +203,10 @@ func NewPostgresAlbumRepository(db *sqlx.DB) *PostgresAlbumRepository {
 	return &PostgresAlbumRepository{db: db}
 }
 
-func (r *PostgresAlbumRepository) Create(ctx context.Context, name string) (uuid.UUID, error) {
+func (r *PostgresAlbumRepository) Create(ctx context.Context, name string, userID uuid.UUID) (uuid.UUID, error) {
 	id := uuid.New()
-	query := `INSERT INTO albums (id, name, created_at) VALUES ($1, $2, $3)`
-	_, err := r.db.ExecContext(ctx, query, id, name, time.Now())
+	query := `INSERT INTO albums (id, name, user_id, created_at) VALUES ($1, $2, $3, $4)`
+	_, err := r.db.ExecContext(ctx, query, id, name, userID, time.Now())
 	return id, err
 }
 
@@ -155,14 +222,22 @@ func (r *PostgresAlbumRepository) RemoveMedia(ctx context.Context, albumID uuid.
 	return err
 }
 
-func (r *PostgresAlbumRepository) GetMedia(ctx context.Context, albumID uuid.UUID) ([]*domain.Media, error) {
+func (r *PostgresAlbumRepository) GetMedia(ctx context.Context, albumID uuid.UUID, userID *uuid.UUID) ([]*domain.Media, error) {
 	var mediaList []*domain.Media
 	query := `
 		SELECT m.* FROM media m
 		JOIN album_photos ap ON m.id = ap.media_id
+		JOIN albums a ON a.id = ap.album_id
 		WHERE ap.album_id = $1
 	`
-	err := r.db.SelectContext(ctx, &mediaList, query, albumID)
+	args := []interface{}{albumID}
+
+	if userID != nil {
+		query += ` AND a.user_id = $2`
+		args = append(args, *userID)
+	}
+
+	err := r.db.SelectContext(ctx, &mediaList, query, args...)
 	if err != nil {
 		return nil, err
 	}

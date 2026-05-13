@@ -28,6 +28,7 @@ const (
 // Job represents a unit of work to be processed by the background worker.
 type Job struct {
 	ID        uuid.UUID `json:"id" db:"id"`
+	UserID    uuid.UUID `json:"user_id" db:"user_id"` // The owner of the media being processed
 	Type      JobType   `json:"type" db:"job_type"`
 	Status    JobStatus `json:"status" db:"status"`
 	MediaID   uuid.UUID `json:"media_id" db:"media_id"`

@@ -21,14 +21,24 @@ import (
 type Server struct {
 	router         *chi.Mux
 	mediaRepo      domain.MediaRepository
+	userRepo       domain.UserRepository
+	sessionRepo    domain.SessionRepository
 	storageService *storage.StorageService
 	thumbRoot      string
 }
 
-func NewServer(mediaRepo domain.MediaRepository, storageService *storage.StorageService, thumbRoot string) *Server {
+func NewServer(
+	mediaRepo domain.MediaRepository,
+	userRepo domain.UserRepository,
+	sessionRepo domain.SessionRepository,
+	storageService *storage.StorageService,
+	thumbRoot string,
+) *Server {
 	s := &Server{
 		router:         chi.NewRouter(),
 		mediaRepo:      mediaRepo,
+		userRepo:       userRepo,
+		sessionRepo:    sessionRepo,
 		storageService: storageService,
 		thumbRoot:      thumbRoot,
 	}
@@ -48,7 +58,10 @@ func (s *Server) routes() {
 		// CORS Middleware - exposed headers must include Accept-Ranges and Content-Range for video seeking to work cross-origin
 		r.Use(func(next http.Handler) http.Handler {
 			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Access-Control-Allow-Origin", "*")
+				// When using credentials (cookies), we cannot use "*" as the origin.
+				// We must explicitly allow the frontend's specific origin.
+				w.Header().Set("Access-Control-Allow-Origin", "http://192.168.20.23:4200")
+				w.Header().Set("Access-Control-Allow-Credentials", "true")
 				w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS, PUT, PATCH, DELETE")
 				w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, Range")
 				w.Header().Set("Access-Control-Expose-Headers", "Content-Length, Content-Type, Accept-Ranges, Content-Range")
@@ -62,23 +75,42 @@ func (s *Server) routes() {
 			})
 		})
 
-		// Photo-specific endpoints (backward compatible)
-		r.Get("/photos", s.handleListPhotos)
-		r.Get("/photos/{id}", s.handleGetPhoto)
-		r.Get("/photos/{id}/file", s.handleGetPhotoFile)
-		r.Get("/photos/{id}/thumb", s.handleGetThumbnail)
+		// Authentication endpoints
+		r.Route("/auth", func(r chi.Router) {
+			// Public sub-routes (No middleware applied here)
+			r.Post("/register", s.handleRegister)
+			r.Post("/login", s.handleLogin)
 
-		// Unified media endpoints (for video support)
-		r.Get("/media", s.handleListMedia)
-		r.Get("/media/search", s.handleSearchMedia)
-		r.Route("/media/{id}", func(r chi.Router) {
-			r.Get("/", s.handleGetMedia)
-			r.Put("/", s.handleUpdateMedia)
-			r.Patch("/", s.handlePatchMedia)
-			r.Delete("/", s.handleDeleteMedia)
-			r.Get("/original", s.handleGetOriginal)
-			r.Get("/thumb", s.handleGetThumbnail)
-			r.Patch("/tags", s.handleUpdateTags)
+			// Profile routes - MUST be authenticated
+			r.Group(func(profile chi.Router) {
+				profile.Use(s.AuthMiddleware)
+				profile.Patch("/profile", s.handleUpdateProfile)
+				profile.Delete("/profile", s.handleDeleteProfile)
+			})
+		})
+
+		// PROTECTED ROUTES group (for non-auth resources like media)
+		r.Group(func(protected chi.Router) {
+			protected.Use(s.AuthMiddleware)
+
+			// Photo-specific endpoints (backward compatible, but now authenticated)
+			protected.Get("/photos", s.handleListPhotos)
+			protected.Get("/photos/{id}", s.handleGetPhoto)
+			protected.Get("/photos/{id}/file", s.handleGetPhotoFile)
+			protected.Get("/photos/{id}/thumb", s.handleGetThumbnail)
+
+			// Unified media endpoints (for video support, now authenticated)
+			protected.Get("/media", s.handleListMedia)
+			protected.Get("/media/search", s.handleSearchMedia)
+			protected.Route("/media/{id}", func(r chi.Router) {
+				r.Get("/", s.handleGetMedia)
+				r.Put("/", s.handleUpdateMedia)
+				r.Patch("/", s.handlePatchMedia)
+				r.Delete("/", s.handleDeleteMedia)
+				r.Get("/original", s.handleGetOriginal)
+				r.Get("/thumb", s.handleGetThumbnail)
+				r.Patch("/tags", s.handleUpdateTags)
+			})
 		})
 	})
 
@@ -89,10 +121,16 @@ func (s *Server) routes() {
 	})
 }
 
-// handleListPhotos returns a paginated list of photos only
+// handleListPhotos returns a paginated list of photos only (now user-scoped)
 func (s *Server) handleListPhotos(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	query := r.URL.Query()
+
+	userID, ok := GetUserIDFromContext(ctx)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
 
 	// Parse limit
 	limit := 20
@@ -110,8 +148,8 @@ func (s *Server) handleListPhotos(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// List returns (mediaList, total, error)
-	mediaList, _, err := s.mediaRepo.List(ctx, limit, offset)
+	// List returns (mediaList, total, error) - now user scoped
+	mediaList, _, err := s.mediaRepo.List(ctx, limit, offset, &userID)
 
 	// Use filtered count for pagination (not DB total since we filter by type)
 	if err != nil {
@@ -142,10 +180,16 @@ func (s *Server) handleListPhotos(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-// handleGetPhoto returns metadata for a single photo
+// handleGetPhoto returns metadata for a single photo (now user-scoped)
 func (s *Server) handleGetPhoto(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	idStr := chi.URLParam(r, "id")
+
+	userID, ok := GetUserIDFromContext(ctx)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
 
 	id, err := uuid.Parse(idStr)
 	if err != nil {
@@ -154,7 +198,7 @@ func (s *Server) handleGetPhoto(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	media, err := s.mediaRepo.GetByID(ctx, id)
+	media, err := s.mediaRepo.GetByID(ctx, id, &userID)
 	if err != nil {
 		log.Printf("[ERROR] handleGetPhoto - getByID (%s): %v", id, err)
 		http.Error(w, "Media not found", http.StatusNotFound)
@@ -170,10 +214,16 @@ func (s *Server) handleGetPhoto(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(media)
 }
 
-// handleGetPhotoFile streams the photo file with Range request support for backward compatibility
+// handleGetPhotoFile streams the photo file with Range request support for backward compatibility (now user-scoped)
 func (s *Server) handleGetPhotoFile(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	idStr := chi.URLParam(r, "id")
+
+	userID, ok := GetUserIDFromContext(ctx)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
 
 	id, err := uuid.Parse(idStr)
 	if err != nil {
@@ -182,7 +232,7 @@ func (s *Server) handleGetPhotoFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	media, err := s.mediaRepo.GetByID(ctx, id)
+	media, err := s.mediaRepo.GetByID(ctx, id, &userID)
 	if err != nil {
 		log.Printf("[ERROR] handleGetPhotoFile - getByID (%s): %v", id, err)
 		http.Error(w, "Media not found", http.StatusNotFound)
@@ -213,10 +263,16 @@ func (s *Server) handleGetPhotoFile(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, absPath)
 }
 
-// handleListMedia returns a paginated list of media items (photos + videos)
+// handleListMedia returns a paginated list of media items (photos + videos) (now user-scoped)
 func (s *Server) handleListMedia(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	query := r.URL.Query()
+
+	userID, ok := GetUserIDFromContext(ctx)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
 
 	// Parse limit
 	limit := 20
@@ -234,8 +290,8 @@ func (s *Server) handleListMedia(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// List returns (mediaList, total, error)
-	mediaList, total, err := s.mediaRepo.List(ctx, limit, offset)
+	// List returns (mediaList, total, error) - now user scoped
+	mediaList, total, err := s.mediaRepo.List(ctx, limit, offset, &userID)
 
 	// Use total count from database for pagination
 	if err != nil {
@@ -257,10 +313,16 @@ func (s *Server) handleListMedia(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-// handleGetMedia returns metadata for a single media item
+// handleGetMedia returns metadata for a single media item (now user-scoped)
 func (s *Server) handleGetMedia(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	idStr := chi.URLParam(r, "id")
+
+	userID, ok := GetUserIDFromContext(ctx)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
 
 	id, err := uuid.Parse(idStr)
 	if err != nil {
@@ -269,7 +331,7 @@ func (s *Server) handleGetMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	media, err := s.mediaRepo.GetByID(ctx, id)
+	media, err := s.mediaRepo.GetByID(ctx, id, &userID)
 	if err != nil {
 		log.Printf("[ERROR] handleGetMedia - getByID (%s): %v", id, err)
 		http.Error(w, "Media not found", http.StatusNotFound)
@@ -280,10 +342,16 @@ func (s *Server) handleGetMedia(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(media)
 }
 
-// handleUpdateMedia handles PUT requests to update media metadata (including tags)
+// handleUpdateMedia handles PUT requests to update media metadata (including tags) (now user-scoped)
 func (s *Server) handleUpdateMedia(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	idStr := chi.URLParam(r, "id")
+
+	userID, ok := GetUserIDFromContext(ctx)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
 
 	id, err := uuid.Parse(idStr)
 	if err != nil {
@@ -299,8 +367,12 @@ func (s *Server) handleUpdateMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Ensure ID matches
+	// Ensure ID matches and belongs to user
 	input.ID = id
+	if input.UserID != userID {
+		http.Error(w, "Forbidden: Media does not belong to you", http.StatusForbidden)
+		return
+	}
 
 	// Update in repository
 	err = s.mediaRepo.Update(ctx, &input)
@@ -314,10 +386,16 @@ func (s *Server) handleUpdateMedia(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 }
 
-// handlePatchMedia handles PATCH requests for partial updates (e.g., just tags)
+// handlePatchMedia handles PATCH requests for partial updates (e.g., just tags) (now user-scoped)
 func (s *Server) handlePatchMedia(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	idStr := chi.URLParam(r, "id")
+
+	userID, ok := GetUserIDFromContext(ctx)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
 
 	id, err := uuid.Parse(idStr)
 	if err != nil {
@@ -333,8 +411,8 @@ func (s *Server) handlePatchMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get existing media first
-	existingMedia, err := s.mediaRepo.GetByID(ctx, id)
+	// Get existing media first (checking ownership)
+	existingMedia, err := s.mediaRepo.GetByID(ctx, id, &userID)
 	if err != nil {
 		log.Printf("[ERROR] handlePatchMedia - getByID (%s): %v", id, err)
 		http.Error(w, "Media not found", http.StatusNotFound)
@@ -358,10 +436,16 @@ func (s *Server) handlePatchMedia(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 }
 
-// handleUpdateTags handles PATCH /media/{id}/tags for updating tags specifically
+// handleUpdateTags handles PATCH /media/{id}/tags for updating tags specifically (now user-scoped)
 func (s *Server) handleUpdateTags(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	idStr := chi.URLParam(r, "id")
+
+	userID, ok := GetUserIDFromContext(ctx)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
 
 	id, err := uuid.Parse(idStr)
 	if err != nil {
@@ -379,8 +463,8 @@ func (s *Server) handleUpdateTags(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get existing media first
-	existingMedia, err := s.mediaRepo.GetByID(ctx, id)
+	// Get existing media first (checking ownership)
+	existingMedia, err := s.mediaRepo.GetByID(ctx, id, &userID)
 	if err != nil {
 		log.Printf("[ERROR] handleUpdateTags - getByID (%s): %v", id, err)
 		http.Error(w, "Media not found", http.StatusNotFound)
@@ -402,10 +486,16 @@ func (s *Server) handleUpdateTags(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 }
 
-// handleDeleteMedia handles DELETE requests for media items
+// handleDeleteMedia handles DELETE requests for media items (now user-scoped)
 func (s *Server) handleDeleteMedia(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	idStr := chi.URLParam(r, "id")
+
+	userID, ok := GetUserIDFromContext(ctx)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
 
 	id, err := uuid.Parse(idStr)
 	if err != nil {
@@ -414,7 +504,7 @@ func (s *Server) handleDeleteMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = s.mediaRepo.Delete(ctx, id)
+	err = s.mediaRepo.Delete(ctx, id, &userID)
 	if err != nil {
 		log.Printf("[ERROR] handleDeleteMedia - delete (%s): %v", id, err)
 		http.Error(w, "Failed to delete media: "+err.Error(), http.StatusInternalServerError)
@@ -471,10 +561,16 @@ func (s *Server) getContentType(mediaType domain.MediaType, filename string) str
 	return "application/octet-stream"
 }
 
-// handleGetOriginal streams the actual file with Range request support for video seeking
+// handleGetOriginal streams the actual file with Range request support for video seeking (now user-scoped)
 func (s *Server) handleGetOriginal(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	idStr := chi.URLParam(r, "id")
+
+	userID, ok := GetUserIDFromContext(ctx)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
 
 	id, err := uuid.Parse(idStr)
 	if err != nil {
@@ -483,7 +579,7 @@ func (s *Server) handleGetOriginal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	media, err := s.mediaRepo.GetByID(ctx, id)
+	media, err := s.mediaRepo.GetByID(ctx, id, &userID)
 	if err != nil {
 		log.Printf("[ERROR] handleGetOriginal - getByID (%s): %v", id, err)
 		http.Error(w, "Media not found", http.StatusNotFound)
@@ -534,7 +630,13 @@ func (s *Server) handleGetThumbnail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	media, err := s.mediaRepo.GetByID(ctx, id)
+	userID, ok := GetUserIDFromContext(ctx)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	media, err := s.mediaRepo.GetByID(ctx, id, &userID)
 	if err != nil {
 		errMsg := fmt.Sprintf("[ERROR] handleGetThumbnail - getByID (%s): %v\n", id, err)
 		fmt.Fprint(os.Stderr, errMsg)
@@ -598,8 +700,13 @@ func (s *Server) handleSearchMedia(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "tags parameter is required", http.StatusBadRequest)
 		return
 	}
+	userID, ok := GetUserIDFromContext(ctx)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
 
-	mediaList, err := s.mediaRepo.SearchByTags(ctx, tags)
+	mediaList, err := s.mediaRepo.SearchByTags(ctx, tags, &userID)
 	if err != nil {
 		log.Printf("[ERROR] handleSearchMedia: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)

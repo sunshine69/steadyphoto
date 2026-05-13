@@ -5,11 +5,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
-// StorageService manages access to the physical media files.
+// StorageService manages access to the physical media files, 
+// providing isolation between different users at the filesystem level.
 type StorageService struct {
-	baseDir string
+	baseDir string // The root directory (e.g., "/mnt/data/storage")
 }
 
 // NewStorageService creates a new service with a base directory.
@@ -17,6 +20,21 @@ func NewStorageService(baseDir string) *StorageService {
 	return &StorageService{
 		baseDir: filepath.Clean(baseDir),
 	}
+}
+
+// GetUserRelativePath constructs the logical path used for storage organization.
+// It returns a path that includes the user's ID to ensure physical isolation.
+// Example input: userID="abc-123", relTimePath="2024/05/13/photo.jpg"
+// Returns: "abc-123/2024/05/13/photo.jpg"
+func (s *StorageService) GetUserRelativePath(userID uuid.UUID, relTimePath string) string {
+	return filepath.Join(userID.String(), filepath.Clean(relTimePath))
+}
+
+// ResolveUserFile takes a userID and the relative path stored in the database 
+// and returns the absolute path on the local filesystem inside that user's folder.
+func (s *StorageService) ResolveUserFile(userID uuid.UUID, dbRelPath string) (string, error) {
+	userScopedPath := s.GetUserRelativePath(userID, dbRelPath)
+	return s.ResolvePath(userScopedPath)
 }
 
 // ResolvePath takes a path (either relative to baseDir or absolute) 
@@ -33,17 +51,12 @@ func (s *StorageService) ResolvePath(relativePath string) (string, error) {
 		return relativePath, nil
 	}
 
-	// 3. Normalize the relative path for comparison:
-	// Strip leading slashes and current-directory dots (e.g., "/storage/..." -> "storage/...")
+	// 3. Normalize the relative path for comparison
 	normalizedRel := strings.TrimLeft(relativePath, "/\\.")
 
 	// 4. Handle the "Duplicate BaseDir" edge case.
-	// We check if the normalized path starts with our base directory's name.
 	baseName := filepath.Base(s.baseDir)
-	
-	// Check if the path starts with "storage/" or just "storage"
 	if strings.HasPrefix(normalizedRel, baseName+string(os.PathSeparator)) || normalizedRel == baseName {
-		// Strip the base name and any following separator
 		normalizedRel = strings.TrimPrefix(normalizedRel, baseName)
 		normalizedRel = strings.TrimLeft(normalizedRel, string(os.PathSeparator))
 		relativePath = filepath.Clean(normalizedRel)
@@ -58,4 +71,15 @@ func (s *StorageService) ResolvePath(relativePath string) (string, error) {
 	}
 
 	return fullPath, nil
+}
+
+// EnsureDir creates the directory structure for a given user-scoped relative path.
+func (s *StorageService) EnsureDir(userID uuid.UUID, relTimePath string) error {
+	userScopedDir := filepath.Join(s.GetUserRelativePath(userID, ""), filepath.Dir(relTimePath))
+	fullDirPath := filepath.Join(s.baseDir, userScopedDir)
+
+	if err := os.MkdirAll(fullDirPath, 0755); err != nil {
+		return fmt.Errorf("failed to create storage directory %s: %w", fullDirPath, err)
+	}
+	return nil
 }

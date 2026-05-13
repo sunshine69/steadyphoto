@@ -114,6 +114,7 @@ type Media struct {
 	CreatedAt     time.Time      `db:"created_at"`
 	UpdatedAt     time.Time      `db:"updated_at"`
 	Tags          string         `db:"tags"`
+	UserID        uuid.UUID      `db:"user_id"`
 }
 
 // Face represents a detected face in a media item
@@ -136,14 +137,14 @@ type BoundingBox struct {
 // MediaRepository defines the interface for media storage
 type MediaRepository interface {
 	Create(ctx context.Context, media *Media) error
-	GetByID(ctx context.Context, id uuid.UUID) (*Media, error)
+	GetByID(ctx context.Context, id uuid.UUID, userID *uuid.UUID) (*Media, error)
 	GetByHash(ctx context.Context, hash string) (*Media, error)
 	Update(ctx context.Context, media *Media) error
-	Delete(ctx context.Context, id uuid.UUID) error
+	Delete(ctx context.Context, id uuid.UUID, userID *uuid.UUID) error
 	DeleteByMediaID(ctx context.Context, mediaID uuid.UUID) error
-	List(ctx context.Context, limit, offset int) ([]*Media, int, error)
-	ListByType(ctx context.Context, mediaType MediaType, limit, offset int) ([]*Media, int, error)
-	SearchByTags(ctx context.Context, tags string) ([]*Media, error)
+	List(ctx context.Context, limit, offset int, userID *uuid.UUID) ([]*Media, int, error)
+	ListByType(ctx context.Context, mediaType MediaType, limit, offset int, userID *uuid.UUID) ([]*Media, int, error)
+	SearchByTags(ctx context.Context, tags string, userID *uuid.UUID) ([]*Media, error)
 }
 
 // FaceRepository defines the interface for face storage
@@ -155,8 +156,8 @@ type FaceRepository interface {
 
 // AlbumRepository defines the interface for album storage
 type AlbumRepository interface {
-	Create(ctx context.Context, name string) (uuid.UUID, error)
+	Create(ctx context.Context, name string, userID uuid.UUID) (uuid.UUID, error)
 	AddMedia(ctx context.Context, albumID uuid.UUID, mediaID uuid.UUID) error
 	RemoveMedia(ctx context.Context, albumID uuid.UUID, mediaID uuid.UUID) error
-	GetMedia(ctx context.Context, albumID uuid.UUID) ([]*Media, error)
+	GetMedia(ctx context.Context, albumID uuid.UUID, userID *uuid.UUID) ([]*Media, error)
 }
