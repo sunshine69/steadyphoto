@@ -9,7 +9,17 @@ import { AuthService } from '../../services/auth.service';
   standalone: true,
   imports: [CommonModule, FormsModule, RouterLink],
   templateUrl: './login.component.html',
-  styleUrls: ['./login.component.css']
+  styles: [`
+    .login-container {
+      max-width: 400px;
+      margin: 5rem auto;
+      padding: 2rem;
+      background: #ffffff10;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    }
+    .error-msg { color: #ff6b6b; margin-bottom: 1rem; }
+  `]
 })
 export class LoginComponent {
   private authService = inject(AuthService);

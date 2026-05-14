@@ -3,11 +3,10 @@ import { Injectable, inject } from '@angular/core';
 import { BehaviorSubject, Observable, tap, catchError, throwError } from 'rxjs';
 import { environment } from '../../environments/environment';
 
-export interface LoginResponse {
-  user: {
-    id: string;
-    email: string;
-  };
+export interface AuthResponse {
+  access_token: string;
+  refresh_token: string;
+  user_id: string;
 }
 
 @Injectable({
@@ -20,11 +19,13 @@ export class AuthService {
   /**
    * Logs in a user and sets session cookies via backend response.
    */
-  login(email: string, password: string): Observable<LoginResponse> {
-    return this.http.post<LoginResponse>(`${this.API_BASE_URL}/auth/login`, { email, password }, { withCredentials: true })
+  login(email: string, password: string): Observable<AuthResponse> {
+    return this.http.post<AuthResponse>(`${this.API_BASE_URL}/auth/login`, { email, password }, { withCredentials: true })
       .pipe(
-        tap(() => {
-          console.log('AuthService: Login successful');
+        tap((res) => {
+          console.log('AuthService: Login successful', res);
+          localStorage.setItem('access_token', res.access_token);
+          localStorage.setItem('refresh_token', res.refresh_token);
           this.setAuthenticated(true);
         }),
         catchError(err => {

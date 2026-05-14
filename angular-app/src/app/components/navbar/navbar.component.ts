@@ -1,8 +1,9 @@
-import { Component, Inject, Optional } from '@angular/core';
+import { Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterModule } from '@angular/router';
 import { SearchService } from '../../services/search.service';
+import { AuthService } from '../../services/auth.service';
 
 @Component({
   selector: 'app-navbar',
@@ -20,7 +21,7 @@ import { SearchService } from '../../services/search.service';
         </a>
 
         <!-- Search Bar (Middle) -->
-        <div class="flex-grow-1 d-flex justify-content-center mx-4">
+        <div class="flex-grow-1 d-flex justify-content-center mx-4" *ngIf="authService.isAuthenticated()">
           <div class="search-container w-100" style="max-width: 500px;">
             <div class="input-group">
               <span class="input-group-text bg-secondary border-0 text-white">
@@ -38,8 +39,8 @@ import { SearchService } from '../../services/search.service';
           </div>
         </div>
 
-        <!-- Tag Filter -->
-        <div class="tag-filter d-flex align-items-center me-3">
+        <!-- Tag Filter (Middle) - Only for Authenticated Users -->
+        <div class="tag-filter d-flex align-items-center me-3" *ngIf="authService.isAuthenticated()">
           <input 
             type="text" 
             class="form-control form-control-sm bg-secondary text-white border-0 tag-input"
@@ -54,10 +55,33 @@ import { SearchService } from '../../services/search.service';
 
         <!-- Right Side Actions -->
         <div class="navbar-nav ms-auto">
-          <ul class="navbar-nav">
-            <li class="nav-item">
-              <a class="nav-link" routerLink="/">Home</a>
-            </li>
+          <ul class="navbar-nav align-items-center">
+            <!-- If Authenticated: Show Profile/Logout -->
+            <ng-container *ngIf="authService.isAuthenticated(); else guestLinks">
+              <li class="nav-item me-3 text-white d-flex align-items-center" style="font-size: 0.9rem; opacity: 0.8;">
+                Online
+              </li>
+              <li class="nav-item dropdown">
+                <a class="nav-link dropdown-toggle btn btn-outline-light text-white border-0 p-0 ms-2" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                   Account
+                </a>
+                <ul class="dropdown-menu dropdown-menu-end shadow">
+                  <li><a class="dropdown-item" routerLink="/settings">Settings</a></li> <!-- Placeholder for future profile settings -->
+                  <li><hr class="dropdown-divider"></li>
+                  <li><a class="dropdown-item text-danger" (click)="onLogout()" style="cursor: pointer;">Logout</a></li>
+                </ul>
+              </li>
+            </ng-container>
+
+            <!-- If Guest: Show Login/Register -->
+            <ng-template #guestLinks>
+              <li class="nav-item">
+                <a class="nav-link" routerLink="/login">Login</a>
+              </li>
+              <li class="nav-item ms-2">
+                <a class="btn btn-sm btn-primary text-white px-3" routerLink="/register">Sign Up</a>
+              </li>
+            </ng-template>
           </ul>
         </div>
       </div>
@@ -83,7 +107,8 @@ export class NavbarComponent {
 
   constructor(
     private searchService: SearchService,
-    private router: Router
+    private router: Router,
+    public authService: AuthService // Made public for template access
   ) {}
 
   onSearch(term: string): void {
@@ -112,5 +137,12 @@ export class NavbarComponent {
       const urlWithoutQuery = this.router.url.split('?')[0];
       this.router.navigate([urlWithoutQuery]);
     }
+  }
+
+  onLogout(): void {
+    this.authService.logout().subscribe({
+      next: () => this.router.navigate(['/login']),
+      error: (err) => console.error('Logout failed', err)
+    });
   }
 }

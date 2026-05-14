@@ -12,11 +12,7 @@ export const authGuard: CanActivateFn = (route, state) => {
   if (authService.isAuthenticated()) {
     return true;
   } else {
-    // In Phase 7 we will implement real login/register pages and redirect here:
-    // console.warn('AuthGuard: User not authenticated, redirecting to /login');
-    // return router.parseUrl('/login');
-    
-    // For now, just allow access or block based on auth status so it compiles/works for dev
-    return true; 
+    console.warn('AuthGuard: User not authenticated, redirecting to /login');
+    return router.parseUrl('/login');
   }
 };

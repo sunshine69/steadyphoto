@@ -12,10 +12,21 @@ import { AuthService } from '../services/auth.service';
 export const authInterceptor: HttpInterceptorFn = (req: HttpRequest<unknown>, next: HttpHandlerFn): Observable<HttpEvent<unknown>> => {
   const authService = inject(AuthService);
 
-  // 1. Ensure every single request includes credentials so cookies are sent
+  // 1. Inject Authorization header and credentials
+  const token = localStorage.getItem('access_token');
   let authReq = req;
-  if (!req.withCredentials) {
-    authReq = req.clone({ withCredentials: true });
+
+  if (token) {
+    authReq = req.clone({
+      setHeaders: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+  }
+
+  // Also ensure credentials are sent for HttpOnly cookies/refresh logic
+  if (!authReq.withCredentials) {
+    authReq = authReq.clone({ withCredentials: true });
   }
 
   return next(authReq).pipe(

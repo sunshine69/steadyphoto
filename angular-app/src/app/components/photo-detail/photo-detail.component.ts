@@ -22,6 +22,7 @@ import { Photo } from '../../models/photo.model';
                 controls
                 preload="metadata"
                 class="main-video rounded shadow w-100"
+                crossorigin="use-credentials"
                 (error)="onVideoError($event)"
               >
                 Your browser does not support the video tag.
@@ -34,6 +35,7 @@ import { Photo } from '../../models/photo.model';
                 [src]="photo.path" 
                 [alt]="photo.filename" 
                 class="main-image rounded shadow"
+                crossorigin="use-credentials"
               >
             </div>
             

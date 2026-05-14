@@ -17,6 +17,7 @@ import { Photo } from '../../models/photo.model';
             [alt]="photo.filename"
             class="photo-thumb"
             loading="lazy"
+            crossorigin="use-credentials"
           >
           <!-- Video icon overlay for videos -->
           <div *ngIf="isVideo()" class="video-overlay">

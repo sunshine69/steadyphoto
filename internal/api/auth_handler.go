@@ -132,8 +132,21 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 1. Set the access token cookie for resource requests (images/videos)
+	http.SetCookie(w, &http.Cookie{
+		Name:     "access_token",
+		Value:    session.ID.String(),
+		Path:     "/",
+		HttpOnly: true,  // Prevent JS from accessing the token
+		Secure:   false, // Set to true in production with HTTPS
+		SameSite: http.SameSiteLaxMode,
+	})
+
+	// 2. Also set it as a Secure/None cookie if we were on HTTPS (for strict cross-origin)
+	// For local development over HTTP, Lax is our best bet for most browsers.
+
 	resp := AuthResponse{
-		AccessToken:  session.ID.String(), // Using Session ID as a placeholder Access Token
+		AccessToken:  session.ID.String(), // Still return it for AJAX/Bearer usage
 		RefreshToken: refreshToken,
 		UserID:       user.ID,
 	}
@@ -248,7 +261,7 @@ func (s *Server) handleDeleteProfile(w http.ResponseWriter, r *http.Request) {
 	// 3. Revoke all active sessions for this user immediately
 	if err := s.sessionRepo.RevokeAllByUserID(r.Context(), userID); err != nil {
 		log.Printf("[ERROR] handleDeleteProfile: failed to revoke sessions: %v", err)
-		// We don't fail the whole request if session revocation fails, 
+		// We don't fail the whole request if session revocation fails,
 		// but we log it as a critical security concern for admin follow-up.
 	}
 
