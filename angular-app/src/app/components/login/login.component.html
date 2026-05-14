@@ -1,0 +1,47 @@
+<div class="auth-container">
+  <div class="auth-card">
+    <h2>SteadyPhoto</h2>
+    <h3>Login to your account</h3>
+
+    <form (ngSubmit)="onSubmit()" #loginForm="ngForm">
+      <div class="form-group">
+        <label for="email">Email Address</label>
+        <input 
+          type="email" 
+          id="email" 
+          name="email" 
+          [(ngModel)]="email" 
+          required 
+          placeholder="you@example.com"
+          #emailModel="ngModel">
+        <small *ngIf="emailModel.invalid && emailModel.touched" class="error-text">Email is required</small>
+      </div>
+
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input 
+          type="password" 
+          id="password" 
+          name="password" 
+          [(ngModel)]="password" 
+          required 
+          placeholder="••••••••"
+          #passwordModel="ngModel">
+        <small *ngIf="passwordModel.invalid && passwordModel.touched" class="error-text">Password is required</small>
+      </div>
+
+      <div *ngIf="errorMessage" class="alert alert-danger">
+        {{ errorMessage }}
+      </div>
+
+      <button type="submit" [disabled]="loginForm.invalid || isLoading" class="btn btn-primary">
+        <span *ngIf="isLoading" class="spinner"></span>
+        {{ isLoading ? 'Logging in...' : 'Login' }}
+      </button>
+    </form>
+
+    <div class="auth-footer">
+      Don't have an account? <a routerLink="/register">Register here</a>
+    </div>
+  </div>
+</div>
