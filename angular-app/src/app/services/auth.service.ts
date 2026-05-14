@@ -1,6 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { Observable, tap, catchError, throwError } from 'rxjs';
+import { BehaviorSubject, Observable, tap, catchError, throwError } from 'rxjs';
 import { environment } from '../../environments/environment';
 
 export interface LoginResponse {
@@ -23,9 +23,13 @@ export class AuthService {
   login(email: string, password: string): Observable<LoginResponse> {
     return this.http.post<LoginResponse>(`${this.API_BASE_URL}/auth/login`, { email, password }, { withCredentials: true })
       .pipe(
-        tap(() => console.log('AuthService: Login successful')),
+        tap(() => {
+          console.log('AuthService: Login successful');
+          this.setAuthenticated(true);
+        }),
         catchError(err => {
           console.error('AuthService: Login failed', err);
+          this.setAuthenticated(false);
           return throwError(() => err);
         })
       );
@@ -50,8 +54,14 @@ export class AuthService {
   logout(): Observable<any> {
     return this.http.post(`${this.API_BASE_URL}/auth/logout`, {}, { withCredentials: true })
       .pipe(
+        tap(() => {
+          console.log('AuthService: Logout successful');
+          this.setAuthenticated(false);
+        }),
         catchError(err => {
           console.error('AuthService: Logout failed', err);
+          // Even if server fails, we should clear local state on client side for security/UX
+          this.setAuthenticated(false); 
           return throwError(() => err);
         })
       );
@@ -62,16 +72,36 @@ export class AuthService {
    */
   refreshToken(): Observable<any> {
     // This endpoint is specifically designed for silent renewal via HttpOnly cookies
-    return this.http.post(`${this.API_BASE_URL}/auth/refresh`, {}, { withCredentials: true });
+    return this.http.post(`${this.API_BASE_URL}/auth/refresh`, {}, { withCredentials: true })
+      .pipe(
+        tap(() => console.log('AuthService: Token refreshed')),
+        catchError(err => {
+          console.error('AuthService: Refresh failed', err);
+          // If refresh fails, we must assume the user is truly logged out
+          this.setAuthenticated(false);
+          return throwError(() => err);
+        })
+      );
   }
 
   /**
-   * Checks if the user has an active session (basic check).
-   * Note: In a production app, you might call /api/auth/me to verify server-side state.
+   * An observable stream representing the user's current authentication state.
+   */
+  private _isAuthenticatedSubject = new BehaviorSubject<boolean>(false);
+  isAuthenticated$ = this._isAuthenticatedSubject.asObservable();
+
+  /**
+   * Returns the synchronous value of the auth state. 
+   * Note: In a production app, you might call /api/auth/me to verify server-side state first.
    */
   isAuthenticated(): boolean {
-    // For now, we rely on the Interceptor and 401 errors to drive auth state logic
-    // A real implementation would check local storage or an 'isLoggedIn' signal/subject.
-    return true; 
+    return this._isAuthenticatedSubject.value;
+  }
+
+  /**
+   * Internal method used by login/logout handlers to update the auth state stream.
+   */
+  setAuthenticated(status: boolean): void {
+    this._isAuthenticatedSubject.next(status);
   }
 }
