@@ -62,11 +62,11 @@ import { AuthService } from '../../services/auth.service';
                 Online
               </li>
               <li class="nav-item dropdown">
-                <a class="nav-link dropdown-toggle btn btn-outline-light text-white border-0 p-0 ms-2" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                <a class="nav-link btn btn-outline-light text-white border-0 p-0 ms-2" (click)="toggleAccountDropdown($event)" role="button">
                    Account
                 </a>
-                <ul class="dropdown-menu dropdown-menu-end shadow">
-                  <li><a class="dropdown-item" routerLink="/settings">Settings</a></li> <!-- Placeholder for future profile settings -->
+                <ul class="dropdown-menu dropdown-menu-end shadow" [class.show]="isAccountDropdownOpen">
+                  <li><a class="dropdown-item" routerLink="/settings" (click)="isAccountDropdownOpen = false">Settings</a></li> 
                   <li><hr class="dropdown-divider"></li>
                   <li><a class="dropdown-item text-danger" (click)="onLogout()" style="cursor: pointer;">Logout</a></li>
                 </ul>
@@ -104,12 +104,18 @@ import { AuthService } from '../../services/auth.service';
 export class NavbarComponent {
   searchTerm = '';
   tagFilter = '';
+  isAccountDropdownOpen = false;
 
   constructor(
     private searchService: SearchService,
     private router: Router,
     public authService: AuthService // Made public for template access
   ) {}
+
+  toggleAccountDropdown(event: Event): void {
+    event.preventDefault();
+    this.isAccountDropdownOpen = !this.isAccountDropdownOpen;
+  }
 
   onSearch(term: string): void {
     this.searchTerm = term;
@@ -140,6 +146,7 @@ export class NavbarComponent {
   }
 
   onLogout(): void {
+    this.isAccountDropdownOpen = false;
     this.authService.logout().subscribe({
       next: () => this.router.navigate(['/login']),
       error: (err) => console.error('Logout failed', err)
