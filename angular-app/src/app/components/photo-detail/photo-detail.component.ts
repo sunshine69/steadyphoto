@@ -261,7 +261,8 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
     this.isEditingTags = true;
     if (this.photo?.tags) {
       const tagList = this.getTagList(this.photo.tags);
-      this.tagInput = tagList.join(', ');
+      // Join with colon as per spec for the input field
+      this.tagInput = tagList.join(': '); 
     } else {
       this.tagInput = '';
     }
@@ -270,11 +271,14 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
   saveTags(): void {
     if (!this.photo || !this.tagInput.trim()) return;
     
-    // Join the parsed tags back into a comma-separated string for the API
-    const tags = this.parseTagString(this.tagInput).join(', ');
-    this.photoService.updateTags(this.photo.id, tags).subscribe({
+    // Use the parser which now supports colon, then join with colon for storage
+    const tagsString = this.parseTagString(this.tagInput).join(':'); 
+    this.photoService.updateTags(this.photo.id, tagsString).subscribe({
       next: (updated) => {
-        this.photo = updated;
+        if (this.photo && updated) {
+          // Use spread operator to create a new object reference for Angular change detection
+          this.photo = { ...this.photo, ...updated };
+        }
         this.isEditingTags = false;
         this.tagInput = '';
       },
@@ -289,7 +293,7 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
     this.isEditingTags = false;
     if (this.photo?.tags) {
       const tagList = this.getTagList(this.photo.tags);
-      this.tagInput = tagList.join(', ');
+      this.tagInput = tagList.join(': ');
     } else {
       this.tagInput = '';
     }
@@ -297,30 +301,22 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
 
   getTagList(tags: any): string[] {
     if (!tags) return [];
-    // Handle different possible formats for tags
+    // If it's already an array, just use it
     if (Array.isArray(tags)) return tags;
+    
     if (typeof tags === 'string') {
-      try {
-        const parsed = JSON.parse(tags);
-        return Array.isArray(parsed) ? parsed : [parsed];
-      } catch {
-        return [tags];
-      }
-    }
-    // Handle object with tag array inside
-    if (typeof tags === 'object' && !Array.isArray(tags)) {
-      const possibleArrays = Object.values(tags);
-      for (const val of possibleArrays) {
-        if (Array.isArray(val)) return val;
-      }
+      // Split by colon as per spec requirements
+      return tags.split(':')
+        .map(t => t.trim())
+        .filter(t => t.length > 0);
     }
     return [];
   }
 
   parseTagString(input: string): string[] {
-    // Split by comma, trim whitespace, remove empty strings
-    return input.split(',')
-      .map(tag => tag.trim().toLowerCase())
+    // Split by colon, trim whitespace, remove empty strings
+    return input.split(':')
+      .map(tag => tag.trim())
       .filter(tag => tag.length > 0);
   }
 
