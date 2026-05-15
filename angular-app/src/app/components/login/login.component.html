@@ -1,47 +1,49 @@
-<div class="auth-container">
-  <div class="auth-card">
-    <h2>SteadyPhoto</h2>
-    <h3>Login to your account</h3>
+<div class="container mt-5 d-flex justify-content-center">
+  <div class="card p-4 shadow w-100" style="max-width: 400px;">
+    <h2 class="text-center mb-3">SteadyPhoto</h2>
+    <h3 class="text-center text-muted h5 mb-4">Login to your account</h3>
 
     <form (ngSubmit)="onSubmit()" #loginForm="ngForm">
-      <div class="form-group">
-        <label for="email">Email Address</label>
+      <div class="mb-3">
+        <label for="email" class="form-label">Email Address</label>
         <input 
           type="email" 
           id="email" 
           name="email" 
+          class="form-control"
           [(ngModel)]="email" 
           required 
           placeholder="you@example.com"
           #emailModel="ngModel">
-        <small *ngIf="emailModel.invalid && emailModel.touched" class="error-text">Email is required</small>
+        <div *ngIf="emailModel.invalid && emailModel.touched" class="text-danger small mt-1">Email is required</div>
       </div>
 
-      <div class="form-group">
-        <label for="password">Password</label>
+      <div class="mb-4">
+        <label for="password" class="form-label">Password</label>
         <input 
           type="password" 
           id="password" 
           name="password" 
+          class="form-control"
           [(ngModel)]="password" 
           required 
           placeholder="••••••••"
           #passwordModel="ngModel">
-        <small *ngIf="passwordModel.invalid && passwordModel.touched" class="error-text">Password is required</small>
+        <div *ngIf="passwordModel.invalid && passwordModel.touched" class="text-danger small mt-1">Password is required</div>
       </div>
 
-      <div *ngIf="errorMessage" class="alert alert-danger">
+      <div *ngIf="errorMessage" class="alert alert-danger py-2 mb-3">
         {{ errorMessage }}
       </div>
 
-      <button type="submit" [disabled]="loginForm.invalid || isLoading" class="btn btn-primary">
-        <span *ngIf="isLoading" class="spinner"></span>
+      <button type="submit" [disabled]="loginForm.invalid || isLoading" class="btn btn-primary w-100 py-2 shadow-sm">
+        <span *ngIf="isLoading" class="spinner-border spinner-border-sm me-2"></span>
         {{ isLoading ? 'Logging in...' : 'Login' }}
       </button>
     </form>
 
-    <div class="auth-footer">
-      Don't have an account? <a routerLink="/register">Register here</a>
+    <div class="text-center mt-4 text-muted small">
+      Don't have an account? <a routerLink="/register" class="text-primary text-decoration-none">Register here</a>
     </div>
   </div>
 </div>
