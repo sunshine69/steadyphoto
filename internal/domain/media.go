@@ -134,6 +134,16 @@ type BoundingBox struct {
 	Height float64 `json:"h"`
 }
 
+// Album represents a logical grouping of media assets
+type Album struct {
+	ID          uuid.UUID  `db:"id"`
+	UserID      uuid.UUID  `db:"user_id"`
+	Name        string     `db:"name"`
+	Description *string    `db:"description"` // Pointer allows handling NULL values from the DB
+	CreatedAt   time.Time  `db:"created_at"`
+	UpdatedAt   time.Time  `db:"updated_at"`
+}
+
 // MediaRepository defines the interface for media storage
 type MediaRepository interface {
 	Create(ctx context.Context, media *Media) error
@@ -154,10 +164,16 @@ type FaceRepository interface {
 	DeleteByMediaID(ctx context.Context, mediaID uuid.UUID) error
 }
 
-// AlbumRepository defines the interface for album storage
+// AlbumRepository defines the interface for album management and membership
 type AlbumRepository interface {
-	Create(ctx context.Context, name string, userID uuid.UUID) (uuid.UUID, error)
-	AddMedia(ctx context.Context, albumID uuid.UUID, mediaID uuid.UUID) error
+	Create(ctx context.Context, name string, userID uuid.UUID) (*Album, error)
+	GetByID(ctx context.Context, id uuid.UUID, userID uuid.UUID) (*Album, error)
+	Update(ctx context.Context, album *Album) error
+	Delete(ctx context.Context, id uuid.UUID, userID uuid.UUID) error
+	List(ctx context.Context, userID uuid.UUID) ([]*Album, error)
+
+	// Media Association (Handles many-to-many relationships with position support)
+	AddMedia(ctx context.Context, albumID uuid.UUID, mediaIDs []uuid.UUID) error
 	RemoveMedia(ctx context.Context, albumID uuid.UUID, mediaID uuid.UUID) error
-	GetMedia(ctx context.Context, albumID uuid.UUID, userID *uuid.UUID) ([]*Media, error)
+	GetMedia(ctx context.Context, albumID uuid.UUID, userID uuid.UUID) ([]*Media, error)
 }

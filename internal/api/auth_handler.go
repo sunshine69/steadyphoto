@@ -81,6 +81,12 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 }
 
+// HandleLogin handles POST /api/v1/auth/refresh
+func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
+	// TODO implement
+	return
+}
+
 // HandleLogin handles POST /api/v1/auth/login
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	var req LoginRequest

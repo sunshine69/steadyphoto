@@ -2,121 +2,87 @@
 
 ## Project Overview
 
-SteadyPhoto is a comprehensive photo management system with AI-powered capabilities. The platform allows users to organize, search, and manage their media collections efficiently.
+SteadyPhoto is a comprehensive photo and video management system with AI-powered capabilities. The platform allows users to organize, search, and manage their media collections efficiently through a secure, multi-tenant architecture.
 
-## Video Support in Scanner
+## Media Capabilities
 
-### Overview
+### 1. Photo & Video Support
+The system treats photos and videos as first-class citizens within the same unified pipeline:
+- **Detection**: Automatic detection of supported formats (Images: JPG, PNG; Videos: MP4, MOV, AVI, etc.) during scanning.
+- **Deduplication**: Content-based deduplication using SHA256 hashing to prevent redundant storage.
+- **Metadata Extraction**: 
+  - Images: EXIF data (camera model, timestamps, location).
+  - Videos: Basic properties and duration via existing metadata parsing logic.
 
-We are extending the scanner to support video files alongside existing photo support. This includes detection, metadata extraction, storage organization, and streaming capabilities.
+### 2. Seamless Streaming & Playback
+The API is optimized for high-performance media consumption:
+- **Range Request Support**: The backend supports HTTP Range requests out of the box, enabling seamless video seeking (scrubbing) in modern web players without downloading entire files first.
+- **Unified Endpoint Architecture**: All media assets are served via a consistent streaming interface that respects user ownership and authentication.
 
-### Technical Specifications
-
-#### 1. Video Detection & Classification
-- **Supported Formats**: MP4, MOV, AVI, MKV, WEBM, FLV
-- **Detection Method**: File extension validation + MIME type verification using libvips
-- **File Size Limits**: Maximum 5GB per video file to prevent memory issues
-- **Deduplication**: SHA256 hash of file content for duplicate detection
-
-#### 2. Metadata Extraction
-- **Video Properties**:
-  - Duration (seconds)
-  - Resolution (width × height)
-  - Bitrate (average and peak)
-  - Codec (video and audio)
-  - Creation/Modification timestamps
-  - Frame rate
-- **Storage**: JSONB column `video_metadata` in database
-- **Thumbnail Generation**: Extract first frame or keyframe as thumbnail image
-
-#### 3. Storage Organization
-- **Directory Structure**:
-  ```
-  storage/
-   <user-id>/
+### 3. Storage Organization
+To maintain simplicity and performance, all media is stored using a clean, date-based hierarchy:
+```
+storage/
+  {user_id}/         # Logical isolation per user
     YYYY/
       MM/
-        DD/
-          .videos/     # Video files
-          .thumbnails/ # Video thumbnails
-  ```
-- **Path Resolution**: Use existing `StorageService` for consistent path translation
-- **Naming Convention**: Maintain relative paths from database entries
+        DD/          # Actual file assets (Photos & Videos)
+```
+*Note: This structure ensures physical data isolation while keeping the directory tree predictable and easy to manage.*
 
-#### 4. API Streaming Endpoints
-- **Video Streaming**:
-  - Leverage existing Range request support for efficient seeking
-  - Content-Type headers: `video/mp4`, `video/webm`, etc.
-  - Metadata endpoint: `/api/media/{id}/metadata` returns video-specific info
-- **Thumbnail Endpoint**: `/api/media/{id}/thumbnail` serves extracted frame
+## System Architecture
 
-#### 6. Frontend Integration Requirements
-- **Media Type Display**: Show video icon alongside photo icons
-- **Playback Controls**: Implement video player component with seek functionality
-- **Metadata Display**: Show duration, resolution, and codec info
-- **Thumbnail Preview**: Use extracted thumbnails for quick preview
+### Authentication & Security (IAM)
+- **Multi-Tenancy**: Strict ownership enforcement; users can only access, view, or delete media linked to their unique `user_id`.
+- **Identity Management**: JWT/Session-based authentication with secure password hashing.
+- **Security Layers**: Integrated middleware for token validation and cross-origin resource sharing (CORS) protection.
 
-#### 7. Error Handling & Validation
-- **Corrupted Files**: Gracefully handle files that fail metadata extraction
-- **Unsupported Codecs**: Log warnings but allow import with limited metadata
-- **File Integrity**: Validate SHA256 hash against stored value
+### Frontend Integration
+The Angular application provides a responsive dashboard featuring:
+- **Unified Media View**: A single, seamless feed of both photos and videos.
+- **Advanced Playback**: Native video players with seekable support integrated directly into the media detail view.
+- **Search & Discovery**: Fast name-based search and tag-based filtering for rapid asset retrieval.
 
-#### 8. Performance Considerations
-- **Batch Processing**: Process videos in batches to avoid memory spikes
-- **Caching**: Cache video metadata and thumbnails for faster retrieval
-- **Async Operations**: Use background workers for large video processing
+## Album Feature (Planned)
 
----
+### Data Model
+Albums are logical groupings of existing media assets via a many-to-many relationship to avoid file duplication.
 
+#### `albums` Table
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `id` | UUID | Primary Key |
+| `user_id` | UUID | Foreign Key (owner) |
+| `name` | VARCHAR | Album title |
+| `description` | TEXT | Optional description |
+| `created_at` | TIMESTAMP | Creation time |
 
-### Implementation Roadmap (Atomic Steps)
+#### `album_media` Table
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `album_id` | UUID | Foreign Key (`albums.id`) |
+| `media_id` | UUID/INT | Foreign Key to media asset |
 
-#### Phase 1: Database Foundation (Migrations)
-*Goal: Prepare the schema for identities and ownership.*
+### API Specifications
+- **Album Management**: 
+    - `POST /api/albums`: Create album.
+    - `GET /api/albums`: List user's albums.
+    - `PUT /api/albums/{id}`: Update metadata.
+    - `DELETE /api/albums/{id}`: Remove album (does not delete media).
+- **Media Association**:
+    - `POST /api/albums/{id}/media`: Bulk add assets to an album. Requires ownership verification of all provided IDs.
+    - `DELETE /api/albums/{id}/media/{media_id}`: Unlink asset from album.
 
-**Step 1.1: Create Identity Tables**  
-- **Task**: New migration `0005_add_users_and_sessions.up.sql` creating `users` and `user_sessions`.
-- **Details**: 
-    - `users`: `id`, `email` (unique), `password_hash`, `created_at`.
-    - `user_sessions`: `id`, `user_id`, `refresh_token_hash`, `expires_at`, `is_revoked`.
-- **Verification**: Run migrations and confirm tables exist in PostgreSQL.
+### Frontend Requirements (Angular)
+- **Sidebar**: Navigation link for "Albums".
+- **Bulk Actions**: Selection mode in media grid to allow adding multiple items to an album at once.
+- **Album View**: Dedicated route `/albums/:id` displaying a filtered view of the unified media feed based on album membership.
 
-**Step 1.2: Implement Data Ownership & Storage Partitioning Logic**  
-- **Task**: Update existing asset tables (`media`, `albums`) to include a nullable `user_id` column referencing `users(id)`.
-- **Storage Change Requirement**: The backend must be updated so that all new files follow the pattern: `storage/{user_id}/YYYY/MM/DD/...`. 
-- **Verification**: Verify schema change via SQL query.
+## Current Status
 
----
-
-### Current Status
-
-#### Core Features
-- [x] Photo scanning
-- [x] Deduplication via SHA256 hashing
-- [x] EXIF extraction
-- [x] Metadata management (Photos/Videos)
-- [x] Video support 
-
-#### Storage Architecture
-- [x] Relative path-based storage.
-- [x] **Multi-user Partitioned Storage** (Implemented via `storage/{user_id}/...` architecture).
-
-#### API Layer
-- [x] RESTful API supporting Range requests for efficient file streaming.
-- [x] JWT/Opaque Token Authentication and Ownership enforcement implemented across all media endpoints.
-
-#### Frontend Status (Angular)
-- [x] Images and Video display components.
-- [x] Pagination with page number jump functionality.
-- [x] Seekable video playback.
-- [x] Full-size image viewing mode.
-- [x] Image search by name.
-
-#### Security & Multi-User Implementation Status (COMPLETED)
-- [x] Phase 1: Database Foundation (Completed migrations and schema updates)
-- [x] Phase 2: Identity Core (Implemented password hashing and token generation)
-- [x] Phase 3: Service Layer (Implemented User/Session repositories and Auth service logic)
-- [x] Phase 4: API Handlers (Implemented Register, Login, Refresh, Logout, and Profile update endpoints)
-- [x] Phase 5: Middleware & Ownership Enforcement (Implemented Authentication middleware and enforced media ownership in handlers)
-- [x] Phase 6: Angular Auth Plumbing (Planned - Implementing interceptors for silent refresh)
-- [x] Phase 7: Frontend UI Integration (Planned - Login/Register screens and profile management)
+- ✅ **Core Features**: Photo/Video scanning, deduplication via SHA256 hashing.
+- ✅ **Authentication**: Full Multi-user support (IAM) with secure login/registration.
+- ✅ **Data Isolation**: Physical storage isolation and API ownership enforcement completed.
+- ✅ **Streaming**: High-performance playback for both images and videos with seekable support.
+- 🚧 **In Progress**: Implementation of Album Feature (Database, API, UI).
+- 🚧 **Next Up**: Refinement of tag editing logic and frontend UI polish.

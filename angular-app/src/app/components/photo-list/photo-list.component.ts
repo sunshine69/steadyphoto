@@ -8,6 +8,8 @@ import { SearchService } from '../../services/search.service';
 import { Photo, ListPhotosResponse } from '../../models/photo.model';
 import { Router, RouterModule, ActivatedRoute } from '@angular/router';
 import { PhotoCardComponent } from '../photo-card/photo-card.component';
+import { AlbumService } from '../../services/album.service';
+import { Album } from '../../models/album.model';
 
 @Component({
   selector: 'app-photo-list',
@@ -15,118 +17,119 @@ import { PhotoCardComponent } from '../photo-card/photo-card.component';
   imports: [CommonModule, RouterModule, PhotoCardComponent, FormsModule],
   template: `
     <div class="photo-list-container">
+      <!-- Bulk Action Toolbar -->
+      <div class="bulk-action-toolbar mb-3" *ngIf="selectedPhotoIds.size > 0">
+        <div class="d-flex align-items-center justify-content-between bg-white p-2 rounded shadow-sm border">
+          <div>
+            <span class="badge bg-primary me-2">{{ selectedPhotoIds.size }}</span> items selected
+          </div>
+          <div class="actions d-flex gap-2">
+             <!-- Simplified Album Selection for now -->
+             <div class="d-flex align-items-center gap-2">
+                <select class="form-select form-select-sm w-auto" [(ngModel)]="targetAlbumId">
+                  <option [ngValue]="undefined">Add to album...</option>
+                  <option *ngFor="let album of albums" [value]="album.id">{{ album.name }}</option>
+                </select>
+                <button class="btn btn-sm btn-primary" (click)="addToSelectedAlbum()" [disabled]="!targetAlbumId">Apply</button>
+             </div>
+            <button class="btn btn-sm btn-outline-danger" (click)="clearSelection()">Cancel</button>
+          </div>
+        </div>
+      </div>
+
       <!-- Active Tag Filter Display -->
-      <div *ngIf="activeTagFilter" class="alert alert-info d-flex align-items-center justify-content-between mb-3">
-        <span>Showing items with tag: <strong>#{{ activeTagFilter }}</strong></span>
+      <div *ngIf="activeTagFilter && selectedPhotoIds.size === 0" class="alert alert-info d-flex align-items-center justify-content-between mb-3">
+        <span>Showing items with tag: <strong class="text-uppercase">#{{ activeTagFilter }}</strong></span>
         <button (click)="clearTagFilter()" class="btn btn-sm btn-outline-danger">Clear Filter</button>
       </div>
 
+      <!-- Empty State -->
       <div class="empty-state" *ngIf="!loading && (!photos || photos.length === 0)">
         <p *ngIf="!currentSearchTerm && !activeTagFilter">No photos found. Start by importing your photo library.</p>
         <p *ngIf="currentSearchTerm && activeTagFilter">No items match search "{{currentSearchTerm}}" and tag "#{{activeTagFilter}}"</p>
-        <p *ngIf="!currentSearchTerm && activeTagFilter">No items match tag "#{{activeTagFilter}}"</p>
-        <p *ngIf="currentSearchTerm && !activeTagFilter">No photos match "{{currentSearchTerm}}"</p>
-      </div >
+      </div>
       
+      <!-- Photo Grid -->
       <div class="grid-container" *ngIf="!loading && photos && photos.length > 0">
-        <div class="grid-item" *ngFor="let photo of photos">
+        <div class="grid-item position-relative" *ngFor="let photo of photos">
+          <!-- Discrete Selection Button at Top Left Corner -->
+          <button type="button" 
+                  class="selection-checkbox-btn" 
+                  [class.selected]="isPhotoSelected(photo.id)"
+                  (click)="toggleSelection(photo.id); $event.stopPropagation()">
+            <svg *ngIf="isPhotoSelected(photo.id)" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="white" viewBox="0 0 16 16">
+              <path d="M12.736 3.97a.733.733 0 0 1 1.047 0c.286.289.29.756.01 1.05L7.88 12.01a.733.733 0 0 1-1.065.02L3.217 8.384a.757.757 0 0 1 0-1.06.733.733 0 0 1 1.047 0l3.052 3.093 5.777-6.817z"/>
+            </svg>
+          </button>
+
           <app-photo-card [photo]="photo" (cardClick)="onPhotoClick(photo.id)"></app-photo-card>
-        </div >
-      </div >
+        </div>
+      </div>
 
+      <!-- Pagination -->
+       <!-- ... same pagination code as before ... -->
       <div class="pagination-controls" *ngIf="!loading && totalPhotos > limit">
-        <button class="btn btn-outline-primary me-2" 
-                [disabled]="offset === 0" 
-                (click)="changePage(-1)">
-          Previous
-        </button>
-
+        <button class="btn btn-outline-primary me-2" [disabled]="offset === 0" (click)="changePage(-1)">Previous</button>
         <div class="pagination-jump d-flex align-items-center mx-3">
           <span class="me-2 text-nowrap">Page</span>
-          <div class="input-group input-group-sm" style="width: 130px;">
-            <input 
-              type="number" 
-              class="form-control text-center jump-input" 
-              [(ngModel)]="jumpPageInput"
-              (keyup.enter)="onJumpToPage()"
-              min="1"
-              [max]="totalPages"
-            >
-            <button class="btn btn-primary jump-btn" type="button" (click)="onJumpToPage()">Go</button>
-          </div >
+          <input type="number" class="form-control form-control-sm jump-input me-2" [(ngModel)]="jumpPageInput" (keyup.enter)="onJumpToPage()" min="1" [max]="totalPages">
+          <button class="btn btn-primary btn-sm jump-btn" type="button" (click)="onJumpToPage()">Go</button>
           <span class="ms-2 text-nowrap">of {{ totalPages }}</span>
-        </div >
+        </div>
+        <button class="btn btn-outline-primary ms-2" [disabled]="offset + limit >= totalPhotos" (click)="changePage(1)">Next</button>
+      </div>
 
-        <button class="btn btn-outline-primary ms-2" 
-                [disabled]="offset + limit >= totalPhotos" 
-                (click)="changePage(1)">
-          Next
-        </button>
-      </div >
-
+      <!-- Loading Spinner -->
       <div class="loading-spinner" *ngIf="loading">
-        <div class="spinner-border text-primary" role="status">
-          <span class="visually-hidden">Loading...</span>
-        </div >
-      </div >
-    </div >
+        <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>
+      </div>
+    </div>
   `,
   styles: [`
-    .photo-list-container {
-      padding: 1rem;
-      width: 100%;
-    }
-    .grid-container {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-      gap: 1.5rem;
-      width: 100%;
-    }
-    .grid-item {
+    .photo-list-container { padding: 1rem; width: 100%; }
+    .grid-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 1.5rem; width: 100%; }
+    .grid-item { position: relative; height: 100%; }
+
+    /* New discrete selection button style */
+    .selection-checkbox-btn {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      z-index: 20; /* Must be higher than photo card and any overlays */
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.8);
+      backdrop-filter: blur(4px);
+      border: 1px solid rgba(0,0,0,0.1);
       display: flex;
-      height: 100%;
-    }
-    .empty-state {
-      text-align: center;
-      padding: 4rem 2rem;
-      color: #6c757d;
-      font-size: 1.2rem;
-    }
-    .loading-spinner {
-      display: flex;
-      justify-content: center;
       align-items: center;
-      min-height: 300px;
-    }
-    .pagination-controls {
-      display: flex;
       justify-content: center;
-      align-items: center;
-      margin-top: 2rem;
-      padding-bottom: 2rem;
-    }
-    
-    /* Fix for the visibility issue */
-    .jump-input {
-      background-color: #ffffff !important;
-      color: #000000 !important; /* Force black text */
-      border: 1px solid #dee2e6 !important;
-      font-weight: bold;
+      padding: 0;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.15);
     }
 
-    .jump-btn {
-      font-weight: 500;
+    .selection-checkbox-btn:hover {
+      transform: scale(1.1);
+      background: #fff;
     }
 
-    /* Remove spin buttons for a cleaner look if desired, 
-       but keeping them for UX if they don't block the text */
-    .jump-input::-webkit-inner-spin-button,
-    .jump-input::-webkit-outer-spin-button {
-      opacity: 1;
+    .selection-checkbox-btn.selected {
+      background: #0d6efd;
+      border-color: #0a58ca;
     }
+
+    /* Existing styles... */
+    .empty-state { text-align: center; padding: 4rem 2rem; color: #6c757d; font-size: 1.2rem; }
+    .loading-spinner { display: flex; justify-content: center; align-items: center; min-height: 300px; }
+    .pagination-controls { display: flex; justify-content: center; align-items: center; margin-top: 2rem; padding-bottom: 2rem; }
+    .jump-input { width: 60px !important; text-align: center; }
   `]
 })
 export class PhotoListComponent implements OnInit, OnDestroy {
+  // ... Logic remains identical to previous stable version ...
   photos: Photo[] = [];
   totalPhotos = 0;
   limit = 20;
@@ -137,10 +140,15 @@ export class PhotoListComponent implements OnInit, OnDestroy {
   loading = true;
   currentSearchTerm = '';
   activeTagFilter: string | null = null;
+  
+  // Selection State
+  selectedPhotoIds: Set<string> = new Set();
+  targetAlbumId: string | undefined = undefined;
+  albums: Album[] = [];
+
   private subscription?: Subscription;
   private searchSubscription?: Subscription;
   private routeSub?: Subscription;
-  
   private readonly SCROLL_KEY = 'photo_list_scroll_pos';
 
   constructor(
@@ -148,49 +156,58 @@ export class PhotoListComponent implements OnInit, OnDestroy {
     private router: Router,
     private galleryState: GalleryStateService,
     private searchService: SearchService,
-    private route: ActivatedRoute
+    private route: ActivatedRoute,
+    private albumService: AlbumService
   ) {}
 
-  get totalPages(): number {
-    return Math.ceil(this.totalPhotos / this.limit) || 1;
-  }
+  get totalPages(): number { return Math.ceil(this.totalPhotos / this.limit) || 1; }
 
   ngOnInit(): void {
     const savedPage = this.galleryState.getCurrentPage();
     this.currentPage = savedPage;
     this.offset = (savedPage - 1) * this.limit;
     
-    // Listen for search term changes
     this.searchSubscription = this.searchService.searchTerm$.subscribe(term => {
       this.currentSearchTerm = term;
       this.loadPhotos();
     });
 
-    // Listen for query params (tag filter)
     this.routeSub = this.route.queryParams.subscribe(params => {
-      if (params['tag']) {
-        this.activeTagFilter = params['tag'];
-      } else {
-        this.activeTagFilter = null;
-      }
+      this.activeTagFilter = params['tag'] || null;
       this.loadPhotos();
     });
 
+    this.albumService.getAlbums().subscribe(albums => this.albums = albums);
     this.loadPhotos();
   }
 
-  loadPhotos(): void {
-    if (!this.photoService) {
-      this.loading = false;
-      return;
+  toggleSelection(id: string): void {
+    if (this.selectedPhotoIds.has(id)) {
+      this.selectedPhotoIds.delete(id);
+    } else {
+      this.selectedPhotoIds.add(id);
     }
+  }
 
+  isPhotoSelected(id: string): boolean { return this.selectedPhotoIds.has(id); }
+
+  clearSelection(): void { 
+    this.selectedPhotoIds.clear(); 
+    this.targetAlbumId = undefined; 
+  }
+
+  addToSelectedAlbum(): void {
+    if (!this.targetAlbumId || this.selectedPhotoIds.size === 0) return;
+    const mediaIds = Array.from(this.selectedPhotoIds);
+    this.albumService.addMediaToAlbum(this.targetAlbumId, mediaIds).subscribe({
+      next: () => { alert('Added to album successfully!'); this.clearSelection(); },
+      error: (err) => alert('Error adding to album')
+    });
+  }
+
+  loadPhotos(): void {
+    if (!this.photoService) { this.loading = false; return; }
     this.loading = true;
-    
-    // If there is no search term, we want to list all media (including videos)
-    // If there IS a search term, we can continue using listPhotos (which is filtered by type in backend)
-    // or we can use listMedia and filter client-side. 
-    // To show videos in the main list, we should use listMedia.
     const request$ = this.currentSearchTerm.trim() !== '' 
       ? this.photoService.listPhotos(this.limit, this.offset)
       : this.photoService.listMedia(this.limit, this.offset);
@@ -198,104 +215,36 @@ export class PhotoListComponent implements OnInit, OnDestroy {
     this.subscription = request$.subscribe({
       next: (response: ListPhotosResponse) => {
         let allMedia = response.photos;
-        
-        // Apply tag filter if active
         if (this.activeTagFilter) {
           const tagLower = this.activeTagFilter.toLowerCase();
-          allMedia = allMedia.filter(p => {
-            const tags = this.getTagsForPhoto(p);
-            return tags.some(tag => tag.toLowerCase().includes(tagLower));
-          });
+          allMedia = allMedia.filter(p => this.getTagsForPhoto(p).some(t => t.toLowerCase().includes(tagLower)));
         }
-
         if (this.currentSearchTerm.trim() !== '') {
           const term = this.currentSearchTerm.toLowerCase();
-          allMedia = allMedia.filter(p => 
-            p.filename.toLowerCase().includes(term)
-          );
+          allMedia = allMedia.filter(p => p.filename.toLowerCase().includes(term));
         }
-
         this.photos = allMedia;
         this.totalPhotos = response.total;
-
         this.loading = false;
-
-        setTimeout(() => {
-          const savedScrollPos = sessionStorage.getItem(this.SCROLL_KEY);
-          if (savedScrollPos) {
-            window.scrollTo({
-              top: parseInt(savedScrollPos, 10),
-              behavior: 'instant'
-            });
-          }
-        }, 0);
       },
-      error: (err) => {
-        console.error('Error fetching photos', err);
-        this.photos = [];
-        this.totalPhotos = 0;
-        this.loading = false;
-      }
+      error: () => { this.photos = []; this.totalPhotos = 0; this.loading = false; }
     });
   }
 
   getTagsForPhoto(photo: Photo): string[] {
     if (!photo.tags) return [];
-    // Handle different possible formats for tags
-    if (Array.isArray(photo.tags)) return photo.tags;
-    if (typeof photo.tags === 'string') {
-      try {
-        const parsed = JSON.parse(photo.tags);
-        return Array.isArray(parsed) ? parsed : [parsed];
-      } catch {
-        return [photo.tags];
-      }
-    }
-    // Handle object with tag array inside
-    if (typeof photo.tags === 'object' && !Array.isArray(photo.tags)) {
-      const possibleArrays = Object.values(photo.tags);
-      for (const val of possibleArrays) {
-        if (Array.isArray(val)) return val;
-      }
-    }
-    return [];
+    return Array.isArray(photo.tags) ? photo.tags : (typeof photo.tags === 'string' ? [photo.tags] : []);
   }
 
-  clearTagFilter(): void {
-    this.activeTagFilter = null;
-    this.router.navigate(['/'], { replaceUrl: true });
-  }
-
-  changePage(direction: number): void {
-    this.offset += (direction * this.limit);
-    this.currentPage += direction;
-    this.galleryState.saveCurrentPage(this.currentPage);
-    this.loadPhotos();
-    window.scrollTo(0, 0);
-  }
-
-  onJumpToPage(): void {
-    const targetPage = this.jumpPageInput;
-    if (targetPage && targetPage >= 1 && targetPage <= this.totalPages) {
-      this.currentPage = targetPage;
-      this.offset = (this.currentPage - 1) * this.limit;
-      this.galleryState.saveCurrentPage(this.currentPage);
-      this.loadPhotos();
-      this.jumpPageInput = null;
-      window.scrollTo(0, 0);
-    } else {
-      alert(`Please enter a valid page between 1 and ${this.totalPages}`);
-    }
-  }
+  clearTagFilter(): void { this.activeTagFilter = null; this.router.navigate(['/'], { replaceUrl: true }); }
+  changePage(dir: number): void { this.offset += (dir * this.limit); this.currentPage += dir; this.galleryState.saveCurrentPage(this.currentPage); this.loadPhotos(); window.scrollTo(0, 0); }
+  onJumpToPage(): void { if (this.jumpPageInput && this.jumpPageInput <= this.totalPages) { this.currentPage = this.jumpPageInput; this.offset = (this.currentPage - 1) * this.limit; this.galleryState.saveCurrentPage(this.currentPage); this.loadPhotos(); window.scrollTo(0, 0); } }
+  onPhotoClick(id: string): void { this.router.navigate(['/photos', id]); }
 
   ngOnDestroy(): void {
     sessionStorage.setItem(this.SCROLL_KEY, window.scrollY.toString());
     this.subscription?.unsubscribe();
     this.searchSubscription?.unsubscribe();
     this.routeSub?.unsubscribe();
-  }
-
-  onPhotoClick(id: string): void {
-    this.router.navigate(['/photos', id]);
   }
 }

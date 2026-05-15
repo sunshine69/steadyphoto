@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"time"
 
 	"steadyphoto/internal/domain"
 
@@ -60,7 +59,7 @@ func (r *PostgresMediaRepository) GetByHash(ctx context.Context, hash string) (*
 
 func (r *PostgresMediaRepository) Update(ctx context.Context, media *domain.Media) error {
 	query := `
-		UPDATE media 
+		UPDATE media
 		SET path = :path, filename = :filename, size_bytes = :size_bytes, width = :width, height = :height, media_type = :media_type, metadata = :metadata, video_metadata = :video_metadata, updated_at = :updated_at, tags = :tags
 		WHERE id = :id AND user_id = :user_id
 	`
@@ -183,57 +182,6 @@ func (r *PostgresMediaRepository) SearchByTags(ctx context.Context, tags string,
 
 	if userID != nil {
 		query += ` AND user_id = $2`
-		args = append(args, *userID)
-	}
-
-	err := r.db.SelectContext(ctx, &mediaList, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	return mediaList, nil
-}
-
-// Album Repository Implementation
-
-type PostgresAlbumRepository struct {
-	db *sqlx.DB
-}
-
-func NewPostgresAlbumRepository(db *sqlx.DB) *PostgresAlbumRepository {
-	return &PostgresAlbumRepository{db: db}
-}
-
-func (r *PostgresAlbumRepository) Create(ctx context.Context, name string, userID uuid.UUID) (uuid.UUID, error) {
-	id := uuid.New()
-	query := `INSERT INTO albums (id, name, user_id, created_at) VALUES ($1, $2, $3, $4)`
-	_, err := r.db.ExecContext(ctx, query, id, name, userID, time.Now())
-	return id, err
-}
-
-func (r *PostgresAlbumRepository) AddMedia(ctx context.Context, albumID uuid.UUID, mediaID uuid.UUID) error {
-	query := `INSERT INTO album_photos (album_id, media_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`
-	_, err := r.db.ExecContext(ctx, query, albumID, mediaID)
-	return err
-}
-
-func (r *PostgresAlbumRepository) RemoveMedia(ctx context.Context, albumID uuid.UUID, mediaID uuid.UUID) error {
-	query := `DELETE FROM album_photos WHERE album_id = $1 AND media_id = $2`
-	_, err := r.db.ExecContext(ctx, query, albumID, mediaID)
-	return err
-}
-
-func (r *PostgresAlbumRepository) GetMedia(ctx context.Context, albumID uuid.UUID, userID *uuid.UUID) ([]*domain.Media, error) {
-	var mediaList []*domain.Media
-	query := `
-		SELECT m.* FROM media m
-		JOIN album_photos ap ON m.id = ap.media_id
-		JOIN albums a ON a.id = ap.album_id
-		WHERE ap.album_id = $1
-	`
-	args := []interface{}{albumID}
-
-	if userID != nil {
-		query += ` AND a.user_id = $2`
 		args = append(args, *userID)
 	}
 

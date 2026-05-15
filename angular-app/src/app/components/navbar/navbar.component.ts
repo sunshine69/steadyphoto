@@ -61,6 +61,9 @@ import { AuthService } from '../../services/auth.service';
               <li class="nav-item me-3 text-white d-flex align-items-center" style="font-size: 0.9rem; opacity: 0.8;">
                 Online
               </li>
+              <li class="nav-item">
+                <a class="nav-link px-2" routerLink="/albums">Albums</a>
+              </li>
               <li class="nav-item dropdown">
                 <a class="nav-link btn btn-outline-light text-white border-0 p-0 ms-2" (click)="toggleAccountDropdown($event)" role="button">
                    Account

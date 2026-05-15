@@ -21,6 +21,7 @@ import (
 type Server struct {
 	router         *chi.Mux
 	mediaRepo      domain.MediaRepository
+	albumRepo      domain.AlbumRepository
 	userRepo       domain.UserRepository
 	sessionRepo    domain.SessionRepository
 	storageService *storage.StorageService
@@ -29,6 +30,7 @@ type Server struct {
 
 func NewServer(
 	mediaRepo domain.MediaRepository,
+	albumRepo domain.AlbumRepository,
 	userRepo domain.UserRepository,
 	sessionRepo domain.SessionRepository,
 	storageService *storage.StorageService,
@@ -37,6 +39,7 @@ func NewServer(
 	s := &Server{
 		router:         chi.NewRouter(),
 		mediaRepo:      mediaRepo,
+		albumRepo:      albumRepo,
 		userRepo:       userRepo,
 		sessionRepo:    sessionRepo,
 		storageService: storageService,
@@ -80,7 +83,7 @@ func (s *Server) routes() {
 			// Public sub-routes (No middleware applied here)
 			r.Post("/register", s.handleRegister)
 			r.Post("/login", s.handleLogin)
-
+			r.Post("/refresh", s.handleRefresh)
 			// Profile routes - MUST be authenticated
 			r.Group(func(profile chi.Router) {
 				profile.Use(s.AuthMiddleware)
@@ -111,6 +114,21 @@ func (s *Server) routes() {
 				r.Get("/thumb", s.handleGetThumbnail)
 				r.Patch("/tags", s.handleUpdateTags)
 			})
+			albumH := NewAlbumHandler(s.albumRepo, s.mediaRepo)
+			// Album endpoints
+			protected.Route("/albums", func(r chi.Router) {
+				r.Post("/", albumH.CreateAlbum)
+				r.Get("/", albumH.ListAlbums)
+				r.Get("/{id}", albumH.GetAlbum)
+				r.Put("/{id}", albumH.UpdateAlbum)
+				r.Delete("/{id}", albumH.DeleteAlbum)
+
+				// Album media sub-routes
+				r.Post("/{id}/media", albumH.AddMediaToAlbum)
+				r.Get("/{id}/media", albumH.GetAlbumMedia)
+				r.Delete("/{id}/media/{media_id}", albumH.RemoveMediaFromAlbum)
+			})
+
 		})
 	})
 
