@@ -269,15 +269,16 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
   }
 
   saveTags(): void {
-    if (!this.photo || !this.tagInput.trim()) return;
+    if (!this.photo) return; // Allow empty string to clear tags
     
     // Use the parser which now supports colon, then join with colon for storage
     const tagsString = this.parseTagString(this.tagInput).join(':'); 
     this.photoService.updateTags(this.photo.id, tagsString).subscribe({
       next: (updated) => {
         if (this.photo && updated) {
-          // Use spread operator to create a new object reference for Angular change detection
-          this.photo = { ...this.photo, ...updated };
+          // Update the local photo object with new tags to trigger change detection
+          // The backend only returns { status: "success" }, so we manually set the tags field
+          this.photo = { ...this.photo, tags: tagsString };
         }
         this.isEditingTags = false;
         this.tagInput = '';
