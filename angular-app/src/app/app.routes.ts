@@ -5,6 +5,7 @@ import { AlbumListComponent } from './components/album-list/album-list.component
 import { AlbumDetailComponent } from './components/album-detail/album-detail.component';
 import { LoginComponent } from './components/login/login.component';
 import { RegisterComponent } from './components/register/register.component';
+import { PresentationComponent } from './components/presentation/presentation.component';
 import { authGuard } from './guards/auth.guard';
 
 export const routes: Routes = [
@@ -12,6 +13,7 @@ export const routes: Routes = [
   { path: 'photos/:id', component: PhotoDetailComponent, canActivate: [authGuard] },
   { path: 'albums', component: AlbumListComponent, canActivate: [authGuard] },
   { path: 'albums/:id', component: AlbumDetailComponent, canActivate: [authGuard] },
+  { path: 'presentation', component: PresentationComponent, canActivate: [authGuard] },
   { path: 'login', component: LoginComponent },
   { path: 'register', component: RegisterComponent },
   { path: '**', redirectTo: '' }

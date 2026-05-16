@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { PhotoService } from '../../services/photo.service';
+import { PresentationService, MediaItem } from '../../services/presentation.service';
 import { Photo } from '../../models/photo.model';
 
 @Component({
@@ -46,9 +47,12 @@ import { Photo } from '../../models/photo.model';
               </div>
               <div class="btn-group">
                 <a [href]="photo.path" download="{{ photo.filename }}" class="btn btn-outline-secondary">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2 2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                   Download
                 </a>
+                <button (click)="startPresentation()" class="btn btn-warning ms-2">
+                  🎬 Presentation Mode
+                </button>
                 <button (click)="goBack()" class="btn btn-primary ms-2">
                   Back to Gallery
                 </button>
@@ -193,6 +197,7 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private photoService = inject(PhotoService);
+  private presentationService = inject(PresentationService);
   private subscription?: Subscription;
 
   // Tag editing state
@@ -254,6 +259,36 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
 
   goBack(): void {
     window.history.back();
+  }
+
+  startPresentation(): void {
+    if (!this.photo) return;
+
+    // Fetch all gallery items to create a presentation list starting from current photo
+    this.photoService.listMedia(100, 0).subscribe({
+      next: (response) => {
+        const mediaItems: MediaItem[] = response.photos.map(p => ({
+          id: p.id,
+          path: p.path,
+          filename: p.filename,
+          mediaType: p.mediaType
+        }));
+
+        // Find the index of current photo in the list
+        const startIndex = mediaItems.findIndex(item => item.id === this.photo?.id);
+        
+        if (startIndex !== -1 && mediaItems.length > 0) {
+          this.presentationService.open(mediaItems, startIndex);
+          this.router.navigate(['/presentation']);
+        } else {
+          alert('No items available for presentation.');
+        }
+      },
+      error: (err) => {
+        console.error('Failed to load media for presentation', err);
+        alert('Failed to start presentation mode.');
+      }
+    });
   }
 
   // Tag editing methods

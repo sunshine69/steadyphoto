@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { ActivatedRoute, RouterModule, Router } from '@angular/router';
 import { AlbumService } from '../../services/album.service';
 import { PhotoService } from '../../services/photo.service';
+import { PresentationService, MediaItem } from '../../services/presentation.service';
 import { Photo } from '../../models/photo.model';
 import { Album } from '../../models/album.model';
 import { PhotoCardComponent } from '../photo-card/photo-card.component';
@@ -47,12 +48,19 @@ import { FormsModule } from '@angular/forms';
         </div>
         <div>
            <button class="btn btn-outline-secondary me-2" (click)="goBack()">Back to Albums</button>
+           <button 
+             *ngIf="photos.length > 0 && !loading"
+             class="btn btn-warning" 
+             (click)="startPresentationFromAlbum()"
+             [disabled]="photos.length === 0">
+             🎬 Presentation Mode
+           </button>
         </div>
       </div>
 
       <!-- Media Grid -->
       <div class="grid-container" *ngIf="!loading && photos.length > 0">
-        <div class="grid-item position-relative" *ngFor="let photo of photos">
+        <div class="grid-item position-relative" *ngFor="let photo of photos; let i = index">
           <!-- Discrete Selection Button at Top Left Corner -->
           <button type="button" 
                   class="selection-checkbox-btn" 
@@ -105,10 +113,11 @@ import { FormsModule } from '@angular/forms';
     }
   `]
 })
-export class AlbumDetailComponent implements OnInit {
+export class AlbumDetailComponent implements OnInit, OnDestroy {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private albumService = inject(AlbumService);
+  private presentationService = inject(PresentationService);
 
   albumName: string = 'Loading...';
   photos: Photo[] = [];
@@ -125,6 +134,10 @@ export class AlbumDetailComponent implements OnInit {
     } else {
       this.router.navigate(['/albums']);
     }
+  }
+
+  ngOnDestroy(): void {
+    // Clean up presentation state when leaving album detail
   }
 
   private loadAlbumContent(id: string): void {
@@ -186,4 +199,24 @@ export class AlbumDetailComponent implements OnInit {
   goBack(): void { this.router.navigate(['/albums']); }
 
   onPhotoClick(id: string): void { this.router.navigate(['/photos', id]); }
+
+  startPresentationFromAlbum(): void {
+    if (this.photos.length === 0 || this.loading) return;
+
+    // Convert photos to MediaItem format for presentation service
+    const mediaItems: MediaItem[] = this.photos.map(p => ({
+      id: p.id,
+      path: p.path,
+      filename: p.filename,
+      mediaType: p.mediaType
+    }));
+
+    if (mediaItems.length > 0) {
+      // Start from the first item in the album
+      this.presentationService.open(mediaItems, 0);
+      this.router.navigate(['/presentation']);
+    } else {
+      alert('No items available for presentation.');
+    }
+  }
 }
