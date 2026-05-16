@@ -127,6 +127,7 @@ func (s *Server) routes() {
 				r.Post("/{id}/media", albumH.AddMediaToAlbum)
 				r.Get("/{id}/media", albumH.GetAlbumMedia)
 				r.Delete("/{id}/media/{media_id}", albumH.RemoveMediaFromAlbum)
+				r.Delete("/{id}/media", albumH.BulkRemoveMediaFromAlbum)
 			})
 
 		})

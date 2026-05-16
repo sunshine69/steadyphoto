@@ -1,9 +1,9 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import { Observable, catchError, throwError } from 'rxjs';
+import { catchError, throwError, Observable } from 'rxjs';
 import { environment } from '../../environments/environment';
-import { Album, CreateAlbumRequest, UpdateAlbumRequest, AddMediaToAlbumRequest } from '../models/album.model';
-import { Photo, ListPhotosResponse } from '../models/photo.model';
+import { Album, CreateAlbumRequest, UpdateAlbumRequest, AddMediaToAlbumRequest, BulkRemoveMediaRequest } from '../models/album.model';
+import { Photo } from '../models/photo.model';
 
 @Injectable({
   providedIn: 'root'
@@ -14,7 +14,6 @@ export class AlbumService {
 
   /**
    * Fetches all albums for the authenticated user.
-   * Note: Expects X-User-ID header in interceptor or manually added if testing.
    */
   getAlbums(): Observable<Album[]> {
     return this.http.get<Album[]>(`${this.API_BASE_URL}/albums`)
@@ -67,6 +66,15 @@ export class AlbumService {
    */
   removeMediaFromAlbum(albumId: string, mediaId: string): Observable<void> {
     return this.http.delete<void>(`${this.API_BASE_URL}/albums/${albumId}/media/${mediaId}`)
+      .pipe(catchError(this.handleError));
+  }
+
+  /**
+   * Bulk removes multiple media assets from an album.
+   */
+  bulkRemoveMediaFromAlbum(albumId: string, mediaIds: string[]): Observable<void> {
+    const request: BulkRemoveMediaRequest = { mediaIds };
+    return this.http.delete<void>(`${this.API_BASE_URL}/albums/${albumId}/media`, { body: request })
       .pipe(catchError(this.handleError));
   }
 

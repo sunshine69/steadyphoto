@@ -21,10 +21,11 @@ export class PhotoService {
   private normalizePhoto(p: any): Photo {
     const id = p.ID ?? p.id ?? '';
     
-    // Determine media type - check multiple possible field names
+    // Determine media type - check multiple possible field names (MediaType, MediaType, media_type, mediaType)
     let mediaType: 'photo' | 'video' | undefined;
-    if (p.MediaType || p.media_type) {
-      const mt = (p.MediaType || p.media_type).toLowerCase();
+    const rawMediaType = p.MediaType || p.mediaType || p.media_type;
+    if (rawMediaType) {
+      const mt = String(rawMediaType).toLowerCase();
       if (mt === 'video') {
         mediaType = 'video';
       } else {

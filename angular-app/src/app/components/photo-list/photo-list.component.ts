@@ -1,4 +1,4 @@
-import { Component, Inject, OnInit, OnDestroy, Optional } from '@angular/core';
+import { Component, inject, Inject, OnInit, OnDestroy, Optional } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
@@ -23,16 +23,30 @@ import { Album } from '../../models/album.model';
           <div>
             <span class="badge bg-primary me-2">{{ selectedPhotoIds.size }}</span> items selected
           </div>
-          <div class="actions d-flex gap-2">
-             <!-- Simplified Album Selection for now -->
-             <div class="d-flex align-items-center gap-2">
-                <select class="form-select form-select-sm w-auto" [(ngModel)]="targetAlbumId">
+          <div class="actions d-flex gap-3 align-items-center">
+             <!-- Album Selection -->
+             <div class="d-flex align-items-center gap-2 border-end pe-3">
+                <select class="form-select form-select-sm w-auto text-dark" [(ngModel)]="targetAlbumId">
                   <option [ngValue]="undefined">Add to album...</option>
-                  <option *ngFor="let album of albums" [value]="album.id">{{ album.name }}</option>
+                  <option *ngFor="let album of albums" [ngValue]="album.id">{{ album.name }}</option>
                 </select>
-                <button class="btn btn-sm btn-primary" (click)="addToSelectedAlbum()" [disabled]="!targetAlbumId">Apply</button>
+                <button class="btn btn-sm btn-primary" (click)="addToSelectedAlbum()" [disabled]="!targetAlbumId">Add</button>
              </div>
-            <button class="btn btn-sm btn-outline-danger" (click)="clearSelection()">Cancel</button>
+
+             <!-- Removal Actions -->
+             <div class="d-flex align-items-center gap-2">
+                <span class="text-muted small me-1 text-nowrap">Remove from all albums:</span>
+                <select class="form-select form-select-sm w-auto text-dark" [(ngModel)]="targetAlbumIdForRemoval">
+                  <option [ngValue]="undefined">Select album...</option>
+                  <option *ngFor="let album of albums" [ngValue]="album.id">{{ album.name }}</option>
+                </select>
+                <button class="btn btn-sm btn-outline-danger" (click)="bulkRemoveFromSelectedAlbum()" [disabled]="!targetAlbumIdForRemoval">Remove</button>
+             </div>
+
+            <!-- Global Actions -->
+            <div class="d-flex align-items-center gap-2 ps-3 border-start ms-2">
+              <button class="btn btn-sm btn-secondary" (click)="clearSelection()">Cancel</button>
+            </div>
           </div>
         </div>
       </div>
@@ -66,8 +80,7 @@ import { Album } from '../../models/album.model';
         </div>
       </div>
 
-      <!-- Pagination -->
-       <!-- ... same pagination code as before ... -->
+       <!-- Pagination -->
       <div class="pagination-controls" *ngIf="!loading && totalPhotos > limit">
         <button class="btn btn-outline-primary me-2" [disabled]="offset === 0" (click)="changePage(-1)">Previous</button>
         <div class="pagination-jump d-flex align-items-center mx-3">
@@ -90,38 +103,12 @@ import { Album } from '../../models/album.model';
     .grid-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 1.5rem; width: 100%; }
     .grid-item { position: relative; height: 100%; }
 
-    /* New discrete selection button style */
     .selection-checkbox-btn {
-      position: absolute;
-      top: 8px;
-      left: 8px;
-      z-index: 20; /* Must be higher than photo card and any overlays */
-      width: 26px;
-      height: 26px;
-      border-radius: 50%;
-      background: rgba(255, 255, 255, 0.8);
-      backdrop-filter: blur(4px);
-      border: 1px solid rgba(0,0,0,0.1);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 0;
-      cursor: pointer;
-      transition: all 0.2s ease;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+      position: absolute; top: 8px; left: 8px; z-index: 20; width: 26px; height: 26px; border-radius: 50%; background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(4px); border: 1px solid rgba(0,0,0,0.1); display: flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; transition: all 0.2s ease; box-shadow: 0 2px 4px rgba(0,0,0,0.15);
     }
 
-    .selection-checkbox-btn:hover {
-      transform: scale(1.1);
-      background: #fff;
-    }
-
-    .selection-checkbox-btn.selected {
-      background: #0d6efd;
-      border-color: #0a58ca;
-    }
-
-    /* Existing styles... */
+    .selection-checkbox-btn:hover { transform: scale(1.1); background: #fff; }
+    .selection-checkbox-btn.selected { background: #0d6efd; border-color: #0a58ca; }
     .empty-state { text-align: center; padding: 4rem 2rem; color: #6c757d; font-size: 1.2rem; }
     .loading-spinner { display: flex; justify-content: center; align-items: center; min-height: 300px; }
     .pagination-controls { display: flex; justify-content: center; align-items: center; margin-top: 2rem; padding-bottom: 2rem; }
@@ -129,7 +116,6 @@ import { Album } from '../../models/album.model';
   `]
 })
 export class PhotoListComponent implements OnInit, OnDestroy {
-  // ... Logic remains identical to previous stable version ...
   photos: Photo[] = [];
   totalPhotos = 0;
   limit = 20;
@@ -141,9 +127,9 @@ export class PhotoListComponent implements OnInit, OnDestroy {
   currentSearchTerm = '';
   activeTagFilter: string | null = null;
   
-  // Selection State
   selectedPhotoIds: Set<string> = new Set();
   targetAlbumId: string | undefined = undefined;
+  targetAlbumIdForRemoval: string | undefined = undefined;
   albums: Album[] = [];
 
   private subscription?: Subscription;
@@ -177,16 +163,17 @@ export class PhotoListComponent implements OnInit, OnDestroy {
       this.loadPhotos();
     });
 
-    this.albumService.getAlbums().subscribe(albums => this.albums = albums);
+    // Load albums to populate the dropdown!
+    this.albumService.getAlbums().subscribe({
+        next: (albums: Album[]) => this.albums = albums,
+        error: (err: any) => console.error('Error loading albums for selection', err)
+    });
     this.loadPhotos();
   }
 
   toggleSelection(id: string): void {
-    if (this.selectedPhotoIds.has(id)) {
-      this.selectedPhotoIds.delete(id);
-    } else {
-      this.selectedPhotoIds.add(id);
-    }
+    if (this.selectedPhotoIds.has(id)) { this.selectedPhotoIds.delete(id); } 
+    else { this.selectedPhotoIds.add(id); }
   }
 
   isPhotoSelected(id: string): boolean { return this.selectedPhotoIds.has(id); }
@@ -194,15 +181,41 @@ export class PhotoListComponent implements OnInit, OnDestroy {
   clearSelection(): void { 
     this.selectedPhotoIds.clear(); 
     this.targetAlbumId = undefined; 
+    this.targetAlbumIdForRemoval = undefined;
   }
 
   addToSelectedAlbum(): void {
-    if (!this.targetAlbumId || this.selectedPhotoIds.size === 0) return;
+    if (!this.targetAlbumId || typeof this.targetAlbumId !== 'string' || this.selectedPhotoIds.size === 0) {
+      alert('Please select a valid album first');
+      return;
+    }
     const mediaIds = Array.from(this.selectedPhotoIds);
     this.albumService.addMediaToAlbum(this.targetAlbumId, mediaIds).subscribe({
       next: () => { alert('Added to album successfully!'); this.clearSelection(); },
-      error: (err) => alert('Error adding to album')
+      error: (err: any) => alert(`Error adding to album - ${err.message || 'Unknown error'}`)
     });
+  }
+
+  bulkRemoveFromSelectedAlbum(): void {
+    if (!this.targetAlbumIdForRemoval || typeof this.targetAlbumIdForRemoval !== 'string' || this.selectedPhotoIds.size === 0) {
+      alert('Please select an album to remove items from');
+      return;
+    }
+
+    if (!confirm(`Are you sure you want to remove ${this.selectedPhotoIds.size} selected items from the "${this.getAlbumName(this.targetAlbumIdForRemoval)}" album?`)) {
+      return;
+    }
+
+    const mediaIds = Array.from(this.selectedPhotoIds);
+    this.albumService.bulkRemoveMediaFromAlbum(this.targetAlbumIdForRemoval, mediaIds).subscribe({
+      next: () => { alert('Removed from album successfully!'); this.clearSelection(); },
+      error: (err: any) => alert(`Error removing from album - ${err.message || 'Unknown error'}`)
+    });
+  }
+
+  private getAlbumName(id: string): string {
+    const album = this.albums.find(a => a.id === id);
+    return album ? album.name : id;
   }
 
   loadPhotos(): void {

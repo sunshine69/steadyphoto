@@ -118,6 +118,15 @@ func (r *PostgresAlbumRepository) RemoveMedia(ctx context.Context, albumID uuid.
 	return err
 }
 
+func (r *PostgresAlbumRepository) BulkRemoveMedia(ctx context.Context, albumID uuid.UUID, mediaIDs []uuid.UUID) error {
+	if len(mediaIDs) == 0 {
+		return nil
+	}
+	query := `DELETE FROM album_photos WHERE album_id = $1 AND media_id = ANY($2)`
+	_, err := r.db.ExecContext(ctx, query, albumID, mediaIDs)
+	return err
+}
+
 func (r *PostgresAlbumRepository) GetMedia(ctx context.Context, albumID uuid.UUID, userID uuid.UUID) ([]*domain.Media, error) {
 	var mediaList []*domain.Media
 	query := `

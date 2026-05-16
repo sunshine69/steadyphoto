@@ -38,13 +38,13 @@ func (m *Metadata) Scan(value interface{}) error {
 
 // VideoMetadata represents technical properties of a video file
 type VideoMetadata struct {
-	Duration      float64 `json:"duration"`
-	Width         int     `json:"width"`
-	Height        int     `json:"height"`
-	Bitrate       int64   `json:"bitrate"`
-	VideoCodec    string  `json:"video_codec"`
-	AudioCodec    string  `json:"audio_codec"`
-	FrameRate     float64 `json:"frame_rate"`
+	Duration      float64   `json:"duration"`
+	Width         int       `json:"width"`
+	Height        int       `json:"height"`
+	Bitrate       int64     `json:"bitrate"`
+	VideoCodec    string    `json:"video_codec"`
+	AudioCodec    string    `json:"audio_codec"`
+	FrameRate     float64   `json:"frame_rate"`
 	CreatedAt     time.Time `json:"created_at"`
 	ModifiedAt    time.Time `json:"modified_at"`
 }
@@ -100,30 +100,30 @@ func (m *MediaType) Scan(value interface{}) error {
 
 // Media represents a single image/video asset
 type Media struct {
-	ID            uuid.UUID      `db:"id"`
-	Path          string         `db:"path"`
-	Filename      string         `db:"filename"`
-	Hash          string         `db:"hash"`
-	SizeBytes     int64          `db:"size_bytes"`
-	Width         int            `db:"width"`
-	Height        int            `db:"height"`
-	CapturedAt    time.Time      `db:"captured_at"`
-	MediaType     MediaType      `db:"media_type"`
-	Metadata      Metadata       `db:"metadata"`
-	VideoMetadata VideoMetadata  `db:"video_metadata"`
-	CreatedAt     time.Time      `db:"created_at"`
-	UpdatedAt     time.Time      `db:"updated_at"`
-	Tags          string         `db:"tags"`
-	UserID        uuid.UUID      `db:"user_id"`
+	ID            uuid.UUID      `db:"id" json:"id"`
+	Path          string         `db:"path" json:"path"`
+	Filename      string         `db:"filename" json:"filename"`
+	Hash          string         `db:"hash" json:"hash"`
+	SizeBytes     int64          `db:"size_bytes" json:"sizeBytes"`
+	Width         int            `db:"width" json:"width"`
+	Height        int            `db:"height" json:"height"`
+	CapturedAt    time.Time      `db:"captured_at" json:"capturedAt"`
+	MediaType     MediaType      `db:"media_type" json:"mediaType"`
+	Metadata      Metadata       `db:"metadata" json:"metadata"`
+	VideoMetadata VideoMetadata  `db:"video_metadata" json:"videoMetadata"`
+	CreatedAt     time.Time      `db:"created_at" json:"createdAt"`
+	UpdatedAt     time.Time      `db:"updated_at" json:"updatedAt"`
+	Tags          string         `db:"tags" json:"tags"`
+	UserID        uuid.UUID      `db:"user_id" json:"userId"`
 }
 
 // Face represents a detected face in a media item
 type Face struct {
-	ID          uuid.UUID   `db:"id"`
-	MediaID     uuid.UUID   `db:"media_id"`
-	BoundingBox BoundingBox `db:"bounding_box"`
-	Embedding   []float32   `db:"embedding"` // For vector search
-	CreatedAt   time.Time   `db:"created_at"`
+	ID          uuid.UUID   `json:"id"`
+	MediaID     uuid.UUID   `json:"mediaId"`
+	BoundingBox BoundingBox `json:"boundingBox"`
+	Embedding   []float32   `json:"embedding"` // For vector search
+	CreatedAt   time.Time   `json:"createdAt"`
 }
 
 // BoundingBox defines the location of a face in an image
@@ -136,12 +136,12 @@ type BoundingBox struct {
 
 // Album represents a logical grouping of media assets
 type Album struct {
-	ID          uuid.UUID  `db:"id"`
-	UserID      uuid.UUID  `db:"user_id"`
-	Name        string     `db:"name"`
-	Description *string    `db:"description"` // Pointer allows handling NULL values from the DB
-	CreatedAt   time.Time  `db:"created_at"`
-	UpdatedAt   time.Time  `db:"updated_at"`
+	ID          uuid.UUID `db:"id" json:"id"`
+	UserID      uuid.UUID `db:"user_id" json:"userId"`
+	Name        string    `db:"name" json:"name"`
+	Description *string   `db:"description" json:"description"` // Pointer allows handling NULL values from the DB
+	CreatedAt   time.Time `db:"created_at" json:"createdAt"`
+	UpdatedAt   time.Time `db:"updated_at" json:"updatedAt"`
 }
 
 // MediaRepository defines the interface for media storage
@@ -175,5 +175,6 @@ type AlbumRepository interface {
 	// Media Association (Handles many-to-many relationships with position support)
 	AddMedia(ctx context.Context, albumID uuid.UUID, mediaIDs []uuid.UUID) error
 	RemoveMedia(ctx context.Context, albumID uuid.UUID, mediaID uuid.UUID) error
+	BulkRemoveMedia(ctx context.Context, albumID uuid.UUID, mediaIDs []uuid.UUID) error
 	GetMedia(ctx context.Context, albumID uuid.UUID, userID uuid.UUID) ([]*Media, error)
 }

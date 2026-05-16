@@ -20,3 +20,7 @@ export interface UpdateAlbumRequest {
 export interface AddMediaToAlbumRequest {
   mediaIds: string[];
 }
+
+export interface BulkRemoveMediaRequest {
+  mediaIds: string[];
+}

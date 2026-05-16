@@ -34,7 +34,11 @@ type UpdateAlbumRequest struct {
 }
 
 type AddMediaRequest struct {
-	MediaIDs []uuid.UUID `json:"media_ids"`
+	MediaIDs []uuid.UUID `json:"mediaIds"`
+}
+
+type BulkRemoveMediaRequest struct {
+	MediaIDs []uuid.UUID `json:"mediaIds"`
 }
 
 // CreateAlbum handles POST /api/v1/albums
@@ -164,9 +168,6 @@ func (h *AlbumHandler) UpdateAlbum(w http.ResponseWriter, r *http.Request) {
 	}
 
 	album.Name = req.Name
-	album.Description = &req.Description // Note: handling pointer if needed or converting string to *string
-
-	// Re-assigning description correctly for the struct type (which is *string now)
 	desc := req.Description
 	album.Description = &desc
 
@@ -274,7 +275,7 @@ func (h *AlbumHandler) RemoveMediaFromAlbum(w http.ResponseWriter, r *http.Reque
 
 	userID, ok := GetUserIDFromContext(ctx)
 	if !ok {
-		log.Printf("[DEBUG] AlbumHandler:RemoveMediaFromAlbum - unauthorized (no userID in context)")
+		log.Printf("[ERROR] AlbumHandler:RemoveMediaFromAlbum - unauthorized (no userID in context)")
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -313,6 +314,51 @@ func (h *AlbumHandler) RemoveMediaFromAlbum(w http.ResponseWriter, r *http.Reque
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// BulkRemoveMediaFromAlbum handles DELETE /api/v1/albums/{id}/media
+func (h *AlbumHandler) BulkRemoveMediaFromAlbum(w http.ResponseWriter, r *http.Request) {
+	log.Printf("[DEBUG] AlbumHandler:BulkRemoveMediaFromAlbum starting")
+	ctx := r.Context()
+
+	userID, ok := GetUserIDFromContext(ctx)
+	if !ok {
+		log.Printf("[ERROR] AlbumHandler:BulkRemoveMediaFromAlbum - unauthorized (no userID in context)")
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	idStr := chi.URLParam(r, "id")
+	albumID, err := uuid.Parse(idStr)
+	if err != nil {
+		log.Printf("[ERROR] AlbumHandler:BulkRemoveMediaFromAlbum - invalid album UUID %s: %v", idStr, err)
+		http.Error(w, "invalid album id", http.StatusBadRequest)
+		return
+	}
+
+	// Verify ownership of album first
+	_, err = h.albumRepo.GetByID(ctx, albumID, userID)
+	if err != nil {
+		log.Printf("[ERROR] AlbumHandler:BulkRemoveMediaFromAlbum - unauthorized/not found for ID %s (user %s): %v", albumID, userID, err)
+		http.Error(w, "unauthorized or album not found", http.StatusForbidden)
+		return
+	}
+
+	var req BulkRemoveMediaRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Printf("[ERROR] AlbumHandler:BulkRemoveMediaFromAlbum - decode body error: %v", err)
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.albumRepo.BulkRemoveMedia(ctx, albumID, req.MediaIDs); err != nil {
+		log.Printf("[ERROR] AlbumHandler:BulkRemoveMediaFromAlbum - repository remove error for ID %s: %v", albumID, err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("[DEBUG] AlbumHandler:BulkRemoveMediaFromAlbum - success for album %s (removed %d items)", albumID, len(req.MediaIDs))
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // GetAlbumMedia handles GET /api/v1/albums/{id}/media
 func (h *AlbumHandler) GetAlbumMedia(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[DEBUG] AlbumHandler:GetAlbumMedia starting")
@@ -343,7 +389,7 @@ func (h *AlbumHandler) GetAlbumMedia(w http.ResponseWriter, r *http.Request) {
 
 	mediaList, err := h.albumRepo.GetMedia(ctx, albumID, userID)
 	if err != nil {
-		log.Printf("[ERROR] AlbumHandler:GetAlbumMedia - repository get error for ID %s (user %s): %v", albumID, userID, err)
+		log.Printf("[ERROR] AlbumHandler:GetAlbumMedia - repository get error for ID %s: %v", albumID, err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
