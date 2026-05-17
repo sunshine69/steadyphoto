@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { PhotoService } from '../../services/photo.service';
+import { AlbumService } from '../../services/album.service';
 import { PresentationService, MediaItem } from '../../services/presentation.service';
 import { Photo } from '../../models/photo.model';
 
@@ -75,48 +76,39 @@ import { Photo } from '../../models/photo.model';
               <h5 class="mb-0">Details</h5>
             </div>
             <ul class="list-group list-group-flush">
-              <li class="list-group-item d-flex justify-content-between align-items-center">
-                <span class="text-muted">Filename</span>
-                <span class="text-end small text-break ms-2">{{ photo?.filename }}</span>
+              <li class="list-group-item">
+                <span class="text-muted">Filename:</span> {{ photo?.filename }}
               </li>
-              <li class="list-group-item d-flex justify-content-between align-items-center">
-                <span class="text-muted">Type</span>
-                <span>{{ isVideo() ? '🎥 Video' : (photo?.type || 'Photo') }}</span>
+              <li class="list-group-item">
+                <span class="text-muted">Type:</span> {{ isVideo() ? '🎥 Video' : (photo?.type || 'Photo') }}
               </li>
-              <li class="list-group-item d-flex justify-content-between align-items-center" *ngIf="isVideo()">
-                <span class="text-muted">Duration</span>
-                <span>{{ formatDuration(photo?.videoMetadata?.duration) }}</span>
+              <li class="list-group-item" *ngIf="isVideo()">
+                <span class="text-muted">Duration:</span> {{ formatDuration(photo?.videoMetadata?.duration) }}
               </li>
-              <li class="list-group-item d-flex justify-content-between align-items-center">
-                <span class="text-muted">Captured</span>
-                <span>{{ photo?.captured_at | date:'fullDate' }}</span>
+              <li class="list-group-item">
+                <span class="text-muted">Captured:</span> {{ photo?.captured_at | date:'fullDate' }}
               </li>
-              <li class="list-group-item d-flex justify-content-between align-items-center" *ngIf="photo?.width || photo?.height">
-                <span class="text-muted">Dimensions</span>
-                <span>{{ photo?.width }} x {{ photo?.height }}</span>
+              <li class="list-group-item" *ngIf="photo?.width || photo?.height">
+                <span class="text-muted">Dimensions:</span> {{ photo?.width }} x {{ photo?.height }}
               </li>
-              <li class="list-group-item d-flex justify-content-between align-items-center" *ngIf="isVideo()">
-                <span class="text-muted">Video Codec</span>
-                <span>{{ photo?.videoMetadata?.video_codec || 'Unknown' }}</span>
+              <li class="list-group-item" *ngIf="isVideo()">
+                <span class="text-muted">Video Codec:</span> {{ photo?.videoMetadata?.video_codec || 'Unknown' }}
               </li>
-              <li class="list-group-item d-flex justify-content-between align-items-center" *ngIf="isVideo()">
-                <span class="text-muted">Audio Codec</span>
-                <span>{{ photo?.videoMetadata?.audio_codec || 'Unknown' }}</span>
+              <li class="list-group-item" *ngIf="isVideo()">
+                <span class="text-muted">Audio Codec:</span> {{ photo?.videoMetadata?.audio_codec || 'Unknown' }}
               </li>
-              <li class="list-group-item d-flex justify-content-between align-items-center" *ngIf="isVideo() && (photo?.videoMetadata?.frame_rate ?? 0) > 0">
-                <span class="text-muted">Frame Rate</span>
-                <span>{{ photo?.videoMetadata?.frame_rate }} fps</span>
+              <li class="list-group-item" *ngIf="isVideo() && (photo?.videoMetadata?.frame_rate ?? 0) > 0">
+                <span class="text-muted">Frame Rate:</span> {{ photo?.videoMetadata?.frame_rate }} fps
               </li>
-              <li class="list-group-item d-flex justify-content-between align-items-center" *ngIf="photo?.size">
-                <span class="text-muted">Size</span>
-                <span>{{ formatFileSize(photo.size) }}</span>
+              <li class="list-group-item" *ngIf="photo?.size">
+                <span class="text-muted">Size:</span> {{ formatFileSize(photo.size) }}
               </li>
               
               <!-- Tags Section -->
               <li class="list-group-item">
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                  <span class="text-muted">Tags</span>
-                  <button *ngIf="!isEditingTags" (click)="startEditingTags()" class="btn btn-sm btn-outline-primary">
+                <div class="d-flex align-items-center mb-2 gap-3">
+                  <span class="text-muted" style="margin-right: 16px !important;">Tags:</span>
+                  <button *ngIf="!isEditingTags" (click)="startEditingTags()" class="btn btn-sm btn-outline-primary py-1 px-2" style="font-size: 0.75rem;">
                     ✏️ Edit
                   </button>
                 </div>
@@ -197,6 +189,7 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private photoService = inject(PhotoService);
+  private albumService = inject(AlbumService);
   private presentationService = inject(PresentationService);
   private subscription?: Subscription;
 
@@ -264,31 +257,71 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
   startPresentation(): void {
     if (!this.photo) return;
 
-    // Fetch all gallery items to create a presentation list starting from current photo
-    this.photoService.listMedia(100, 0).subscribe({
-      next: (response) => {
-        const mediaItems: MediaItem[] = response.photos.map(p => ({
-          id: p.id,
-          path: p.path,
-          filename: p.filename,
-          mediaType: p.mediaType
-        }));
-
-        // Find the index of current photo in the list
-        const startIndex = mediaItems.findIndex(item => item.id === this.photo?.id);
+    const albumIdsParam = this.route.snapshot.queryParams['albumIds'];
+    
+    let mediaItems: MediaItem[];
+    
+    if (albumIdsParam) {
+      // We came from an album - fetch actual photo details to get correct media types
+      const albumPhotoIds: string[] = albumIdsParam.split(',').map((id: string) => id.trim()).filter(Boolean);
+      
+      import('rxjs').then(({ forkJoin, of, catchError }) => {
+        const requests$ = albumPhotoIds.map(id => 
+          this.photoService.getMedia(id).pipe(
+            catchError(() => of(null)) // Skip failed fetches gracefully
+          )
+        );
         
-        if (startIndex !== -1 && mediaItems.length > 0) {
-          this.presentationService.open(mediaItems, startIndex);
-          this.router.navigate(['/presentation']);
-        } else {
-          alert('No items available for presentation.');
+        forkJoin(requests$).subscribe({
+          next: (photos) => {
+            mediaItems = photos.filter((p): p is Photo => p !== null).map(p => ({
+              id: p.id,
+              path: `${this.photoService['API_BASE_URL']}/media/${p.id}/original`,
+              filename: p.filename || '',
+              mediaType: p.mediaType || 'photo'
+            }));
+
+            const startIndex = mediaItems.findIndex(item => item.id === this.photo?.id);
+            
+            if (startIndex !== -1 && mediaItems.length > 0) {
+              this.presentationService.open(mediaItems, startIndex);
+              this.router.navigate(['/presentation']);
+            } else {
+              alert('No items available for presentation.');
+            }
+          },
+          error: (err) => {
+            console.error('Failed to load album media for presentation', err);
+            alert('Failed to start presentation mode.');
+          }
+        });
+      });
+    } else {
+      // No album context - fetch all gallery items
+      this.photoService.listMedia(100, 0).subscribe({
+        next: (response) => {
+          mediaItems = response.photos.map(p => ({
+            id: p.id,
+            path: p.path,
+            filename: p.filename,
+            mediaType: p.mediaType
+          }));
+
+          const startIndex = mediaItems.findIndex(item => item.id === this.photo?.id);
+          
+          if (startIndex !== -1 && mediaItems.length > 0) {
+            this.presentationService.open(mediaItems, startIndex);
+            this.router.navigate(['/presentation']);
+          } else {
+            alert('No items available for presentation.');
+          }
+        },
+        error: (err) => {
+          console.error('Failed to load media for presentation', err);
+          alert('Failed to start presentation mode.');
         }
-      },
-      error: (err) => {
-        console.error('Failed to load media for presentation', err);
-        alert('Failed to start presentation mode.');
-      }
-    });
+      });
+    }
   }
 
   // Tag editing methods

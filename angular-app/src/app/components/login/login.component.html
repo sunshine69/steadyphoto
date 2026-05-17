@@ -1,10 +1,21 @@
-<div class="container mt-5 d-flex justify-content-center">
-  <div class="card p-4 shadow w-100" style="max-width: 400px;">
-    <h2 class="text-center mb-3">SteadyPhoto</h2>
-    <h3 class="text-center text-muted h5 mb-4">Login to your account</h3>
+<div class="login-wrapper">
+  <div class="login-card">
+    <!-- Logo Section -->
+    <div class="logo-section">
+      <svg width="48" height="48" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" class="logo-icon">
+        <circle cx="50" cy="50" r="48" fill="#6366F1"/>
+        <path d="M50 20C33.431 20 20 33.431 20 50s13.431 30 30 30 30-13.431 30-30S66.569 20 50 20zm0 8c13.255 0 24 10.745 24 24S63.255 74 50 74s-24-10.745-24-24S36.745 28 50 28z" fill="white"/>
+        <circle cx="50" cy="50" r="12" fill="#A5B4FC"/>
+      </svg>
+      <h2 class="app-title">SteadyPhoto</h2>
+      <p class="app-subtitle">Sign in to your account</p>
+    </div>
 
-    <form (ngSubmit)="onSubmit()" #loginForm="ngForm">
-      <div class="mb-3">
+    <!-- Login Form -->
+    <form (ngSubmit)="onSubmit()" #loginForm="ngForm" class="login-form">
+      
+      <!-- Email Field -->
+      <div class="form-group">
         <label for="email" class="form-label">Email Address</label>
         <input 
           type="email" 
@@ -12,13 +23,12 @@
           name="email" 
           class="form-control"
           [(ngModel)]="email" 
-          required 
           placeholder="you@example.com"
-          #emailModel="ngModel">
-        <div *ngIf="emailModel.invalid && emailModel.touched" class="text-danger small mt-1">Email is required</div>
+          #emailModel="ngModel"/>
       </div>
 
-      <div class="mb-4">
+      <!-- Password Field -->
+      <div class="form-group">
         <label for="password" class="form-label">Password</label>
         <input 
           type="password" 
@@ -26,24 +36,32 @@
           name="password" 
           class="form-control"
           [(ngModel)]="password" 
-          required 
           placeholder="••••••••"
-          #passwordModel="ngModel">
-        <div *ngIf="passwordModel.invalid && passwordModel.touched" class="text-danger small mt-1">Password is required</div>
+          #passwordModel="ngModel"/>
       </div>
 
-      <div *ngIf="errorMessage" class="alert alert-danger py-2 mb-3">
+      <!-- Error Message -->
+      <div *ngIf="errorMessage" class="error-message">
         {{ errorMessage }}
       </div>
 
-      <button type="submit" [disabled]="loginForm.invalid || isLoading" class="btn btn-primary w-100 py-2 shadow-sm">
-        <span *ngIf="isLoading" class="spinner-border spinner-border-sm me-2"></span>
-        {{ isLoading ? 'Logging in...' : 'Login' }}
-      </button>
+      <!-- Action Buttons -->
+      <div class="form-actions">
+        <button type="submit" [disabled]="isLoading" class="btn btn-login w-100">
+          <span *ngIf="isLoading" class="spinner-border spinner-border-sm me-2"></span>
+          {{ isLoading ? 'Signing in...' : 'Login' }}
+        </button>
+        
+        <button type="button" (click)="onReset()" [disabled]="isLoading" class="btn btn-reset">
+          Reset
+        </button>
+      </div>
     </form>
 
-    <div class="text-center mt-4 text-muted small">
-      Don't have an account? <a routerLink="/register" class="text-primary text-decoration-none">Register here</a>
+    <!-- Register Link -->
+    <div class="register-link">
+      Don't have an account? 
+      <a routerLink="/register" class="text-primary text-decoration-none">Register here</a>
     </div>
   </div>
 </div>

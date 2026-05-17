@@ -1,3 +1,4 @@
+angular-app/dist/**
 server
 main
 **/node_modules/**

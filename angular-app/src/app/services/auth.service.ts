@@ -9,6 +9,11 @@ export interface AuthResponse {
   user_id: string;
 }
 
+export interface User {
+  email: string;
+  username?: string;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -104,5 +109,35 @@ export class AuthService {
    */
   setAuthenticated(status: boolean): void {
     this._isAuthenticatedSubject.next(status);
+  }
+
+  private _currentUser = new BehaviorSubject<User | null>(null);
+  currentUser$ = this._currentUser.asObservable();
+
+  setCurrentUser(user: User): void {
+    localStorage.setItem('username', user.username || '');
+    this._currentUser.next(user);
+  }
+
+  getCurrentUser(): User | null {
+    return this._currentUser.value;
+  }
+
+  getUsername(): string {
+    const user = this.getCurrentUser();
+    if (user?.username) return user.username;
+    
+    // Fallback to email's first letter
+    const storedUsername = localStorage.getItem('username');
+    if (storedUsername) return storedUsername;
+    
+    const email = localStorage.getItem('email') || '';
+    return email.charAt(0).toUpperCase();
+  }
+
+  clearUser(): void {
+    this._currentUser.next(null);
+    localStorage.removeItem('username');
+    localStorage.removeItem('email');
   }
 }

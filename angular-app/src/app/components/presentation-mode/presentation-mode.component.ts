@@ -1,4 +1,5 @@
 import { Component, OnInit, OnDestroy, AfterViewInit, inject } from '@angular/core';
+import { Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { PresentationService, MediaItem } from '../../services/presentation.service';
 import { PhotoService } from '../../services/photo.service';
@@ -342,8 +343,12 @@ export class PresentationModeComponent implements OnInit, AfterViewInit, OnDestr
     }
   }
 
+  private router = inject(Router);
+
   closePresentation(): void {
     this.presentationService.close();
+    // Navigate back to the previous view (e.g., photo detail or gallery)
+    window.history.back();
   }
 
   getThumbnailUrl(id: string): string {

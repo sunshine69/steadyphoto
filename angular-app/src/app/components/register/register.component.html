@@ -1,57 +1,77 @@
-<div class="auth-container">
-  <div class="auth-card">
-    <h2>SteadyPhoto</h2>
-    <h3>Create your account</h3>
+<div class="register-wrapper">
+  <div class="register-card">
+    <!-- Logo Section -->
+    <div class="logo-section">
+      <svg width="48" height="48" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" class="logo-icon">
+        <circle cx="50" cy="50" r="48" fill="#6366F1"/>
+        <path d="M50 20C33.431 20 20 33.431 20 50s13.431 30 30 30 30-13.431 30-30S66.569 20 50 20zm0 8c13.255 0 24 10.745 24 24S63.255 74 50 74s-24-10.745-24-24S36.745 28 50 28z" fill="white"/>
+        <circle cx="50" cy="50" r="12" fill="#A5B4FC"/>
+      </svg>
+      <h2 class="app-title">SteadyPhoto</h2>
+      <p class="app-subtitle">Create your account</p>
+    </div>
 
-    <form (ngSubmit)="onSubmit()" #regForm="ngForm">
+    <!-- Register Form -->
+    <form (ngSubmit)="onSubmit()" #regForm="ngForm" class="register-form">
+      
+      <!-- Email Field -->
       <div class="form-group">
-        <label for="email">Email Address</label>
+        <label for="email" class="form-label">Email Address</label>
         <input 
           type="email" 
           id="email" 
           name="email" 
+          class="form-control"
           [(ngModel)]="email" 
-          required 
-          placeholder="you@example.com"
-          #emailModel="ngModel">
+          placeholder="you@example.com"/>
       </div>
 
+      <!-- Password Field -->
       <div class="form-group">
-        <label for="password">Password</label>
+        <label for="password" class="form-label">Password</label>
         <input 
           type="password" 
           id="password" 
           name="password" 
+          class="form-control"
           [(ngModel)]="password" 
-          required 
-          placeholder="••••••••"
-          #passwordModel="ngModel">
+          placeholder="••••••••"/>
       </div>
 
+      <!-- Confirm Password Field -->
       <div class="form-group">
-        <label for="confirmPassword">Confirm Password</label>
+        <label for="confirmPassword" class="form-label">Confirm Password</label>
         <input 
           type="password" 
           id="confirmPassword" 
           name="confirmPassword" 
+          class="form-control"
           [(ngModel)]="confirmPassword" 
-          required 
-          placeholder="••••••••"
-          #confirmModel="ngModel">
+          placeholder="••••••••"/>
       </div>
 
-      <div *ngIf="errorMessage" class="alert alert-danger">
+      <!-- Error Message -->
+      <div *ngIf="errorMessage" class="error-message">
         {{ errorMessage }}
       </div>
 
-      <button type="submit" [disabled]="regForm.invalid || isLoading" class="btn btn-primary">
-        <span *ngIf="isLoading" class="spinner"></span>
-        {{ isLoading ? 'Registering...' : 'Create Account' }}
-      </button>
+      <!-- Action Buttons -->
+      <div class="form-actions">
+        <button type="submit" [disabled]="isLoading" class="btn btn-register w-100">
+          <span *ngIf="isLoading" class="spinner-border spinner-border-sm me-2"></span>
+          {{ isLoading ? 'Creating Account...' : 'Create Account' }}
+        </button>
+        
+        <button type="button" (click)="onReset()" [disabled]="isLoading" class="btn btn-reset">
+          Reset
+        </button>
+      </div>
     </form>
 
-    <div class="auth-footer">
-      Already have an account? <a routerLink="/login">Login here</a>
+    <!-- Login Link -->
+    <div class="login-link">
+      Already have an account? 
+      <a routerLink="/login" class="text-primary text-decoration-none">Login here</a>
     </div>
   </div>
 </div>

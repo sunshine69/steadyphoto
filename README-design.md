@@ -84,5 +84,5 @@ Albums are logical groupings of existing media assets via a many-to-many relatio
 - ✅ **Authentication**: Full Multi-user support (IAM) with secure login/registration.
 - ✅ **Data Isolation**: Physical storage isolation and API ownership enforcement completed.
 - ✅ **Streaming**: High-performance playback for both images and videos with seekable support.
-- 🚧 **In Progress**: Implementation of Album Feature (Database, API, UI).
-- 🚧 **Next Up**: Refinement of tag editing logic and frontend UI polish.
+- Implementation of Album Feature (Database, API, UI). - done 
+- Presentation mode - completed 
