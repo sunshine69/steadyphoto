@@ -86,3 +86,4 @@ Albums are logical groupings of existing media assets via a many-to-many relatio
 - ✅ **Streaming**: High-performance playback for both images and videos with seekable support.
 - Implementation of Album Feature (Database, API, UI). - done 
 - Presentation mode - completed 
+- Search in photo view page by tasg, by name and tag, and by name completed. 
