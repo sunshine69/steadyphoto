@@ -359,7 +359,7 @@ func (h *AlbumHandler) BulkRemoveMediaFromAlbum(w http.ResponseWriter, r *http.R
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// GetAlbumMedia handles GET /api/v1/albums/{id}/media
+// GetAlbumMedia handles GET /api/v1/albums/{id}/media with optional pagination (limit, offset)
 func (h *AlbumHandler) GetAlbumMedia(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[DEBUG] AlbumHandler:GetAlbumMedia starting")
 	ctx := r.Context()
@@ -387,16 +387,51 @@ func (h *AlbumHandler) GetAlbumMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mediaList, err := h.albumRepo.GetMedia(ctx, albumID, userID)
+	// Parse pagination parameters
+	query := r.URL.Query()
+	limitStr := query.Get("limit")
+	offsetStr := query.Get("offset")
+
+	var limit int = 20 // Default page size
+	var offset int = 0
+
+	if limitStr != "" {
+		fmt.Sscanf(limitStr, "%d", &limit)
+	}
+	if offsetStr != "" {
+		fmt.Sscanf(offsetStr, "%d", &offset)
+	}
+
+	// Ensure reasonable bounds
+	if limit > 100 {
+		limit = 100
+	}
+	if limit < 1 {
+		limit = 20
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	log.Printf("[DEBUG] AlbumHandler:GetAlbumMedia - pagination: limit=%d, offset=%d", limit, offset)
+
+	mediaList, totalItems, err := h.albumRepo.GetMediaPaginated(ctx, albumID, userID, limit, offset)
 	if err != nil {
 		log.Printf("[ERROR] AlbumHandler:GetAlbumMedia - repository get error for ID %s: %v", albumID, err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("[DEBUG] AlbumHandler:GetAlbumMedia - success for album %s (%d items)", albumID, len(mediaList))
+	// Construct response with pagination metadata
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(mediaList); err != nil {
+	response := map[string]interface{}{
+		"media":      mediaList,
+		"totalItems": totalItems,
+		"limit":      limit,
+		"offset":     offset,
+	}
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
 		log.Printf("[ERROR] AlbumHandler:GetAlbumMedia - encode response error: %v", err)
 	}
 }

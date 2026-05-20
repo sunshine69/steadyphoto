@@ -1,6 +1,7 @@
 import { Component, inject, OnInit, OnDestroy, ChangeDetectorRef, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, RouterModule, Router } from '@angular/router';
+import { HttpClient } from '@angular/common/http';
 import { AlbumService } from '../../services/album.service';
 import { PhotoService } from '../../services/photo.service';
 import { PresentationService, MediaItem } from '../../services/presentation.service';
@@ -278,6 +279,7 @@ export class AlbumDetailComponent implements OnInit, OnDestroy {
   private presentationService = inject(PresentationService);
   private cdr = inject(ChangeDetectorRef);
   private ngZone = inject(NgZone);
+  private http = inject(HttpClient);
 
   albumName: string = 'Loading...';
   photos: Photo[] = [];
@@ -350,14 +352,24 @@ export class AlbumDetailComponent implements OnInit, OnDestroy {
   }
 
   private fetchMedia(id: string): void {
-    // First get total count, then load first page
-    this.albumService.getAlbumMedia(id).subscribe({
-      next: (rawPhotos: any[]) => {
-        const normalized = rawPhotos.map(p => this.normalizePhoto(p));
-        this.totalAlbumPhotos = normalized.length;
+    // Load first page with pagination params
+    this.loadAlbumPageFromAPI(id, 0);
+  }
+
+  private loadAlbumPageFromAPI(id: string, offset: number): void {
+    this.loading = true;
+    
+    const limit = this.albumLimit;
+    const url = `${this.photoService['API_BASE_URL']}/albums/${id}/media?limit=${limit}&offset=${offset}`;
+    
+    this.http.get<any>(url).subscribe({
+      next: (response) => {
+        const rawPhotos: any[] = response.media || [];
+        const totalItems = response.totalItems || 0;
         
-        // Load first page
-        this.loadAlbumPage(normalized);
+        this.photos = rawPhotos.map((p: any) => this.normalizePhoto(p));
+        this.totalAlbumPhotos = totalItems;
+        this.albumOffset = offset;
         this.loading = false;
       },
       error: (err: any) => {
@@ -367,54 +379,26 @@ export class AlbumDetailComponent implements OnInit, OnDestroy {
     });
   }
 
-  private loadAlbumPage(allPhotos: Photo[]): void {
-    const start = this.albumOffset;
-    const end = Math.min(start + this.albumLimit, allPhotos.length);
-    this.photos = allPhotos.slice(start, end);
-    this.cdr.detectChanges();
-  }
-
   changeAlbumPage(dir: number): void {
-    this.albumOffset += (dir * this.albumLimit);
-    // Reload the full list and slice again
+    const newOffset = this.albumOffset + (dir * this.albumLimit);
+    
+    // Validate offset bounds
+    if (newOffset < 0 || newOffset >= this.totalAlbumPhotos) return;
+    
     if (!this.albumId) return;
     
-    this.loading = true;
-    this.albumService.getAlbumMedia(this.albumId).subscribe({
-      next: (rawPhotos: any[]) => {
-        const normalized = rawPhotos.map(p => this.normalizePhoto(p));
-        this.totalAlbumPhotos = normalized.length;
-        this.loadAlbumPage(normalized);
-        this.loading = false;
-        window.scrollTo(0, 0);
-      },
-      error: (err) => {
-        console.error('Error changing album page', err);
-        this.loading = false;
-      }
-    });
+    this.loadAlbumPageFromAPI(this.albumId, newOffset);
+    window.scrollTo(0, 0);
   }
 
   onAlbumJumpToPage(): void { 
     if (this.albumJumpInput && this.albumJumpInput >= 1 && this.albumJumpInput <= this.totalAlbumPages) {
-      this.albumOffset = (this.albumJumpInput - 1) * this.albumLimit;
-      // Reload and jump to page
+      const targetOffset = (this.albumJumpInput - 1) * this.albumLimit;
+      
       if (!this.albumId) return;
       
-      this.loading = true;
-      this.albumService.getAlbumMedia(this.albumId).subscribe({
-        next: (rawPhotos: any[]) => {
-          const normalized = rawPhotos.map(p => this.normalizePhoto(p));
-          this.totalAlbumPhotos = normalized.length;
-          this.loadAlbumPage(normalized);
-          this.loading = false;
-          window.scrollTo(0, 0);
-        },
-        error: (err) => {
-          console.error('Error jumping album page', err);
-          this.loading = false;
-        }
-      });
+      this.loadAlbumPageFromAPI(this.albumId, targetOffset);
+      window.scrollTo(0, 0);
     } 
   }
 

@@ -177,4 +177,5 @@ type AlbumRepository interface {
 	RemoveMedia(ctx context.Context, albumID uuid.UUID, mediaID uuid.UUID) error
 	BulkRemoveMedia(ctx context.Context, albumID uuid.UUID, mediaIDs []uuid.UUID) error
 	GetMedia(ctx context.Context, albumID uuid.UUID, userID uuid.UUID) ([]*Media, error)
+	GetMediaPaginated(ctx context.Context, albumID uuid.UUID, userID uuid.UUID, limit int, offset int) ([]*Media, int, error)
 }

@@ -142,3 +142,28 @@ func (r *PostgresAlbumRepository) GetMedia(ctx context.Context, albumID uuid.UUI
 	}
 	return mediaList, nil
 }
+
+func (r *PostgresAlbumRepository) GetMediaPaginated(ctx context.Context, albumID uuid.UUID, userID uuid.UUID, limit int, offset int) ([]*domain.Media, int, error) {
+	var totalItems int
+	countQuery := `SELECT COUNT(*) FROM album_photos ap JOIN albums a ON a.id = ap.album_id WHERE ap.album_id = $1 AND a.user_id = $2`
+	err := r.db.GetContext(ctx, &totalItems, countQuery, albumID, userID)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	var mediaList []*domain.Media
+	query := `
+		SELECT m.* FROM media m
+		JOIN album_photos ap ON m.id = ap.media_id
+		JOIN albums a ON a.id = ap.album_id
+		WHERE ap.album_id = $1 AND a.user_id = $2
+		ORDER BY ap.position ASC, m.captured_at DESC
+		LIMIT $3 OFFSET $4
+	`
+	err = r.db.SelectContext(ctx, &mediaList, query, albumID, userID, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return mediaList, totalItems, nil
+}
