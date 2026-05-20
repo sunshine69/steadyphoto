@@ -6,7 +6,7 @@ import { PhotoService } from './services/photo.service';
 import { PresentationModeComponent } from './components/presentation-mode/presentation-mode.component';
 import { PresentationService, MediaItem } from './services/presentation.service';
 import { SidebarComponent } from './components/sidebar/sidebar.component';
-import { SearchService } from './services/search.service';
+import { SearchService, SearchScope } from './services/search.service';
 
 @Component({
   selector: 'app-root',
@@ -27,12 +27,23 @@ import { SearchService } from './services/search.service';
               <circle cx="11" cy="11" r="8"/>
               <line x1="21" y1="21" x2="16.65" y2="16.65"/>
             </svg>
+            
+            <!-- Search Scope Dropdown -->
+            <select 
+              class="search-scope-select"
+              [(ngModel)]="selectedScope"
+              (change)="onSearch()">
+              <option value="all">All</option>
+              <option value="name">Name</option>
+              <option value="tags">Tags</option>
+            </select>
+            
             <input 
               type="text" 
               placeholder="Search your photos" 
               class="search-input"
               [(ngModel)]="searchTerm"
-              (keyup)="onSearch()"
+              (keyup)="onKeyUp($event)"
             />
             <button *ngIf="searchTerm" class="clear-search-btn" (click)="clearSearch()">×</button>
           </div>
@@ -110,6 +121,8 @@ import { SearchService } from './services/search.service';
       position: relative;
       width: 100%;
       max-width: 600px;
+      display: flex;
+      align-items: center;
     }
 
     .search-container svg {
@@ -118,14 +131,46 @@ import { SearchService } from './services/search.service';
       top: 50%;
       transform: translateY(-50%);
       color: #9ca3af;
+      z-index: 1;
     }
 
-    .search-input {
-      width: 100%;
-      padding: 10px 16px 10px 40px;
+    /* Search Scope Dropdown */
+    .search-scope-select {
+      width: auto;
+      padding: 10px 32px 10px 48px;
       background-color: #2d3748;
       border: 1px solid #374151;
-      border-radius: 8px;
+      border-right: none;
+      border-radius: 8px 0 0 8px;
+      color: #e5e7eb;
+      font-size: 14px;
+      outline: none;
+      cursor: pointer;
+      appearance: none;
+      -webkit-appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+    }
+
+    .search-scope-select:focus {
+      border-color: #6366f1;
+      background-color: #1e293b;
+    }
+
+    .search-scope-select option {
+      background-color: #2d3748;
+      color: #e5e7eb;
+    }
+
+    /* Search Input */
+    .search-input {
+      flex: 1;
+      padding: 10px 40px 10px 16px;
+      background-color: #2d3748;
+      border: 1px solid #374151;
+      border-left: none;
+      border-radius: 0 8px 8px 0;
       color: #e5e7eb;
       font-size: 14px;
       outline: none;
@@ -209,12 +254,23 @@ import { SearchService } from './services/search.service';
 })
 export class AppComponent implements OnInit, OnDestroy {
   searchTerm = '';
+  selectedScope: SearchScope = 'all';
   private searchTimeout?: any;
 
   constructor(
     public presentationService: PresentationService,
     private searchService: SearchService
   ) {}
+
+  onKeyUp(event: KeyboardEvent): void {
+    // Only trigger search on Enter key or when typing stops (debounce)
+    if (event.key === 'Enter') {
+      this.performSearch();
+    } else {
+      // Debounce for regular typing
+      this.onSearch();
+    }
+  }
 
   onSearch(): void {
     // Clear any existing timeout to debounce rapid typing
@@ -224,13 +280,20 @@ export class AppComponent implements OnInit, OnDestroy {
     
     // Wait 300ms after user stops typing before searching
     this.searchTimeout = setTimeout(() => {
-      this.searchService.setSearchTerm(this.searchTerm);
+      this.performSearch();
     }, 300);
+  }
+
+  private performSearch(): void {
+    this.searchService.setSearchTerm(this.searchTerm);
+    this.searchService.setSearchScope(this.selectedScope);
   }
 
   clearSearch(): void {
     this.searchTerm = '';
+    this.selectedScope = 'all';
     this.searchService.setSearchTerm('');
+    this.searchService.setSearchScope('all');
     if (this.searchTimeout) {
       clearTimeout(this.searchTimeout);
     }

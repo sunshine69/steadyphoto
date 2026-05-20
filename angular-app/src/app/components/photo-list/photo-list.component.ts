@@ -4,7 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
 import { PhotoService } from '../../services/photo.service';
 import { GalleryStateService } from '../../services/gallery-state.service';
-import { SearchService } from '../../services/search.service';
+import { SearchService, SearchScope } from '../../services/search.service';
 import { Photo, ListPhotosResponse } from '../../models/photo.model';
 import { Router, RouterModule, ActivatedRoute } from '@angular/router';
 import { PhotoCardComponent } from '../photo-card/photo-card.component';
@@ -202,6 +202,7 @@ export class PhotoListComponent implements OnInit, OnDestroy {
   loading = true;
   currentSearchTerm = '';
   activeTagFilter: string | null = null;
+  searchScope: SearchScope = 'all';
   
   selectedPhotoIds: Set<string> = new Set();
   targetAlbumId: string | undefined = undefined;
@@ -242,6 +243,11 @@ export class PhotoListComponent implements OnInit, OnDestroy {
     
     this.searchSubscription = this.searchService.searchTerm$.subscribe(term => {
       this.currentSearchTerm = term;
+      this.loadPhotos();
+    });
+
+    this.searchService.searchScope$.subscribe(scope => {
+      this.searchScope = scope;
       this.loadPhotos();
     });
 
@@ -434,14 +440,50 @@ export class PhotoListComponent implements OnInit, OnDestroy {
     this.subscription = request$.subscribe({
       next: (response: ListPhotosResponse) => {
         let allMedia = response.photos;
+        
+        // Apply tag filter from URL if present
         if (this.activeTagFilter) {
           const tagLower = this.activeTagFilter.toLowerCase();
           allMedia = allMedia.filter(p => this.getTagsForPhoto(p).some(t => t.toLowerCase().includes(tagLower)));
         }
+        
+        // Apply search term based on scope
         if (this.currentSearchTerm.trim() !== '') {
           const term = this.currentSearchTerm.toLowerCase();
-          allMedia = allMedia.filter(p => p.filename.toLowerCase().includes(term));
+          
+          switch (this.searchScope) {
+            case 'name':
+              allMedia = allMedia.filter(p => p.filename.toLowerCase().includes(term));
+              break;
+              
+            case 'tags':
+              allMedia = allMedia.filter(p => 
+                this.getTagsForPhoto(p).some(t => t.toLowerCase().includes(term))
+              );
+              break;
+              
+            case 'all':
+            default:
+              // Search tags first, then filename - combine results (deduplicate)
+              const tagMatches = new Set<string>();
+              const nameMatches = new Set<string>();
+              
+              allMedia.forEach(p => {
+                if (this.getTagsForPhoto(p).some(t => t.toLowerCase().includes(term))) {
+                  tagMatches.add(p.id);
+                }
+                if (p.filename.toLowerCase().includes(term)) {
+                  nameMatches.add(p.id);
+                }
+              });
+              
+              // Combine: photos matching tags OR filename
+              const combinedIds = new Set([...tagMatches, ...nameMatches]);
+              allMedia = allMedia.filter(p => combinedIds.has(p.id));
+              break;
+          }
         }
+        
         this.photos = allMedia;
         this.totalPhotos = response.total;
         this.loading = false;
