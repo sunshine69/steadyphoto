@@ -4,7 +4,7 @@
 BASE_URL="http://localhost:8081/api/v1"
 TIMESTAMP=$(date +%s)
 REGISTER_EMAIL="tester_$TIMESTAMP@example.com"
-REGISTER_PASSWORD="securepassword123"
+REGISTER_PASSWORD="securepassword1"
 UPDATE_EMAIL="updated_$TIMESTAMP@example.com"
 NEW_PASS="newly_set_strong_pass_99"
 

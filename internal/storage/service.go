@@ -37,18 +37,14 @@ func (s *StorageService) ResolveUserFile(userID uuid.UUID, dbRelPath string) (st
 	return s.ResolvePath(userScopedPath)
 }
 
-// ResolvePath takes a path (either relative to baseDir or absolute) 
-// and returns the full, absolute path on the local filesystem.
-func (s *StorageService) ResolvePath(relativePath string) (string, error) {
+// GetAbsolutePath returns the absolute path for a given relative path without checking if it exists.
+func (s *StorageService) GetAbsolutePath(relativePath string) string {
 	// 1. Clean the input
 	relativePath = filepath.Clean(relativePath)
 
-	// 2. If the path is already absolute, just verify it exists
+	// 2. If the path is already absolute, just return it
 	if filepath.IsAbs(relativePath) {
-		if _, err := os.Stat(relativePath); err != nil {
-			return "", fmt.Errorf("file not found at absolute path: %w", err)
-		}
-		return relativePath, nil
+		return relativePath
 	}
 
 	// 3. Normalize the relative path for comparison
@@ -63,9 +59,15 @@ func (s *StorageService) ResolvePath(relativePath string) (string, error) {
 	}
 
 	// 5. Join the cleaned relative path with the base directory
-	fullPath := filepath.Join(s.baseDir, relativePath)
+	return filepath.Join(s.baseDir, relativePath)
+}
 
-	// 6. Verify the file exists
+// ResolvePath takes a path (either relative to baseDir or absolute) 
+// and returns the full, absolute path on the local filesystem.
+func (s *StorageService) ResolvePath(relativePath string) (string, error) {
+	fullPath := s.GetAbsolutePath(relativePath)
+
+	// Verify the file exists
 	if _, err := os.Stat(fullPath); err != nil {
 		return "", fmt.Errorf("file not found at resolved path: %w", err)
 	}

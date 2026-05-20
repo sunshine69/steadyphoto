@@ -18,6 +18,8 @@ import (
 	"github.com/google/uuid"
 )
 
+// Ensure MediaUploadHandler is defined in upload_handler.go and implements the necessary logic.
+
 type Server struct {
 	router         *chi.Mux
 	mediaRepo      domain.MediaRepository
@@ -128,6 +130,13 @@ func (s *Server) routes() {
 				r.Get("/{id}/media", albumH.GetAlbumMedia)
 				r.Delete("/{id}/media/{media_id}", albumH.RemoveMediaFromAlbum)
 				r.Delete("/{id}/media", albumH.BulkRemoveMediaFromAlbum)
+			})
+
+			// Media Upload endpoint (Web & Mobile clients)
+			uploadHandler := NewMediaUploadHandler(s.mediaRepo, s.storageService)
+			protected.Route("/media/upload", func(r chi.Router) {
+				r.Use(LimitBodySizeMiddleware)
+				r.Post("/", uploadHandler.Handle)
 			})
 
 		})

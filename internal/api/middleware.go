@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,6 +19,33 @@ const (
 	// UserIDContextKey is the key used to store and retrieve UserID from the request context
 	UserIDContextKey contextKey = "user_id"
 )
+
+var MaxUploadSizeBytes int64 = 1024 * 1024 * 1024 // Default: 1GB
+
+func init() {
+	if val := os.Getenv("MAX_UPLOAD_SIZE"); val != "" {
+		if mb, err := strconv.ParseInt(val, 10, 64); err == nil && mb > 0 {
+			MaxUploadSizeBytes = mb
+			fmt.Printf("[CONFIG] Max upload size set to %d bytes\n", mb)
+		} else {
+			fmt.Printf("[WARN] Invalid MAX_UPLOAD_SIZE value '%s', using default (1GB)\n", val)
+		}
+	}
+}
+
+// LimitBodySizeMiddleware checks the Content-Length header before processing.
+func LimitBodySizeMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Check if request body exceeds limit (works for multipart forms sent with Content-Length)
+		if r.ContentLength > MaxUploadSizeBytes {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusRequestEntityTooLarge)
+			w.Write([]byte(`{"error": "File too large. Maximum upload size is configured."}`))
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
 
 // AuthMiddleware validates authentication for protected routes.
 // It expects a Bearer token in the Authorization header, which we currently treat as the Session ID.
