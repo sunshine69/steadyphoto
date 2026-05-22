@@ -9,7 +9,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
-	_ "github.com/lib/pq"
 )
 
 type PostgresMediaRepository struct {
@@ -31,7 +30,7 @@ func (r *PostgresMediaRepository) Create(ctx context.Context, media *domain.Medi
 
 func (r *PostgresMediaRepository) GetByID(ctx context.Context, id uuid.UUID, userID *uuid.UUID) (*domain.Media, error) {
 	var media domain.Media
-	query := `SELECT * FROM media WHERE id = $1`
+	query := `SELECT * FROM media WHERE deleted_at IS NULL AND id = $1`
 	args := []interface{}{id}
 
 	if userID != nil {
@@ -49,7 +48,7 @@ func (r *PostgresMediaRepository) GetByID(ctx context.Context, id uuid.UUID, use
 
 func (r *PostgresMediaRepository) GetByHash(ctx context.Context, hash string) (*domain.Media, error) {
 	var media domain.Media
-	query := `SELECT * FROM media WHERE hash = $1`
+	query := `SELECT * FROM media WHERE deleted_at IS NULL AND hash = $1`
 	err := r.db.GetContext(ctx, &media, query, hash)
 	if err != nil {
 		return nil, err
@@ -61,7 +60,7 @@ func (r *PostgresMediaRepository) Update(ctx context.Context, media *domain.Medi
 	query := `
 		UPDATE media
 		SET path = :path, filename = :filename, size_bytes = :size_bytes, width = :width, height = :height, media_type = :media_type, metadata = :metadata, video_metadata = :video_metadata, updated_at = :updated_at, tags = :tags
-		WHERE id = :id AND user_id = :user_id
+		WHERE id = :id AND user_id = :user_id AND deleted_at IS NULL
 	`
 	result, err := r.db.NamedExecContext(ctx, query, media)
 	if err != nil {
@@ -81,16 +80,27 @@ func (r *PostgresMediaRepository) Update(ctx context.Context, media *domain.Medi
 }
 
 func (r *PostgresMediaRepository) Delete(ctx context.Context, id uuid.UUID, userID *uuid.UUID) error {
-	query := `DELETE FROM media WHERE id = $1`
+	query := `UPDATE media SET deleted_at = NOW() WHERE id = $1`
 	args := []interface{}{id}
 
 	if userID != nil {
 		query += ` AND user_id = $2`
 		args = append(args, *userID)
+	} else {
+		return fmt.Errorf("user ID is required for soft delete")
 	}
 
-	_, err := r.db.ExecContext(ctx, query, args...)
-	return err
+	result, err := r.db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		return fmt.Errorf("media not found or already deleted (id: %s)", id)
+	}
+
+	return nil
 }
 
 func (r *PostgresMediaRepository) DeleteByMediaID(ctx context.Context, mediaID uuid.UUID) error {
@@ -103,12 +113,11 @@ func (r *PostgresMediaRepository) List(ctx context.Context, limit, offset int, u
 	var mediaList []*domain.Media
 	var total int
 
-	// Get total count for pagination
-	countQuery := `SELECT COUNT(*) FROM media`
+	countQuery := `SELECT COUNT(*) FROM media WHERE deleted_at IS NULL`
 	argsCount := []interface{}{}
 
 	if userID != nil {
-		countQuery += ` WHERE user_id = $1`
+		countQuery += ` AND user_id = $1`
 		argsCount = append(argsCount, *userID)
 	}
 
@@ -117,12 +126,11 @@ func (r *PostgresMediaRepository) List(ctx context.Context, limit, offset int, u
 		return nil, 0, err
 	}
 
-	// Get paginated list
-	listQuery := `SELECT * FROM media`
+	listQuery := `SELECT * FROM media WHERE deleted_at IS NULL`
 	argsList := []interface{}{}
 
 	if userID != nil {
-		listQuery += ` WHERE user_id = $1`
+		listQuery += ` AND user_id = $1`
 		argsList = append(argsList, *userID)
 	}
 
@@ -141,8 +149,7 @@ func (r *PostgresMediaRepository) ListByType(ctx context.Context, mediaType doma
 	var mediaList []*domain.Media
 	var total int
 
-	// Get total count for pagination
-	countQuery := `SELECT COUNT(*) FROM media WHERE media_type = $1`
+	countQuery := `SELECT COUNT(*) FROM media WHERE deleted_at IS NULL AND media_type = $1`
 	argsCount := []interface{}{mediaType}
 
 	if userID != nil {
@@ -155,8 +162,7 @@ func (r *PostgresMediaRepository) ListByType(ctx context.Context, mediaType doma
 		return nil, 0, err
 	}
 
-	// Get paginated list
-	listQuery := `SELECT * FROM media WHERE media_type = $1`
+	listQuery := `SELECT * FROM media WHERE deleted_at IS NULL AND media_type = $1`
 	argsList := []interface{}{mediaType}
 
 	if userID != nil {
@@ -177,7 +183,7 @@ func (r *PostgresMediaRepository) ListByType(ctx context.Context, mediaType doma
 
 func (r *PostgresMediaRepository) SearchByTags(ctx context.Context, tags string, userID *uuid.UUID) ([]*domain.Media, error) {
 	var mediaList []*domain.Media
-	query := `SELECT * FROM media WHERE tags LIKE $1`
+	query := `SELECT * FROM media WHERE deleted_at IS NULL AND tags LIKE $1`
 	args := []interface{}{"%" + tags + "%"}
 
 	if userID != nil {
@@ -190,4 +196,96 @@ func (r *PostgresMediaRepository) SearchByTags(ctx context.Context, tags string,
 		return nil, err
 	}
 	return mediaList, nil
+}
+
+// ListTrashed returns all soft-deleted (trashed) media for a user.
+func (r *PostgresMediaRepository) ListTrashed(ctx context.Context, limit int, offset int, userID uuid.UUID) ([]*domain.Media, int, error) {
+	var trashedList []*domain.Media
+	var total int
+
+	countQuery := `SELECT COUNT(*) FROM media WHERE deleted_at IS NOT NULL AND user_id = $1`
+	err := r.db.GetContext(ctx, &total, countQuery, userID)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	listQuery := `SELECT * FROM media WHERE deleted_at IS NOT NULL AND user_id = $1 ORDER BY deleted_at DESC LIMIT $2 OFFSET $3`
+	err = r.db.SelectContext(ctx, &trashedList, listQuery, userID, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return trashedList, total, nil
+}
+
+// RestoreMedia restores a soft-deleted media item back to the active library.
+func (r *PostgresMediaRepository) RestoreMedia(ctx context.Context, id uuid.UUID, userID uuid.UUID) error {
+	query := `UPDATE media SET deleted_at = NULL WHERE id = $1 AND user_id = $2 AND deleted_at IS NOT NULL`
+	result, err := r.db.ExecContext(ctx, query, id, userID)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		return fmt.Errorf("media not found in trash or ownership mismatch (id: %s)", id)
+	}
+
+	return nil
+}
+
+// GetTrashedMedia retrieves a media item that has been soft-deleted (in trash).
+func (r *PostgresMediaRepository) GetTrashedMedia(ctx context.Context, id uuid.UUID, userID uuid.UUID) (*domain.Media, error) {
+	var media domain.Media
+	query := `SELECT * FROM media WHERE deleted_at IS NOT NULL AND id = $1`
+	args := []interface{}{id}
+
+	if userID != uuid.Nil {
+		query += ` AND user_id = $2`
+		args = append(args, userID)
+	}
+
+
+	err := r.db.GetContext(ctx, &media, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	fmt.Fprintf(os.Stderr, "[DEBUG] GetTrashedMedia %v\n", media)
+	return &media, nil
+}
+
+// PermanentlyDeleteMedia permanently removes a media item from the database and storage.
+func (r *PostgresMediaRepository) PermanentlyDeleteMedia(ctx context.Context, id uuid.UUID, userID uuid.UUID) error {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+
+	defer func() {
+		if p := recover(); p != nil {
+			tx.Rollback()
+			panic(p)
+		} else if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	faceQuery := `DELETE FROM faces WHERE media_id = $1`
+	if _, err := tx.ExecContext(ctx, faceQuery, id); err != nil {
+		return fmt.Errorf("failed to delete associated faces: %w", err)
+	}
+
+	deleteMediaQuery := `DELETE FROM media WHERE id = $1 AND user_id = $2`
+	result, err := tx.ExecContext(ctx, deleteMediaQuery, id, userID)
+	if err != nil {
+		return fmt.Errorf("failed to permanently delete media: %w", err)
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		tx.Rollback()
+		return fmt.Errorf("media not found in trash or ownership mismatch (id: %s)", id)
+	}
+
+	return tx.Commit()
 }

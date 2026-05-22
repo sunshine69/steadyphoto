@@ -132,6 +132,11 @@ func (s *Server) routes() {
 				r.Delete("/{id}/media", albumH.BulkRemoveMediaFromAlbum)
 			})
 
+			// Trash endpoints - list, restore and permanently delete soft-deleted media
+			protected.Get("/trash", s.handleListTrash)
+			protected.Delete("/trash/{id}", s.handlePermanentDeleteMedia)
+			protected.Patch("/media/{id}/restore", s.handleRestoreMedia)
+
 			// Media Upload endpoint (Web & Mobile clients)
 			uploadHandler := NewMediaUploadHandler(s.mediaRepo, s.storageService)
 			protected.Route("/media/upload", func(r chi.Router) {
@@ -289,6 +294,33 @@ func (s *Server) handleGetPhotoFile(w http.ResponseWriter, r *http.Request) {
 
 	// http.ServeFile handles Range requests automatically (crucial for video/seeking)
 	http.ServeFile(w, r, absPath)
+}
+
+// handleSearchMedia searches for media by tags and returns matching items.
+func (s *Server) handleSearchMedia(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	userID, ok := GetUserIDFromContext(ctx)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	tagQuery := r.URL.Query().Get("tag")
+	if tagQuery == "" {
+		http.Error(w, "Missing 'tag' query parameter", http.StatusBadRequest)
+		return
+	}
+
+	matchingMedia, err := s.mediaRepo.SearchByTags(ctx, tagQuery, &userID)
+	if err != nil {
+		log.Printf("[ERROR] handleSearchMedia - search by tags: %v", err)
+		http.Error(w, "Failed to search media: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(matchingMedia)
 }
 
 // handleListMedia returns a paginated list of media items (photos + videos) (now user-scoped)
@@ -648,30 +680,25 @@ func (s *Server) handleGetThumbnail(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	idStr := chi.URLParam(r, "id")
 
-	fmt.Fprintf(os.Stderr, "[DEBUG] Entering handleGetThumbnail for ID: %s\n", idStr)
-
-	id, err := uuid.Parse(idStr)
-	if err != nil {
-		errMsg := fmt.Sprintf("[ERROR] handleGetThumbnail - parse UUID (%s): %v\n", idStr, err)
-		fmt.Fprint(os.Stderr, errMsg)
-		http.Error(w, "Invalid UUID format", http.StatusBadRequest)
-		return
-	}
-
 	userID, ok := GetUserIDFromContext(ctx)
 	if !ok {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		log.Printf("[ERROR] handleGetThumbnail - parse UUID (%s): %v", idStr, err)
+		http.Error(w, "Invalid UUID format", http.StatusBadRequest)
+		return
+	}
+
 	media, err := s.mediaRepo.GetByID(ctx, id, &userID)
 	if err != nil {
-		errMsg := fmt.Sprintf("[ERROR] handleGetThumbnail - getByID (%s): %v\n", id, err)
-		fmt.Fprint(os.Stderr, errMsg)
+		log.Printf("[ERROR] handleGetThumbnail - getByID (%s): %v", id, err)
 		http.Error(w, "Media not found", http.StatusNotFound)
 		return
 	}
-	fmt.Fprintf(os.Stderr, "[DEBUG] Found media item: Path=%s, Type=%s\n", media.Path, media.MediaType)
 
 	// Calculate thumbnail path
 	relPath := filepath.Clean(media.Path)
@@ -690,11 +717,10 @@ func (s *Server) handleGetThumbnail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fullThumbPath := filepath.Join(s.thumbRoot, ".thumbnails", thumbRelPath)
-	fmt.Fprintf(os.Stderr, "[DEBUG] Calculated fullThumbPath: %s\n", fullThumbPath)
 
 	// Check if file exists before serving
 	if _, err := os.Stat(fullThumbPath); os.IsNotExist(err) {
-		fmt.Fprintf(os.Stderr, "[DEBUG] Thumbnail NOT FOUND at %s. Attempting fallback to original.\n", fullThumbPath)
+		log.Printf("[WARN] handleGetThumbnail: Thumbnail NOT FOUND at %s. Attempting fallback to original.", fullThumbPath)
 		targetPath := media.Path
 		absPath, resolveErr := s.storageService.ResolvePath(targetPath)
 		if resolveErr != nil {
@@ -703,41 +729,50 @@ func (s *Server) handleGetThumbnail(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if resolveErr != nil {
-			errMsg := fmt.Sprintf("[ERROR] handleGetThumbnail - fallback failed for (%s): %v\n", targetPath, resolveErr)
-			fmt.Fprint(os.Stderr, errMsg)
+			log.Printf("[ERROR] handleGetThumbnail - fallback failed for (%s): %v", targetPath, resolveErr)
 			http.Error(w, "Thumbnail not found and fallback failed", http.StatusNotFound)
 			return
 		}
 
-		fmt.Fprintf(os.Stderr, "[DEBUG] Fallback successful. Serving original file from: %s\n", absPath)
 		contentType := s.getContentType(media.MediaType, media.Filename)
 		w.Header().Set("Content-Type", contentType)
+		log.Printf("[INFO] handleGetThumbnail: Serving original file as fallback from %s", absPath)
 		http.ServeFile(w, r, absPath)
 		return
 	}
 
-	fmt.Fprintf(os.Stderr, "[DEBUG] Thumbnail found! Serving: %s\n", fullThumbPath)
 	http.ServeFile(w, r, fullThumbPath)
 }
 
-// handleSearchMedia handles GET /api/v1/media/search?tags=...
-func (s *Server) handleSearchMedia(w http.ResponseWriter, r *http.Request) {
+// handleListTrash returns a paginated list of trashed (soft-deleted) media items for the authenticated user.
+func (s *Server) handleListTrash(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	tags := r.URL.Query().Get("tags")
-	if tags == "" {
-		http.Error(w, "tags parameter is required", http.StatusBadRequest)
-		return
-	}
+	query := r.URL.Query()
+
 	userID, ok := GetUserIDFromContext(ctx)
 	if !ok {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
-	mediaList, err := s.mediaRepo.SearchByTags(ctx, tags, &userID)
+	// Parse limit and offset for pagination
+	limit := 20
+	offset := 0
+	if lStr := query.Get("limit"); lStr != "" {
+		if l, err := strconv.Atoi(lStr); err == nil && l > 0 {
+			limit = l
+		}
+	}
+	if oStr := query.Get("offset"); oStr != "" {
+		if o, err := strconv.Atoi(oStr); err == nil && o >= 0 {
+			offset = o
+		}
+	}
+
+	trashedList, totalItems, err := s.mediaRepo.ListTrashed(ctx, limit, offset, userID)
 	if err != nil {
-		log.Printf("[ERROR] handleSearchMedia: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		log.Printf("[ERROR] handleListTrash: %v", err)
+		http.Error(w, "Failed to list trashed media: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -745,12 +780,107 @@ func (s *Server) handleSearchMedia(w http.ResponseWriter, r *http.Request) {
 		Media []*domain.Media `json:"media"`
 		Total int             `json:"total"`
 	}{
-		Media: mediaList,
-		Total: len(mediaList),
+		Media: trashedList,
+		Total: totalItems,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
+}
+
+// handleRestoreMedia restores a soft-deleted media item back to the active library.
+func (s *Server) handleRestoreMedia(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	idStr := chi.URLParam(r, "id")
+
+	userID, ok := GetUserIDFromContext(ctx)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		log.Printf("[ERROR] handleRestoreMedia - parse UUID (%s): %v", idStr, err)
+		http.Error(w, "Invalid UUID format", http.StatusBadRequest)
+		return
+	}
+
+	err = s.mediaRepo.RestoreMedia(ctx, id, userID)
+	if err != nil {
+		log.Printf("[ERROR] handleRestoreMedia - restore (%s): %v", id, err)
+		http.Error(w, "Failed to restore media: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"status": "restored"})
+}
+
+// handlePermanentDeleteMedia permanently deletes a media item from the database and storage.
+func (s *Server) handlePermanentDeleteMedia(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	idStr := chi.URLParam(r, "id")
+
+	userID, ok := GetUserIDFromContext(ctx)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		log.Printf("[ERROR] handlePermanentDeleteMedia - parse UUID (%s): %v", idStr, err)
+		http.Error(w, "Invalid UUID format", http.StatusBadRequest)
+		return
+	}
+
+	// First get the trashed media to know which files to delete from storage
+	media, err := s.mediaRepo.GetTrashedMedia(ctx, id, userID)
+	if err != nil {
+		log.Printf("[ERROR] handlePermanentDeleteMedia - GetTrashedMedia (%s): %v", id, err)
+		http.Error(w, "Failed to get media: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Delete files from storage (main file and thumbnail if exists)
+	if err := s.storageService.DeleteFile(media.Path); err != nil {
+		log.Printf("[ERROR] handlePermanentDeleteMedia - delete main file (%s): %v", media.Path, err)
+		// Continue with DB deletion even if file delete fails to avoid orphaned records
+	}
+
+	// Delete thumbnail separately (it's optional and may not exist)
+	if thumbRelPath := s.getThumbnailRelativePath(media); thumbRelPath != "" {
+		s.storageService.DeleteFileSilently(thumbRelPath) // Ignore error for thumbnails
+	}
+
+	// Permanently delete from database
+	err = s.mediaRepo.PermanentlyDeleteMedia(ctx, id, userID)
+	if err != nil {
+		log.Printf("[ERROR] handlePermanentDeleteMedia - permanent delete (%s): %v", id, err)
+		http.Error(w, "Failed to permanently delete media: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"status": "permanently_deleted"})
+}
+
+// getThumbnailRelativePath returns the relative path for a thumbnail based on media type.
+func (s *Server) getThumbnailRelativePath(media *domain.Media) string {
+	relPath := filepath.Clean(media.Path)
+	ext := filepath.Ext(relPath)
+
+	if media.MediaType == domain.MediaTypeVideo {
+		cleanPath := strings.TrimPrefix(media.Path, "storage/")
+		basePart := strings.TrimSuffix(cleanPath, ext)
+		basePart = strings.Replace(basePart, "/.videos/", "/", 1)
+		return basePart + ".webp"
+	}
+
+	cleanPath := strings.TrimPrefix(media.Path, "storage/")
+	basePart := strings.TrimSuffix(cleanPath, ext)
+	return basePart + "_thumb.webp"
 }
 
 // ServeHTTP makes our Server struct implement the http.Handler interface

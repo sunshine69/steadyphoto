@@ -31,6 +31,7 @@ import { Album } from '../../models/album.model';
               <option [ngValue]="null">Select action...</option>
               <option value="addAlbum">Add to album</option>
               <option value="removeAlbum">Remove from album</option>
+              <option value="delete" style="color: #dc3545; font-weight: bold;">Delete media</option>
               <option value="addTags">Add tags</option>
             </select>
 
@@ -78,6 +79,25 @@ import { Album } from '../../models/album.model';
           <div class="d-flex gap-2 justify-content-end">
             <button class="btn btn-secondary" (click)="closeRemoveAlbumDialog()">Cancel</button>
             <button class="btn btn-outline-danger" (click)="executeRemoveFromAlbum()" [disabled]="!targetAlbumIdForRemoval">Remove from Album</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Dialog: Delete Media -->
+      <div class="modal-overlay" *ngIf="showDeleteDialog">
+        <div class="modal-content bg-dark border rounded p-4" style="border-color: #6c757d;">
+          <h5 class="mb-3 text-danger">Delete Media</h5>
+          <p class="text-muted mb-3">{{ selectedPhotoIds.size }} item(s) will be permanently deleted. This action cannot be undone.</p>
+          
+          <div class="alert alert-warning" role="alert">
+            Are you sure you want to delete the selected media?
+          </div>
+
+          <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" (click)="closeDeleteDialog()">Cancel</button>
+            <button class="btn btn-danger" (click)="executeDelete()" [disabled]="isDeleting">
+              {{ isDeleting ? 'Deleting...' : 'Delete' }}
+            </button>
           </div>
         </div>
       </div>
@@ -215,7 +235,10 @@ export class PhotoListComponent implements OnInit, OnDestroy {
   // Dialog visibility flags
   showAddAlbumDialog = false;
   showRemoveAlbumDialog = false;
+  showDeleteDialog = false;
   showAddTagsDialog = false;
+  
+  isDeleting = false;
   
   // Tag input for wizard dialog
   tagInput = '';
@@ -278,8 +301,10 @@ export class PhotoListComponent implements OnInit, OnDestroy {
     this.selectedAction = null;
     this.showAddAlbumDialog = false;
     this.showRemoveAlbumDialog = false;
+    this.showDeleteDialog = false;
     this.showAddTagsDialog = false;
     this.tagInput = '';
+    this.isDeleting = false;
   }
 
   onActionSelected(): void {
@@ -292,9 +317,70 @@ export class PhotoListComponent implements OnInit, OnDestroy {
       case 'removeAlbum':
         this.showRemoveAlbumDialog = true;
         break;
+      case 'delete':
+        if (!confirm(`Are you sure you want to delete ${this.selectedPhotoIds.size} item(s)? This action cannot be undone.`)) {
+          this.clearSelection();
+          return;
+        }
+        this.executeDelete();
+        break;
       case 'addTags':
         this.showAddTagsDialog = true;
         break;
+    }
+  }
+
+  closeDeleteDialog(): void {
+    this.showDeleteDialog = false;
+    this.selectedAction = null;
+    this.isDeleting = false;
+  }
+
+  executeDelete(): void {
+    if (this.selectedPhotoIds.size === 0 || !this.photoService) return;
+
+    const mediaIds = Array.from(this.selectedPhotoIds);
+    let completed = 0;
+    const total = mediaIds.length;
+    const errors: string[] = [];
+
+    this.isDeleting = true;
+
+    mediaIds.forEach(id => {
+      this.photoService.deleteMedia(id).subscribe({
+        next: () => {
+          completed++;
+          if (completed === total) {
+            alert(`Successfully deleted ${total} item(s)`);
+            this.clearSelection();
+            this.loadPhotos(); // Refresh the list
+          }
+        },
+        error: (err) => {
+          console.error(`Error deleting media ${id}`, err);
+          errors.push(id);
+          completed++;
+          if (completed === total) {
+            const successCount = total - errors.length;
+            let message = `Deleted ${successCount} item(s)`;
+            if (errors.length > 0) {
+              message += `, but failed to delete ${errors.length} item(s).`;
+            } else {
+              message += '.';
+            }
+            alert(message);
+            this.clearSelection();
+            this.loadPhotos(); // Refresh the list even on partial failure
+          }
+        }
+      });
+    });
+
+    // Close dialog if it was open (for single item delete)
+    if (this.showDeleteDialog) {
+      this.closeDeleteDialog();
+    } else {
+      this.isDeleting = false;
     }
   }
 

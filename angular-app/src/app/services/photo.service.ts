@@ -185,6 +185,16 @@ export class PhotoService {
       );
   }
 
+  /**
+   * Deletes a media item by ID
+   */
+  deleteMedia(id: string): Observable<any> {
+    return this.http.delete(`${this.API_BASE_URL}/media/${id}`)
+      .pipe(
+        catchError(this.handleError)
+      );
+  }
+
   private handleError(error: HttpErrorResponse) {
     console.error('API Error:', error);
     return throwError(() => new Error(error.message || 'An error occurred'));

@@ -405,7 +405,7 @@ import { Photo, ListPhotosResponse } from '../../models/photo.model';
     }
   `]
 })
-export class TrashComponent implements OnInit {
+export class ArchiveComponent implements OnInit {
   photos: Photo[] = [];
   totalItems = 0;
   offset = 0;

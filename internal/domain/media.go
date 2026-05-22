@@ -113,8 +113,9 @@ type Media struct {
 	VideoMetadata VideoMetadata  `db:"video_metadata" json:"videoMetadata"`
 	CreatedAt     time.Time      `db:"created_at" json:"createdAt"`
 	UpdatedAt     time.Time      `db:"updated_at" json:"updatedAt"`
-	Tags          string         `db:"tags" json:"tags"`
-	UserID        uuid.UUID      `db:"user_id" json:"userId"`
+	Tags          string             `db:"tags" json:"tags"`
+	UserID        uuid.UUID          `db:"user_id" json:"userId"`
+	DeletedAt     *time.Time         `db:"deleted_at" json:"-"` // Soft delete timestamp, not exposed in JSON API
 }
 
 // Face represents a detected face in a media item
@@ -155,6 +156,12 @@ type MediaRepository interface {
 	List(ctx context.Context, limit, offset int, userID *uuid.UUID) ([]*Media, int, error)
 	ListByType(ctx context.Context, mediaType MediaType, limit, offset int, userID *uuid.UUID) ([]*Media, int, error)
 	SearchByTags(ctx context.Context, tags string, userID *uuid.UUID) ([]*Media, error)
+
+	// Trash operations for soft-delete and permanent delete functionality
+	ListTrashed(ctx context.Context, limit, offset int, userID uuid.UUID) ([]*Media, int, error)
+	GetTrashedMedia(ctx context.Context, id uuid.UUID, userID uuid.UUID) (*Media, error)
+	RestoreMedia(ctx context.Context, id uuid.UUID, userID uuid.UUID) error
+	PermanentlyDeleteMedia(ctx context.Context, id uuid.UUID, userID uuid.UUID) error
 }
 
 // FaceRepository defines the interface for face storage

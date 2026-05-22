@@ -45,9 +45,17 @@ func main() {
 
 	// 3. Get all photos
 	// Note: For very large libraries, we'd need to paginate this.
-	photos, _, err := photoRepo.List(ctx, 10000, 0) 
+	allMedia, _, err := photoRepo.List(ctx, 10000, 0, nil) 
 	if err != nil {
-		log.Fatalf("Failed to list photos: %v", err)
+		log.Fatalf("Failed to list media: %v", err)
+	}
+
+	// Filter for photos only (MediaTypePhoto or empty MediaType treated as photo)
+	var photos []*domain.Media
+	for _, m := range allMedia {
+		if m.MediaType == domain.MediaTypePhoto || m.MediaType == "" {
+			photos = append(photos, m)
+		}
 	}
 
 	fmt.Printf("Found %d photos in database.\n", len(photos))
