@@ -1,17 +1,20 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterModule } from '@angular/router';
 import { PhotoService } from './services/photo.service';
 import { PresentationModeComponent } from './components/presentation-mode/presentation-mode.component';
 import { PresentationService, MediaItem } from './services/presentation.service';
+import { UploadModalComponent } from './components/upload-modal/upload-modal.component';
+import { UploadTriggerService } from './services/upload-trigger.service';
 import { SidebarComponent } from './components/sidebar/sidebar.component';
+
 import { SearchService, SearchScope } from './services/search.service';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, RouterModule, PresentationModeComponent, SidebarComponent, FormsModule],
+  imports: [CommonModule, RouterModule, PresentationModeComponent, SidebarComponent, FormsModule, UploadModalComponent],
   template: `
     <!-- Main Layout Container -->
     <div class="app-layout">
@@ -49,28 +52,27 @@ import { SearchService, SearchScope } from './services/search.service';
           </div>
 
           <div class="header-actions">
-            <!-- Theme Toggle -->
-            <button class="icon-btn" title="Toggle theme">
+<!-- Upload Button -->
+            <button class="icon-btn upload-trigger" title="Upload Media" (click)="uploadTrigger.open()">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
               </svg>
             </button>
 
             <!-- Notifications -->
-            <button class="icon-btn" title="Notifications">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-                <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-              </svg>
-            </button>
-
-            <!-- User Avatar -->
             <div class="user-avatar">S</div>
           </div>
         </header>
 
         <!-- Router Outlet for Page Content -->
         <router-outlet></router-outlet>
+
+        <!-- Upload Modal (shown when upload trigger service is open) -->
+        <app-upload-modal 
+          *ngIf="uploadTrigger.isUploadModalOpen$ | async">
+        </app-upload-modal>
 
         <!-- Presentation Mode Overlay (shown when presentation service is open) -->
         <app-presentation-mode 
@@ -257,6 +259,8 @@ export class AppComponent implements OnInit, OnDestroy {
   selectedScope: SearchScope = 'all';
   private searchTimeout?: any;
 
+  public uploadTrigger = inject(UploadTriggerService);
+
   constructor(
     public presentationService: PresentationService,
     private searchService: SearchService
@@ -302,6 +306,13 @@ export class AppComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     // Listen for presentation mode close events from child components
     window.addEventListener('presentationModeClosed', this.handlePresentationClose.bind(this));
+    
+    // Listen for upload complete event to refresh gallery
+    window.addEventListener('media-upload-complete', () => {
+      console.log('Upload completed, refreshing media list...');
+      // Trigger a reload of the photo service data if needed
+      // This could be adapted based on how your app handles state updates
+    });
   }
 
   ngOnDestroy(): void {

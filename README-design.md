@@ -177,4 +177,6 @@ Albums are logical groupings of existing media assets via a many-to-many relatio
 - ✅ **Album Feature**: Database, API, and UI implementation completed.
 - ✅ **Presentation Mode**: Completed.
 - ✅ **Search**: Tag-based, name-based, and combined search in photo view page completed.
-- 🚧 **Media Upload**: In Progress (Backend & Frontend design finalized, implementation pending). 
+- 🚧 **Media Upload**: done - some minor visual UI on mobile device but not high priority
+
+
