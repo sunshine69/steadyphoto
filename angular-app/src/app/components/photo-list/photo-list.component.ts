@@ -520,7 +520,7 @@ export class PhotoListComponent implements OnInit, OnDestroy {
     if (!this.photoService) { this.loading = false; return; }
     this.loading = true;
     const request$ = this.currentSearchTerm.trim() !== '' 
-      ? this.photoService.listPhotos(this.limit, this.offset)
+      ? this.photoService.listMedia(this.limit, this.offset)  // Use listMedia for search to include videos in 'all' scope
       : this.photoService.listMedia(this.limit, this.offset);
 
     this.subscription = request$.subscribe({
