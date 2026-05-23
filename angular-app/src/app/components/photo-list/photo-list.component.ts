@@ -176,7 +176,18 @@ import { Album } from '../../models/album.model';
     </div>
   `,
   styles: [`
-    .photo-list-container { padding: 1rem; width: 100%; }
+    /* Floating Bulk Action Toolbar */
+    .bulk-action-toolbar {
+        position: fixed;
+        top: 24px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 998; 
+        width: calc(100vw - 60px); /* Margins on sides */
+        max-width: 700px;          /* Max width for large screens */
+    }
+
+    .photo-list-container { padding-top: 5rem; padding-bottom: 2rem; width: 100%; position: relative;} 
     .grid-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 1.5rem; width: 100%; }
     .grid-item { position: relative; height: 100%; }
 
