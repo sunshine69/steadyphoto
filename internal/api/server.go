@@ -63,10 +63,8 @@ func (s *Server) routes() {
 		// CORS Middleware - exposed headers must include Accept-Ranges and Content-Range for video seeking to work cross-origin
 		r.Use(func(next http.Handler) http.Handler {
 			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				// When using credentials (cookies), we cannot use "*" as the origin.
-				// We must explicitly allow the frontend's specific origin.
-				w.Header().Set("Access-Control-Allow-Origin", "http://192.168.20.23:4200")
-				w.Header().Set("Access-Control-Allow-Credentials", "true")
+				// Allow requests from the same origin (UI served by this server)
+				w.Header().Set("Access-Control-Allow-Origin", "*")
 				w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS, PUT, PATCH, DELETE")
 				w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, Range")
 				w.Header().Set("Access-Control-Expose-Headers", "Content-Length, Content-Type, Accept-Ranges, Content-Range")
@@ -147,10 +145,13 @@ func (s *Server) routes() {
 		})
 	})
 
-	// Serve static frontend files (if needed for SPA fallback)
+	// Serve static frontend files from /ui path
+	s.router.Handle("/ui/*", http.StripPrefix("/ui/", http.FileServer(http.Dir("./ui"))))
+
+	// SPA fallback: serve index.html for any other non-API routes
 	s.router.HandleFunc("/*", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
-		http.ServeFile(w, r, "angular-app/dist/angular-app/index.html")
+		http.ServeFile(w, r, "./ui/index.html")
 	})
 }
 

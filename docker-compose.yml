@@ -12,5 +12,21 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  app:
+    build: .
+    image: steadyphoto:latest
+    container_name: steadyphoto-app
+    ports:
+      - "8080:8080" # Serves both UI (/ui) and API (/api/v1)
+    environment:
+      DATABASE_URL: postgres://steadyphoto:password@db:5432/steadyphoto?sslmode=disable
+      STORAGE_DIR: /app/storage
+      API_PORT: :8080
+    volumes:
+      - app_storage:/app/storage # Persistent storage for media files
+    depends_on:
+      - db
+
 volumes:
   postgres_data:
+  app_storage:

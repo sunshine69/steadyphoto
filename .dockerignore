@@ -1,0 +1,38 @@
+# Angular dependencies
+angular-app/node_modules/
+
+# Node.js
+node_modules/
+
+# Go cache and test binaries
+/root/go/pkg/mod/
+**/*.test
+
+# Build artifacts (we rebuild in Docker)
+server
+scanner
+worker
+migrate
+repair_jobs
+*.exe
+
+# IDE files
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+nohup.out
+
+# Local storage
+storage/
+
+# Backup files
+*.bak
+
+# Swap files
+*.swp
