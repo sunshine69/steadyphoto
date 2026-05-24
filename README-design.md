@@ -192,13 +192,16 @@ Client-side search and filtering across the media grid with three scope options:
 | **Presentation Mode** | ✅ Completed | Full-screen slideshow with keyboard navigation and thumbnail strip |
 | **Search & Discovery** | ✅ Completed | Client-side search across 3 scopes (`all`, `name`, `tags`) + URL-based tag filtering |
 | **Bulk Actions (Multi-Select)** | ✅ Completed | Delete, Add to Album, Remove from Album, Bulk Tag Assignment via toolbar in photo list view |
-| **Media Deletion** | ⚠️ Logical Only | Removes DB records; physical files on disk are NOT deleted. Orphaned files remain until cleanup/trash implementation |
+| **Media Deletion** | ✅ Logical Only | Two stage - soft delete and restore and comkplete Removes DB records; physical files on disk |
 | **Media Upload (Backend)** | ✅ Completed | Handler registered, MIME validation, SHA256 deduplication, storage path generation all working |
 | **Metadata Extraction** | 🚧 Stubbed | Defaults to `time.Now()` for capture timestamp. EXIF/video parsing planned for future phase |
 | **Upload Frontend UI** | 🚧 Remaining | Drag & drop zone, progress bars, preview grid — minor visual polish needed on mobile devices (not high priority) |
 
 ### Outstanding / Future Work
+- [ ] **Packaging - prepare release 1.0
+  - Rearrange so the server.exe will server static angula app base on path /ui and /api for api serving
+  - Build Dockerfile to produce docker image. - publish angular build into /ui and all go binaries to / and Storage dir would be /storage
+- [ ] ** Android app** to upload media from android phone.
 - [ ] **EXIF/Video Metadata Extraction**: Parse actual capture times, camera info, video duration/resolution during upload.
+- [ ] **Search** by datetime range.
 - [ ] **Upload Frontend Polish**: Drag & drop zone with overlay feedback, progress bars, batch queue concurrency control.
-- [ ] **Trash Feature**: Soft-delete mechanism to allow restoration before permanent removal; cleanup job for orphaned disk files.
-
