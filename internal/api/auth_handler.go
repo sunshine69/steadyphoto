@@ -61,12 +61,13 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 3. Create user
+	// 3. Create user (pending approval by default)
 	newUser := &domain.User{
 		ID:           uuid.New(),
 		Email:        req.Email,
 		PasswordHash: hashedPassword,
-		Status:       domain.UserStatusActive, // Set initial status as active
+		Status:       domain.UserStatusPending, // Pending admin approval
+		Role:         domain.UserRoleUser,      // Default role for new users
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	}
@@ -103,7 +104,17 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if user is disabled (Soft-Delete check)
+	// Check if user is pending approval, rejected, or disabled
+	if user.Status == domain.UserStatusPending {
+		http.Error(w, "Account pending admin approval", http.StatusForbidden)
+		return
+	}
+
+	if user.Status == domain.UserStatusRejected {
+		http.Error(w, "Registration rejected by admin", http.StatusForbidden)
+		return
+	}
+
 	if user.Status == domain.UserStatusDisabled {
 		http.Error(w, "Account is disabled", http.StatusForbidden)
 		return

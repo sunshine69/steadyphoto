@@ -92,6 +92,20 @@ func (s *Server) routes() {
 			})
 		})
 
+		// Admin endpoints - protected by both Auth and Admin middleware
+		r.Route("/admin", func(r chi.Router) {
+			r.Group(func(adminRoutes chi.Router) {
+				adminRoutes.Use(s.AuthMiddleware)
+				adminRoutes.Use(s.AdminMiddleware)
+				
+				// User management
+				adminRoutes.Get("/users", s.handleAdminListUsers)
+				adminRoutes.Get("/users/{id}", s.handleAdminGetUser)
+				adminRoutes.Patch("/users/{id}", s.handleAdminUpdateUser)
+				adminRoutes.Delete("/users/{id}", s.handleAdminDeleteUser)
+			})
+		})
+
 		// PROTECTED ROUTES group (for non-auth resources like media)
 		r.Group(func(protected chi.Router) {
 			protected.Use(s.AuthMiddleware)

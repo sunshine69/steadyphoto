@@ -12,14 +12,20 @@ type User struct {
 	ID           uuid.UUID `db:"id"`
 	Email        string    `db:"email"`
 	PasswordHash string    `db:"password_hash"`
-	Status       string    `db:"status"` // active or disabled
+	Status       string    `db:"status"` // pending, active, disabled, rejected
+	Role         string    `db:"role"`   // admin or user
 	CreatedAt    time.Time `db:"created_at"`
 	UpdatedAt    time.Time `db:"updated_at"`
 }
 
 const (
+	UserStatusPending  = "pending"
 	UserStatusActive   = "active"
 	UserStatusDisabled = "disabled"
+	UserStatusRejected = "rejected"
+
+	UserRoleAdmin = "admin"
+	UserRoleUser  = "user"
 )
 
 // UserSession represents an active authentication session for a user (Opaque Token)
@@ -38,6 +44,10 @@ type UserRepository interface {
 	GetByEmail(ctx context.Context, email string) (*User, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*User, error)
 	Update(ctx context.Context, user *User) error
+	
+	// Admin methods for user management
+	ListUsers(ctx context.Context, status string) ([]*User, error)
+	GetByUsernameOrEmail(ctx context.Context, identifier string) (*User, error)
 }
 
 // SessionRepository defines the interface for session lifecycle management

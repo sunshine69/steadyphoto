@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"steadyphoto/internal/domain"
+
 	"github.com/google/uuid"
 )
 
@@ -121,4 +123,29 @@ func (s *Server) AuthMiddleware(next http.Handler) http.Handler {
 func GetUserIDFromContext(ctx context.Context) (uuid.UUID, bool) {
 	userID, ok := ctx.Value(UserIDContextKey).(uuid.UUID)
 	return userID, ok
+}
+
+// AdminMiddleware checks if the authenticated user has admin role
+func (s *Server) AdminMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		userID, ok := GetUserIDFromContext(r.Context())
+		if !ok {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		// Fetch user to check role
+		user, err := s.userRepo.GetByID(r.Context(), userID)
+		if err != nil || user == nil {
+			http.Error(w, "User not found", http.StatusNotFound)
+			return
+		}
+
+		if user.Role != domain.UserRoleAdmin {
+			http.Error(w, "Forbidden: Admin access required", http.StatusForbidden)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }

@@ -19,8 +19,8 @@ func NewPostgresUserRepository(db *sqlx.DB) *PostgresUserRepository {
 
 func (r *PostgresUserRepository) Create(ctx context.Context, user *domain.User) error {
 	query := `
-		INSERT INTO users (id, email, password_hash, status, created_at, updated_at)
-		VALUES (:id, :email, :password_hash, :status, :created_at, :updated_at)
+		INSERT INTO users (id, email, password_hash, status, role, created_at, updated_at)
+		VALUES (:id, :email, :password_hash, :status, :role, :created_at, :updated_at)
 	`
 	_, err := r.db.NamedExecContext(ctx, query, user)
 	return err
@@ -49,11 +49,39 @@ func (r *PostgresUserRepository) GetByID(ctx context.Context, id uuid.UUID) (*do
 func (r *PostgresUserRepository) Update(ctx context.Context, user *domain.User) error {
 	query := `
 		UPDATE users
-		SET email = :email, password_hash = :password_hash, status = :status, updated_at = :updated_at
+		SET email = :email, password_hash = :password_hash, status = :status, role = :role, updated_at = :updated_at
 		WHERE id = :id
 	`
 	_, err := r.db.NamedExecContext(ctx, query, user)
 	return err
+}
+
+func (r *PostgresUserRepository) ListUsers(ctx context.Context, status string) ([]*domain.User, error) {
+	var users []*domain.User
+	query := "SELECT * FROM users"
+	args := []interface{}{}
+
+	if status != "" && status != "all" {
+		query += " WHERE status = $1"
+		args = append(args, status)
+	}
+
+	query += " ORDER BY created_at DESC"
+	err := r.db.SelectContext(ctx, &users, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	return users, nil
+}
+
+func (r *PostgresUserRepository) GetByUsernameOrEmail(ctx context.Context, identifier string) (*domain.User, error) {
+	var user domain.User
+	query := `SELECT * FROM users WHERE email = $1 OR id::text = $1`
+	err := r.db.GetContext(ctx, &user, query, identifier)
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
 }
 
 type PostgresSessionRepository struct {
