@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterModule } from '@angular/router';
@@ -8,13 +8,14 @@ import { PresentationService, MediaItem } from './services/presentation.service'
 import { UploadModalComponent } from './components/upload-modal/upload-modal.component';
 import { UploadTriggerService } from './services/upload-trigger.service';
 import { SidebarComponent } from './components/sidebar/sidebar.component';
+import { UserManagementComponent } from './components/user-management/user-management.component';
 
 import { SearchService, SearchScope } from './services/search.service';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, RouterModule, PresentationModeComponent, SidebarComponent, FormsModule, UploadModalComponent],
+  imports: [CommonModule, RouterModule, PresentationModeComponent, SidebarComponent, FormsModule, UploadModalComponent, UserManagementComponent],
   template: `
     <!-- Main Layout Container -->
     <div class="app-layout">
@@ -61,8 +62,8 @@ import { SearchService, SearchScope } from './services/search.service';
               </svg>
             </button>
 
-            <!-- Notifications -->
-            <div class="user-avatar">S</div>
+            <!-- User Avatar (click to open user management) -->
+            <div class="user-avatar" (click)="openUserManagement()" title="{{ isAdmin ? 'User Management' : 'Profile' }}">S</div>
           </div>
         </header>
 
@@ -80,6 +81,9 @@ import { SearchService, SearchScope } from './services/search.service';
           [items]="presentationService.getItems()"
           [startIndex]="presentationService.getCurrentIndex()">
         </app-presentation-mode>
+
+        <!-- User Management Modal -->
+        <app-user-management #userManagement></app-user-management>
       </main>
     </div>
 
@@ -258,8 +262,11 @@ export class AppComponent implements OnInit, OnDestroy {
   searchTerm = '';
   selectedScope: SearchScope = 'all';
   private searchTimeout?: any;
+  isAdmin = false;
 
   public uploadTrigger = inject(UploadTriggerService);
+  
+  @ViewChild('userManagement', { static: false }) userManagementComponent!: UserManagementComponent;
 
   constructor(
     public presentationService: PresentationService,
@@ -313,6 +320,32 @@ export class AppComponent implements OnInit, OnDestroy {
       // Trigger a reload of the photo service data if needed
       // This could be adapted based on how your app handles state updates
     });
+
+    // Check if current user is admin
+    this.checkAdminStatus();
+  }
+
+  checkAdminStatus(): void {
+    const currentUser = localStorage.getItem('currentUser');
+    if (currentUser) {
+      try {
+        const user = JSON.parse(currentUser);
+        this.isAdmin = user.role === 'admin';
+      } catch (e) {
+        console.error('Failed to parse current user', e);
+      }
+    }
+  }
+
+  openUserManagement(): void {
+    if (!this.isAdmin) {
+      alert('You do not have permission to access User Management.');
+      return;
+    }
+    
+    if (this.userManagementComponent) {
+      this.userManagementComponent.open();
+    }
   }
 
   ngOnDestroy(): void {

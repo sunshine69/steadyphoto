@@ -146,6 +146,44 @@ Albums are logical groupings of existing media assets via a many-to-many relatio
 
 ---
 
+## User Management ✅ Frontend Completed (Backend API Ready)
+
+### Overview
+Admin users can manage other user accounts through a modal interface accessible from the top-right avatar icon. This feature provides full lifecycle management of user accounts including status changes, role assignments, and account deletion.
+
+### Data Model
+#### `users` Table
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `id` | UUID | Primary Key |
+| `email` | VARCHAR | User email address (unique) |
+| `password_hash` | TEXT | Securely hashed password |
+| `status` | VARCHAR | Account status: pending, active, disabled, rejected |
+| `role` | VARCHAR | User role: admin, user |
+| `created_at` | TIMESTAMP | Account creation time |
+| `updated_at` | TIMESTAMP | Last update time |
+
+### API Specifications (Admin Endpoints)
+| Method | Path | Description | Auth Required |
+|--------|------|-------------|---------------|
+| `GET` | `/api/admin/users` | List all users with optional status filter (`?status=active`) | ✅ Admin JWT |
+| `GET` | `/api/admin/users/{id}` | Get specific user details | ✅ Admin JWT |
+| `PATCH` | `/api/admin/users/{id}` | Update user status or role | ✅ Admin JWT |
+| `DELETE` | `/api/admin/users/{id}` | Disable/delete a user account | ✅ Admin JWT |
+
+### Frontend Implementation (Angular ✅ Completed)
+- **Access Control**: Modal only accessible to admin users; non-admin users see an alert when clicking avatar
+- **Filter by Status**: Dropdown filter for All, Pending, Active, Disabled, Rejected users
+- **User Cards**: Display user email with color-coded status and role badges
+- **Admin Actions per User**:
+  - Status dropdown (Activate, Disable, Pending, Reject)
+  - Role dropdown (Make Admin, Make User)
+  - Delete button for non-disabled accounts
+- **Visual Feedback**: Loading spinners during API calls, confirmation dialogs before deletion
+- **Responsive Design**: Works on mobile and desktop with dark theme matching
+
+---
+
 ## Bulk Actions & Media Deletion ✅ Completed
 
 ### Overview
@@ -196,11 +234,17 @@ Client-side search and filtering across the media grid with three scope options:
 | **Media Upload (Backend)** | ✅ Completed | Handler registered, MIME validation, SHA256 deduplication, storage path generation all working |
 | **Metadata Extraction** | 🚧 Stubbed | Defaults to `time.Now()` for capture timestamp. EXIF/video parsing planned for future phase |
 | **Upload Frontend UI** | 🚧 Remaining | Drag & drop zone, progress bars, preview grid — minor visual polish needed on mobile devices (not high priority) |
+| **User Management (Frontend)** | ✅ Completed ⚠️ Untested | Full Angular modal component with admin-only access, status/role management. Backend APIs exist but not yet tested end-to-end. |
+| **Docker Build** | 📦 Dockerfile Created ⚠️ Untested | Multi-stage build producing combined image (Go binary + Angular static files). Not yet tested or validated. |
 
 ### Outstanding / Future Work
-- [ ] **Packaging - prepare release 1.0
-  - Rearrange so the server.exe will server static angula app base on path /ui and /api for api serving
-  - Build Dockerfile to produce docker image. - publish angular build into /ui and all go binaries to / and Storage dir would be /storage
+- [ ] **Packaging - prepare release 1.0** ✅ Partially Complete
+  - ✅ Dockerfile created for multi-stage build (Angular + Go)
+  - ⚠️ Docker image not yet built/tested
+  - Server configured to serve Angular static files at `/ui` and API at `/api`
+- [ ] **User Management** ⚠️ Untested
+  - Frontend modal component completed but needs end-to-end testing with backend APIs
+  - Admin access control verification needed
 - [ ] ** Android app** to upload media from android phone.
 - [ ] **EXIF/Video Metadata Extraction**: Parse actual capture times, camera info, video duration/resolution during upload.
 - [ ] **Search** by datetime range.
