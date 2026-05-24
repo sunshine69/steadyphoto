@@ -7,6 +7,15 @@ export interface AuthResponse {
   access_token: string;
   refresh_token: string;
   user_id: string;
+  role: string;
+  status: string;
+}
+
+export interface CurrentUser {
+  id: string;
+  email: string;
+  role: string;
+  status: string;
 }
 
 export interface User {
@@ -31,6 +40,17 @@ export class AuthService {
           console.log('AuthService: Login successful', res);
           localStorage.setItem('access_token', res.access_token);
           localStorage.setItem('refresh_token', res.refresh_token);
+          localStorage.setItem('email', email);
+          
+          // Store current user with role info for admin checks
+          const currentUser: CurrentUser = {
+            id: res.user_id,
+            email: email,
+            role: res.role,
+            status: res.status
+          };
+          localStorage.setItem('currentUser', JSON.stringify(currentUser));
+          
           this.setAuthenticated(true);
         }),
         catchError(err => {

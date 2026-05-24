@@ -1,13 +1,13 @@
 # ============================================
 # Stage 1: Build Angular Application
 # ============================================
-FROM node:20-alpine AS angular-builder
+FROM node:24-alpine AS angular-builder
 
 WORKDIR /app/angular-app
 
 # Copy package files first for better caching
 COPY angular-app/package*.json ./
-RUN npm ci
+RUN npm install --legacy-peer-deps  # try ci later
 
 # Copy source code
 COPY angular-app/ .
@@ -16,15 +16,16 @@ COPY angular-app/ .
 # Output will go to dist/ directory
 RUN npm run build -- --configuration=production
 
+
 # ============================================
-# Stage 2: Build Go Binary
+# Stage 2: Build Go Binaries (Server + Migrate)
 # ============================================
-FROM golang:1.22-alpine AS go-builder
+FROM golang:1.26.3-alpine3.23 AS go-builder
 
 WORKDIR /app/steadyphoto
 
-# Install git (needed for some Go modules) and ca-certificates
-RUN apk add --no-cache git ca-certificates
+# Install git (needed for some Go modules), ca-certificates, and postgresql-client (for pg_isready in entrypoint)
+RUN apk add --no-cache git ca-certificates postgresql-client
 
 # Copy go module files first for better caching
 COPY go.mod go.sum ./
@@ -36,22 +37,31 @@ COPY . .
 # Build the server binary with static linking for Alpine compatibility
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app/steadyphoto/server cmd/server/main.go
 
+# Build the migrate binary
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app/steadyphoto/migrate cmd/migrate/main.go
+
 # ============================================
 # Stage 3: Production Image
 # ============================================
 FROM alpine:3.19
 
-# Install ca-certificates for HTTPS requests and create necessary directories
-RUN apk add --no-cache ca-certificates && \
+# Install ca-certificates for HTTPS requests, create necessary directories, and add postgresql-client for health checks
+RUN apk add --no-cache ca-certificates postgresql-client && \
     mkdir -p /app/storage
 
 WORKDIR /app
 
-# Copy the Go binary from go-builder stage
+# Copy the Go binaries from go-builder stage
 COPY --from=go-builder /app/steadyphoto/server ./server
+COPY --from=go-builder /app/steadyphoto/migrate ./migrate
+COPY --from=go-builder //app/steadyphoto/migrations ./migrations
 
 # Copy the built Angular application to /ui directory
 COPY --from=angular-builder /app/angular-app/dist /app/ui
+
+# Add the entrypoint script and make it executable
+COPY entrypoint.sh .
+RUN chmod +x entrypoint.sh
 
 # Create a non-root user for security
 RUN addgroup -S appgroup && \
@@ -60,7 +70,7 @@ RUN addgroup -S appgroup && \
 
 USER appuser
 
-# Expose port 8080 (now serves both UI and API)
+# Expose port 8080 (now serves both UI (/ui) and API (/api/v1))
 EXPOSE 8080
 
 # Environment variables with defaults
@@ -72,5 +82,5 @@ ENV API_PORT=:8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:8080/ui/ || exit 1
 
-# Run the server
-CMD ["./server"]
+# Run the entrypoint script
+ENTRYPOINT ["./entrypoint.sh"]

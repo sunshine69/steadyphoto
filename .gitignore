@@ -1,3 +1,4 @@
+.playwright-mcp/**
 angular-app/dist/**
 server
 main

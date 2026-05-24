@@ -31,6 +31,8 @@ type AuthResponse struct {
 	AccessToken  string    `json:"access_token"`
 	RefreshToken string    `json:"refresh_token"`
 	UserID       uuid.UUID `json:"user_id"`
+	Role         string    `json:"role"`
+	Status       string    `json:"status"`
 }
 
 // HandleRegister handles POST /api/v1/auth/register
@@ -166,6 +168,8 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		AccessToken:  session.ID.String(), // Still return it for AJAX/Bearer usage
 		RefreshToken: refreshToken,
 		UserID:       user.ID,
+		Role:         user.Role,
+		Status:       user.Status,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

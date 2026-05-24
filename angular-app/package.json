@@ -1,5 +1,12 @@
 {
   "name": "steadyphoto-angular",
+  "scripts": {
+    "ng": "ng",
+    "start": "ng serve",
+    "build": "ng build",
+    "watch": "ng build --watch",
+    "test": "ng test"
+  },
   "version": "0.1.0",
   "private": true,
   "dependencies": {

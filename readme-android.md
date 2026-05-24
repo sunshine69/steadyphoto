@@ -124,6 +124,31 @@ android/
     *   ✅ ViewModels: AuthViewModel + MainViewModel with state management
     *   ✅ Theme system (Light/Dark mode support)
 
+### Phase 1.5: MediaStore Integration & Permissions ✅ COMPLETED (Week 3)
+*   **Goal**: Implement actual device media scanning using Android MediaStore API with proper permission handling.
+*   **Completed Tasks**:
+    *   ✅ Updated `MediaItemEntity` to include `uri`, `localPath`, and `fileName` fields for MediaStore compatibility
+    *   ✅ Implemented full MediaStore scanning logic in `MediaScannerWorker`:
+        - Queries `MediaStore.Images.Media.EXTERNAL_CONTENT_URI` and `MediaStore.Video.Media.EXTERNAL_CONTENT_URI`
+        - Filters by MIME type (JPEG, PNG, HEIC, MP4), size (>10KB), and date
+        - Extracts GPS coordinates from EXIF data when available
+        - Deduplicates against existing database entries using URI comparison
+    *   ✅ Created `PermissionHelper` utility class for runtime permission management:
+        - Handles Android 13+ scoped storage permissions (`READ_MEDIA_IMAGES`, `READ_MEDIA_VIDEO`)
+        - Gracefully handles permanently denied permissions with settings navigation
+        - Provides rationale display logic for user guidance
+    *   ✅ Added comprehensive permission strings to `strings.xml`
+    *   ✅ Implemented `ScanResult` sealed class for type-safe scan outcome handling:
+        - `Success`: Reports total scanned, new items inserted, duplicates skipped
+        - `NoNewItems`: Scan completed with no new files found
+        - `PermissionDenied`: Permissions not granted
+        - `Error`: Scan failed with error message and optional cause
+    *   ✅ Updated `MainViewModel` with permission-aware sync flow:
+        - Checks permissions before initiating scan
+        - Handles all `ScanResult` variants appropriately
+        - Provides clear user feedback for permission denials
+        - Properly chains scanning → upload phases
+
 ### Phase 2: Scanning & Deduplication (Weeks 3-4)
 *   **Goal**: Find files on device, compute hashes, store in DB.
 *   **Tasks**:
