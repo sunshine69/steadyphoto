@@ -1,36 +1,52 @@
-# Android App Development Plan: SteadyPhoto Mobile
+# SteadyPhoto Android Sync Client
 
-## 1. Architecture Overview
+## 1. Project Scope & Purpose
 
-SteadyPhoto Mobile will follow a **Local-First** architecture, leveraging Kotlin for the UI layer and Gomobile to wrap high-performance Go libraries for on-device backend tasks. This approach ensures fast media processing (hashing, EXIF parsing, encryption) without network latency, while keeping networking separate for eventual cloud sync with the existing web backend.
+The primary goal of this Android application is **Automated Media Synchronization**. It acts as a secure bridge between the user's device storage and the central SteadyPhoto server.
 
-### Core Principles
-- **Local-First**: All metadata, thumbnails, and user sessions are cached locally via SQLite/Room.
-- **Gomobile Backend**: CPU-intensive operations (SHA256 deduplication, EXIF extraction, crypto) run natively via Go bindings.
-- **Kotlin + Compose UI**: Modern, declarative Android UI with Material 3 design system.
-- **Sync-Ready**: Networking layer abstracted to easily connect with the existing `/api/v1/media/upload` and admin endpoints when cloud sync is enabled.
+**Core Functionality:**
+1.  **Scan**: Periodically scan local device media (`DCIM`, `Pictures`) for new photos/videos.
+2.  **Process**: Compute SHA256 hashes (deduplication) and extract EXIF metadata locally using Gomobile bindings.
+3.  **Upload**: Batch upload unique files to the existing Go backend (`/api/v1/media/upload`).
+4.  **Sync State**: Maintain a local database of uploaded items to prevent re-uploads and handle resume-on-restart scenarios.
+
+**Out of Scope (for now):**
+*   Full gallery viewer (local or remote).
+*   Admin panel features.
+*   Complex editing tools.
 
 ---
 
-## 2. Tech Stack & Dependencies
+## 2. Architecture & Tech Stack
 
-| Layer | Technology | Purpose |
-|-------|------------|---------|
-| **Language** | Kotlin (JVM 17+) | Primary app language |
-| **UI Framework** | Jetpack Compose + Material 3 | Declarative, responsive UI |
-| **Local Database** | Room (SQLite) | Cache media metadata, sync state, user sessions |
-| **Networking** | Ktor Client / Retrofit | HTTP requests for auth & cloud sync |
-| **Gomobile Bindings** | Go 1.22+ → `.aar` library | Native SHA256, EXIF parsing, crypto, file I/O |
-| **Image/Video Loading** | Coil + ExoPlayer | Efficient media rendering & playback |
-| **State Management** | ViewModel + Kotlin Flow | Reactive UI state handling |
+### High-Level Flow
+```mermaid
+graph TD
+    A[Android App] -->|Scan MediaStore| B(Local DB: Room)
+    B -->|New Files Found| C[Gomobile Bindings]
+    C -->|SHA256 Hash| D{Is Duplicate?}
+    D -- No --> E[Ktor Client Upload]
+    D -- Yes --> F[Skip / Log]
+    E --> G[SteadyPhoto Server API]
+```
+
+### Technology Choices
+*   **Language**: Kotlin (JVM 17+).
+*   **UI Framework**: Jetpack Compose (Material 3) for Settings & Status monitoring.
+*   **Local Storage**: Room Database (SQLite) to track `local_path`, `hash`, and `upload_status`.
+*   **Native Backend**: **Gomobile** wrapping Go libraries:
+    *   `crypto/sha256`: Fast, native hashing of large files.
+    *   `go-exif/v3`: Extracting camera model, ISO, GPS coordinates.
+*   **Networking**: Ktor Client (or Retrofit) for HTTP requests to the server.
+*   **Background Work**: Android `WorkManager` for periodic scanning and upload queues.
 
 ---
 
 ## 3. Gomobile Integration Strategy
 
-Gomobile will wrap specific Go packages into a Java/Kotlin-accessible `.aar` library. This avoids JNI boilerplate and provides type-safe bindings.
+We will wrap specific Go functions into a Java/Kotlin-accessible `.aar` library. This allows us to leverage Go's performance for CPU-intensive tasks without writing complex JNI code.
 
-### What to Wrap in Go (`mobile/` package)
+### What to Wrap (`gomobile-bindings/mobile/`)
 ```go
 package mobile
 
@@ -54,70 +70,30 @@ func MediaHasher(filePath string) (string, error) {
     return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-// ExifParser extracts basic metadata from image/video files
+// ExifParser extracts basic metadata from image files
 func ExifParser(filePath string) (map[string]string, error) {
-    // Use go-exif or mp4ff for video duration/resolution
-    // Returns: map of key-value pairs (camera, iso, gps, duration, etc.)
+    // Returns: map of key-value pairs (camera, iso, gps, capture_time)
 }
-
-// CryptoUtils handles JWT token signing/verification locally
-func GenerateSecureToken(length int) (string, error) { ... }
 ```
 
-### Build & Integration Process
-1. **Generate AAR**: `gomobile bind -target=android -o mobile-bindings.aar ./mobile`
-2. **Android Studio Setup**: Drop `.aar` into `app/libs/`, add to `build.gradle.kts`:
-   ```kotlin
-   dependencies {
-       implementation(files("libs/mobile-bindings.aar"))
-   }
-   ```
-3. **Kotlin Usage**: Direct method calls via generated Java bridge:
-   ```kotlin
-   val hash = MobileBindings.MediaHasher(filePath)
-   val exifData = MobileBindings.ExifParser(filePath)
-   ```
-
-### Performance & Limitations Notes
-- ✅ Excellent for CPU-bound tasks (hashing, parsing, encryption)
-- ⚠️ No direct access to Android `Context` or UI threads from Go (use Kotlin bridge for threading/callbacks)
-- ✅ Gomobile 1.20+ supports most standard library packages (`os`, `io`, `crypto`)
+### Build Process
+1.  **Generate AAR**: `gomobile bind -target=android -o mobile-bindings.aar ./mobile`
+2.  **Integration**: Drop `.aar` into `app/libs/`.
+3.  **Usage**: Call directly from Kotlin: `MobileBindings.MediaHasher(filePath)`.
 
 ---
 
-## 4. Core Feature Implementation Plan
+## 4. Project Structure (`android/`)
 
-### Phase 1: Local Media Management (Weeks 1-4)
-| Task | Description | Tech/Component |
-|------|-------------|----------------|
-| **Device Scanning** | Background service to scan `DCIM/`, `Pictures/`, etc. for photos/videos | `MediaScannerConnection` + Kotlin Coroutines |
-| **SHA256 Deduplication** | Compute hashes via Gomobile, store in Room to prevent duplicate uploads | `MobileBindings.MediaHasher()` → Room DAO |
-| **EXIF Extraction** | Parse camera model, ISO, GPS, capture time using Go bindings | `MobileBindings.ExifParser()` → Map to `MediaEntity` |
-| **Local Media Grid** | Compose-based responsive grid with lazy loading & pagination | `LazyVerticalGrid`, Coil for thumbnails |
-| **Video Playback** | Native seekable playback with range-request simulation (local) | ExoPlayer + Media3 |
-
-### Phase 2: Cloud Sync Integration (Weeks 5-8)
-| Task | Description | Tech/Component |
-|------|-------------|----------------|
-| **Authentication** | Login screen, JWT storage, session refresh logic | Ktor Client + Retrofit Auth Interceptor |
-| **Upload Queue** | Batch uploads with progress tracking & retry logic | WorkManager + `POST /api/v1/media/upload` |
-| **Sync State Management** | Track local vs remote IDs, conflict resolution | Room `SyncStatus` enum + timestamp reconciliation |
-| **Album Sync** | Fetch remote albums, map to local UI filters | REST API → ViewModel state flow |
-| **Admin Panel (Optional)** | Read-only user list & status view for admin accounts | Reuse web API endpoints, Compose tables |
-
----
-
-## 5. Project Structure
-
-```
+```text
 android/
 ├── app/
-│   ├── src/main/java/com/steadyphoto/mobile/
-│   │   ├── di/              # Hilt/Koin dependency injection
+│   ├── src/main/java/com/steadyphoto/sync/
+│   │   ├── di/              # Dependency Injection (Hilt/Koin)
 │   │   ├── data/            # Room DAOs, DTOs, Repository interfaces
 │   │   ├── local/           # Room database setup & migrations
-│   │   ├── remote/          # Ktor/Retrofit API clients
-│   │   ├── ui/              # Compose screens (Login, Grid, Player, Settings)
+│   │   ├── remote/          # Ktor/Retrofit API clients for /api/v1/media/upload
+│   │   ├── ui/              # Compose screens (Settings, Upload Queue Status)
 │   │   ├── viewmodel/       # State holders + Flow emitters
 │   │   └── worker/          # Background scanning & upload workers
 │   ├── libs/                # gomobile-generated .aar files
@@ -126,61 +102,126 @@ android/
 │   ├── go.mod
 │   └── mobile/              # Exported functions/classes
 ├── gradle/                  # Wrapper & version catalogs
-└── build.gradle.kts         # Root project config
+├── build.gradle.kts         # Root project config
+└── settings.gradle.kts      # Project name & plugin management
 ```
 
 ---
 
-## 6. Build & CI/CD Pipeline
+## 5. Implementation Phases
 
-### Local Development
-- **Android Studio**: Standard Gradle sync → Run on emulator/device
-- **Gomobile Regeneration**: `./gradlew :app:generateMobileBindings` (custom task wrapping `gomobile bind`)
-- **Hot Reload**: Compose preview + Android Emulator live reload
+### Phase 1: Foundation ✅ COMPLETED (Weeks 1-2)
+*   **Goal**: App launches, connects to Go backend, generates Gomobile bindings.
+*   **Completed Tasks**:
+    *   ✅ Scaffold Android project with Kotlin + Compose + Material 3
+    *   ✅ Set up `gomobile-bindings/` module with Go source code (`mobile.go`, `go.mod`)
+    *   ✅ Implement Room database schema (`MediaItemEntity`, `SyncDatabase`, `MediaItemDao`)
+    *   ✅ Create API client setup (Retrofit + OkHttp) for `/api/v1/media/upload`
+    *   ✅ Repository pattern with interface and implementation
+    *   ✅ Koin DI module setup with AppContainer
+    *   ✅ Background Workers: MediaScannerWorker & UploadWorker with WorkManager scheduling
+    *   ✅ UI Skeleton: Login, Home, Settings screens in Jetpack Compose
+    *   ✅ ViewModels: AuthViewModel + MainViewModel with state management
+    *   ✅ Theme system (Light/Dark mode support)
 
-### Automated CI/CD (GitHub Actions)
-```yaml
-name: Android Build & Test
-on: [push, pull_request]
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/setup-go@v5
-        with: { go-version: '1.22' }
-      - run: cd gomobile-bindings && gomobile bind -target=android -o ../app/libs/mobile.aar ./mobile
-      - uses: gradle/gradle-build-action@v3
-      - run: ./gradlew assembleDebug test
+### Phase 2: Scanning & Deduplication (Weeks 3-4)
+*   **Goal**: Find files on device, compute hashes, store in DB.
+*   **Tasks**:
+    *   Implement `MediaScanner` using Android `ContentResolver` / MediaStore API
+        - Query camera photos/videos from DCIM/Camera and Pictures directories
+        - Filter by file type (JPEG, PNG, HEIC, MP4), size (>10KB), date
+        - Handle runtime permissions (`READ_MEDIA_IMAGES`, `READ_MEDIA_VIDEO`)
+    *   Integrate Gomobile `MediaHasher()` for SHA256 computation
+        - Connect Kotlin to Go functions via `.aar` library in `app/libs/`
+        - Compute hash during scan phase, store alongside entity
+    *   Background worker to scan and populate Room database with "Pending" status items
+    *   Duplicate detection: Check existing hashes before inserting new items
+
+### Phase 3: Upload Engine (Weeks 5-6)
+*   **Goal**: Send files to server successfully.
+*   **Tasks**:
+    *   Implement `POST /api/v1/media/upload` logic (multipart/form-data)
+        - Use Ktor/Retrofit multipart body with file stream
+        - Include metadata (hash, EXIF data if available) in request
+    *   Handle large file streaming (don't load whole file into RAM)
+        - Stream files directly from storage URI to network socket
+        - Implement progress callbacks for UI updates
+    *   Update Room status to "Uploaded" on success, or retry on failure
+        - Implement exponential backoff retry logic in WorkManager
+        - Track upload errors with timestamps for debugging
+
+### Phase 4: Metadata & Polish (Weeks 7-8)
+*   **Goal**: Extract EXIF data and improve UI/UX.
+*   **Tasks**:
+    *   Integrate Gomobile `ExifParser()` during the scan phase
+        - Extract camera model, ISO, GPS coordinates, capture time
+        - Store extracted metadata in extended entity fields
+    *   Add "Settings" screen (Upload over Wi-Fi only, Auto-upload toggle)
+        - Persist settings using DataStore or SharedPreferences
+        - Apply constraints to WorkManager workers based on settings
+    *   Refine Compose UI for upload progress bars and photo grid
+    *   Add photo preview/selection capability
+
+---
+
+## 6. Detailed Next Steps (Immediate Priorities)
+
+### Priority 1: MediaStore Integration (Foundation for Scanning)
+```kotlin
+// Implement actual device photo scanning using MediaStore API
+// - Query camera photos/videos from DCIM/Camera and other directories
+// - Filter by file type, size, date
+// - Handle permissions (READ_MEDIA_IMAGES/VIDEO)
+```
+
+### Priority 2: Gomobile Bindings Integration (Core Backend Logic)
+```kotlin
+// Connect Kotlin to Go functions in mobile.go:
+// - SHA256 hashing for duplicate detection
+// - EXIF metadata extraction (capture date, GPS, camera info)
+// - Image processing utilities
+```
+
+### Priority 3: File Upload with Progress Tracking
+```kotlin
+// Implement multipart file uploads with:
+// - Progress tracking callbacks
+// - Retry logic for failed uploads
+// - Chunked upload support for large files
+// - Network connectivity monitoring
+```
+
+### Priority 4: Photo Preview & Selection UI
+```kotlin
+// Compose components for:
+// - Grid view of scanned photos
+// - Photo detail/preview screen
+// - Multi-select for manual sync control
+// - Loading placeholders and error states
+```
+
+### Priority 5: Settings & Preferences Manager
+```kotlin
+// Centralized settings handling:
+// - Auto-sync toggle + schedule configuration
+// - WiFi-only mode enforcement
+// - Storage quota management
+// - Account management (login/logout flow)
 ```
 
 ---
 
-## 7. Roadmap & Milestones
-
-| Phase | Timeline | Deliverables | Success Criteria |
-|-------|----------|--------------|------------------|
-| **1. Foundation** | Week 1-2 | Gomobile AAR generation, Room setup, Compose navigation shell | App launches, binds Go functions, DB initializes |
-| **2. Local Media Core** | Week 3-4 | Device scanner, SHA256 dedup UI, EXIF parsing, local grid view | Scans 10k+ files in <30s, deduplicates correctly |
-| **3. Playback & UX** | Week 5-6 | Video player, image viewer, settings screen, dark mode polish | Smooth scrolling, zero ANRs on mid-range devices |
-| **4. Cloud Sync** | Week 7-8 | Auth flow, upload queue with progress, remote album fetch | Uploads complete without crashes, sync state persists |
-| **5. Beta Release** | Week 9-10 | Internal testing, performance profiling, Play Store listing prep | Passes CTS, <2% crash rate, ready for closed testing |
-
----
-
-## 8. Risk Mitigation & Considerations
+## 6. Risks & Mitigation
 
 | Risk | Impact | Mitigation Strategy |
 |------|--------|---------------------|
-| **Gomobile AAR size** | Increases APK footprint (~5-10MB) | Use `arm64-v8a` only initially, strip unused Go symbols |
-| **Threading mismatches** | Go blocks Android main thread | Wrap all Gomobile calls in `Dispatchers.IO` or background workers |
-| **SQLite vs PostgreSQL schema drift** | Sync conflicts later | Design Room entities with `remote_id` UUID columns & sync timestamps from day 1 |
-| **Battery drain during scanning** | Poor UX on large libraries | Implement adaptive scanning (only scan new/modified files), throttle I/O |
+| **Battery Drain** | High | Use `WorkManager` with constraints (charging, Wi-Fi only). Throttle scanning frequency. |
+| **OOM Errors** | Medium | Stream file uploads; do not load full images into memory for hashing. |
+| **Gomobile Size** | Low/Medium | AAR adds ~5-10MB. Use `arm64-v8a` ABI only initially to save space. |
 
 ---
 
 ## Next Steps
-1. Initialize Android Studio project with Kotlin + Compose template
-2. Set up `gomobile-bindings/` Go module & export `MediaHasher`, `ExifParser`
-3. Generate `.aar` and integrate into Android app dependencies
-4. Scaffold Room database schema matching SteadyPhoto's `media` table structure
-5. Begin Phase 1 implementation (local scanning + deduplication UI)
+1.  Initialize the Android project structure in the `android/` directory.
+2.  Set up the Go module for Gomobile bindings.
+3.  Begin Phase 1 implementation.
