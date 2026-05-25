@@ -60,12 +60,21 @@ func (s *Server) routes() {
 
 	// API Versioning
 	s.router.Route("/api/v1", func(r chi.Router) {
-		// CORS Middleware - exposed headers must include Accept-Ranges and Content-Range for video seeking to work cross-origin
+		// CORS Middleware - properly handles credentials mode for Angular withCredentials: true
 		r.Use(func(next http.Handler) http.Handler {
 			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				// Allow requests from the same origin (UI served by this server)
-				w.Header().Set("Access-Control-Allow-Origin", "*")
-				w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS, PUT, PATCH, DELETE")
+				origin := r.Header.Get("Origin")
+
+				// Validate and set the origin (only allow specific origins in production)
+				if origin != "" && isValidCORSOrigin(origin) {
+					w.Header().Set("Access-Control-Allow-Origin", origin)
+				} else if origin == "" {
+					// Allow requests with no origin (e.g., same-origin or mobile apps)
+					w.Header().Set("Access-Control-Allow-Origin", "*")
+				}
+
+				w.Header().Set("Access-Control-Allow-Credentials", "true")
+				w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS, PUT, PATCH, DELETE, POST")
 				w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, Range")
 				w.Header().Set("Access-Control-Expose-Headers", "Content-Length, Content-Type, Accept-Ranges, Content-Range")
 

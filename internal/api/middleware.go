@@ -24,6 +24,13 @@ const (
 
 var MaxUploadSizeBytes int64 = 1024 * 1024 * 1024 // Default: 1GB
 
+// AllowedCORSOrigins defines which origins are permitted to make cross-origin requests.
+// This can be overridden via the CORS_ALLOWED_ORIGINS environment variable (comma-separated list).
+var AllowedCORSOrigins []string = []string{
+	"http://localhost:4200", // Angular dev server
+	"http://192.168.20.23:4200", // Your specific IP for Angular dev server
+}
+
 func init() {
 	if val := os.Getenv("MAX_UPLOAD_SIZE"); val != "" {
 		if mb, err := strconv.ParseInt(val, 10, 64); err == nil && mb > 0 {
@@ -33,6 +40,25 @@ func init() {
 			fmt.Printf("[WARN] Invalid MAX_UPLOAD_SIZE value '%s', using default (1GB)\n", val)
 		}
 	}
+
+	// Allow overriding CORS origins via environment variable
+	if corsOrigins := os.Getenv("CORS_ALLOWED_ORIGINS"); corsOrigins != "" {
+		AllowedCORSOrigins = strings.Split(corsOrigins, ",")
+		for i, origin := range AllowedCORSOrigins {
+			AllowedCORSOrigins[i] = strings.TrimSpace(origin)
+		}
+		fmt.Printf("[CONFIG] CORS allowed origins: %v\n", AllowedCORSOrigins)
+	}
+}
+
+// isValidCORSOrigin checks if the given origin is in the list of allowed CORS origins.
+func isValidCORSOrigin(origin string) bool {
+	for _, allowed := range AllowedCORSOrigins {
+		if strings.EqualFold(origin, allowed) {
+			return true
+		}
+	}
+	return false
 }
 
 // LimitBodySizeMiddleware checks the Content-Length header before processing.

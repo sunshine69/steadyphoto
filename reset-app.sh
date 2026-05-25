@@ -8,12 +8,12 @@ export LOG_LEVEL=debug
 # API port (if different from default)
 export API_PORT=:8081
 
-docker compose down -v ; docker compose up -d
+docker compose -f docker-compose-postgres.yml down -v ; docker compose -f docker-compose-postgres.yml up -d
 sleep 5
 go run cmd/migrate/main.go up
 go build -o scanner.exe cmd/scanner/main.go
 rm -rf storage/* ;  ./scanner.exe -source /mnt/doc/The\ Spit\ Lake\ Somerset -storage storage -email admin@steadyphoto.com
-./scanner.exe -source /mnt/doc/Videos/AI-Video -storage storage -email admin@steadyphoto.com
+# ./scanner.exe -source /mnt/doc/Videos/AI-Video -storage storage -email admin@steadyphoto.com
 #./scanner.exe -source /mnt/doc/Diana\ Place\ 5/ -storage storage
 go build -o worker.exe cmd/worker/main.go
 ./worker.exe > worker.log 2>&1 &
