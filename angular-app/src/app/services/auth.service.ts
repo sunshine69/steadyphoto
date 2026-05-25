@@ -1,6 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { BehaviorSubject, Observable, tap, catchError, throwError } from 'rxjs';
+import { BehaviorSubject, Observable, tap, catchError, finalize, throwError } from 'rxjs';
 import { environment } from '../../environments/environment';
 
 export interface AuthResponse {
@@ -69,7 +69,11 @@ export class AuthService {
       .pipe(
         catchError(err => {
           console.error('AuthService: Registration failed', err);
+          // Ensure we don't trigger token refresh for registration errors
           return throwError(() => err);
+        }),
+        finalize(() => {
+          console.log('AuthService: Registration request completed');
         })
       );
   }
@@ -83,11 +87,13 @@ export class AuthService {
         tap(() => {
           console.log('AuthService: Logout successful');
           this.setAuthenticated(false);
+          this.clearUser(); // Ensure all local storage data is wiped on logout
         }),
         catchError(err => {
           console.error('AuthService: Logout failed', err);
           // Even if server fails, we should clear local state on client side for security/UX
           this.setAuthenticated(false); 
+          this.clearUser(); // Clear local storage even if logout request fails
           return throwError(() => err);
         })
       );
@@ -144,20 +150,41 @@ export class AuthService {
   }
 
   getUsername(): string {
+    // First try to get username from current user object
     const user = this.getCurrentUser();
     if (user?.username) return user.username;
     
-    // Fallback to email's first letter
+    // Then try stored username
     const storedUsername = localStorage.getItem('username');
-    if (storedUsername) return storedUsername;
+    if (storedUsername && storedUsername.trim()) return storedUsername;
     
+    // Fallback to first letter of email
     const email = localStorage.getItem('email') || '';
-    return email.charAt(0).toUpperCase();
+    if (email) {
+      return email.charAt(0).toUpperCase();
+    }
+    
+    // Ultimate fallback - just 'U' for User
+    return 'U';
+  }
+
+  getEmailUsername(): string {
+    // Extract the username part from email (before @ symbol)
+    const email = localStorage.getItem('email') || '';
+    if (!email) return 'User';
+    
+    const parts = email.split('@');
+    return parts[0] || 'User';
   }
 
   clearUser(): void {
     this._currentUser.next(null);
+    // Clear ALL local storage items to prevent data contamination between users
     localStorage.removeItem('username');
     localStorage.removeItem('email');
+    localStorage.removeItem('currentUser');
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
   }
+
 }

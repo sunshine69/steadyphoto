@@ -144,9 +144,9 @@ import { Subscription } from 'rxjs';
       <!-- User Profile Section -->
       <div class="sidebar-footer">
         <div class="user-profile" (click)="toggleMenu()" [class.open]="isMenuOpen">
-          <div class="avatar">{{ username }}</div>
+          <div class="avatar">{{ emailInitial }}</div>
           <div class="user-info">
-            <span class="username">{{ displayName }}</span>
+            <span class="username">{{ emailUsername }}</span>
             <span class="storage-info">2.3 GB used</span>
           </div>
         </div>
@@ -375,20 +375,23 @@ export class SidebarComponent implements OnInit, OnDestroy {
   private router = inject(Router);
   private subscription?: Subscription;
 
-  username = '';
-  displayName = 'User';
+  emailInitial = 'U';
+  emailUsername = 'User';
   isMenuOpen = false;
 
   ngOnInit(): void {
-    this.username = this.authService.getUsername();
-    
-    // Set display name from email if no username stored
-    const email = localStorage.getItem('email') || '';
-    if (email) {
-      // Extract username part before @ symbol, or use full email
-      const parts = email.split('@');
-      this.displayName = parts[0];
-    }
+    // Subscribe to auth state changes to update display values reactively
+    this.subscription = this.authService.isAuthenticated$.subscribe(isAuth => {
+      if (isAuth) {
+        // User is logged in - get fresh values from localStorage
+        this.emailInitial = this.authService.getUsername();
+        this.emailUsername = this.authService.getEmailUsername();
+      } else {
+        // User is logged out - reset to defaults
+        this.emailInitial = 'U';
+        this.emailUsername = 'User';
+      }
+    });
 
     // Close menu when clicking outside
     document.addEventListener('click', this.closeMenuOnOutsideClick);

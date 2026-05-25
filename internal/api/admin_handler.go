@@ -155,6 +155,130 @@ func (s *Server) handleAdminDeleteUser(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// handleBulkApproveUsers handles POST /api/v1/admin/users/bulk-approve
+func (s *Server) handleBulkApproveUsers(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		UserIDs []string `json:"user_ids"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if len(req.UserIDs) == 0 {
+		http.Error(w, "No user IDs provided", http.StatusBadRequest)
+		return
+	}
+
+	userIDs := make([]uuid.UUID, 0, len(req.UserIDs))
+	for _, idStr := range req.UserIDs {
+		id, err := uuid.Parse(idStr)
+		if err != nil {
+			http.Error(w, "Invalid user ID format", http.StatusBadRequest)
+			return
+		}
+		userIDs = append(userIDs, id)
+	}
+
+	if err := s.userRepo.BulkUpdateStatus(r.Context(), userIDs, domain.UserStatusActive); err != nil {
+		log.Printf("[ERROR] handleBulkApproveUsers: failed to approve users: %v", err)
+		http.Error(w, "Failed to approve users", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message":        "Users approved successfully",
+		"approved_count": len(userIDs),
+	})
+}
+
+// handleBulkDisableUsers handles POST /api/v1/admin/users/bulk-disable
+func (s *Server) handleBulkDisableUsers(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		UserIDs []string `json:"user_ids"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if len(req.UserIDs) == 0 {
+		http.Error(w, "No user IDs provided", http.StatusBadRequest)
+		return
+	}
+
+	userIDs := make([]uuid.UUID, 0, len(req.UserIDs))
+	for _, idStr := range req.UserIDs {
+		id, err := uuid.Parse(idStr)
+		if err != nil {
+			http.Error(w, "Invalid user ID format", http.StatusBadRequest)
+			return
+		}
+		userIDs = append(userIDs, id)
+	}
+
+	if err := s.userRepo.BulkUpdateStatus(r.Context(), userIDs, domain.UserStatusDisabled); err != nil {
+		log.Printf("[ERROR] handleBulkDisableUsers: failed to disable users: %v", err)
+		http.Error(w, "Failed to disable users", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message":        "Users disabled successfully",
+		"disabled_count": len(userIDs),
+	})
+}
+
+// handleBulkDeleteUsers handles DELETE /api/v1/admin/users/bulk-delete
+func (s *Server) handleBulkDeleteUsers(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		UserIDs []string `json:"user_ids"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if len(req.UserIDs) == 0 {
+		http.Error(w, "No user IDs provided", http.StatusBadRequest)
+		return
+	}
+
+	userIDs := make([]uuid.UUID, 0, len(req.UserIDs))
+	for _, idStr := range req.UserIDs {
+		id, err := uuid.Parse(idStr)
+		if err != nil {
+			http.Error(w, "Invalid user ID format", http.StatusBadRequest)
+			return
+		}
+		userIDs = append(userIDs, id)
+	}
+
+	// Revoke all sessions for these users before deleting
+	for _, userID := range userIDs {
+		if err := s.sessionRepo.RevokeAllByUserID(r.Context(), userID); err != nil {
+			log.Printf("[ERROR] handleBulkDeleteUsers: failed to revoke sessions for user %s: %v", userID, err)
+		}
+	}
+
+	if err := s.userRepo.BulkDeleteUsers(r.Context(), userIDs); err != nil {
+		log.Printf("[ERROR] handleBulkDeleteUsers: failed to delete users: %v", err)
+		http.Error(w, "Failed to delete users", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message":        "Users deleted successfully",
+		"deleted_count":  len(userIDs),
+	})
+}
+
 // Helper functions
 func isValidStatus(status string) bool {
 	switch status {

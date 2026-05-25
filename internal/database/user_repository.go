@@ -2,6 +2,8 @@ package database
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"steadyphoto/internal/domain"
 
@@ -72,6 +74,43 @@ func (r *PostgresUserRepository) ListUsers(ctx context.Context, status string) (
 		return nil, err
 	}
 	return users, nil
+}
+
+func (r *PostgresUserRepository) BulkUpdateStatus(ctx context.Context, userIDs []uuid.UUID, newStatus string) error {
+	if len(userIDs) == 0 || newStatus == "" {
+		return nil
+	}
+
+	placeholders := make([]string, len(userIDs))
+	args := make([]interface{}, len(userIDs)+1)
+	args[0] = newStatus
+
+	for i, id := range userIDs {
+		placeholders[i] = fmt.Sprintf("$%d", i+2)
+		args[i+1] = id
+	}
+
+	query := fmt.Sprintf("UPDATE users SET status = $1, updated_at = NOW() WHERE id IN (%s)", strings.Join(placeholders, ", "))
+	_, err := r.db.ExecContext(ctx, query, args...)
+	return err
+}
+
+func (r *PostgresUserRepository) BulkDeleteUsers(ctx context.Context, userIDs []uuid.UUID) error {
+	if len(userIDs) == 0 {
+		return nil
+	}
+
+	placeholders := make([]string, len(userIDs))
+	args := make([]interface{}, len(userIDs))
+
+	for i, id := range userIDs {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		args[i] = id
+	}
+
+	query := fmt.Sprintf("DELETE FROM users WHERE id IN (%s)", strings.Join(placeholders, ", "))
+	_, err := r.db.ExecContext(ctx, query, args...)
+	return err
 }
 
 func (r *PostgresUserRepository) GetByUsernameOrEmail(ctx context.Context, identifier string) (*domain.User, error) {

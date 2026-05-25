@@ -28,6 +28,41 @@ import { UserManagementService, User } from '../../services/user-management.serv
           </select>
         </div>
 
+        <!-- Bulk Actions Bar -->
+        <div class="bulk-actions-bar" *ngIf="isAdmin && users.length > 0 && !isLoading">
+          <label class="select-all-label">
+            <input type="checkbox" (change)="toggleSelectAll($event)" [checked]="isAllSelected()" />
+            Select All
+          </label>
+          <span class="selected-count">{{ getSelectedCount() }} selected</span>
+          
+          <div class="bulk-buttons">
+            <button 
+              (click)="bulkApproveSelected()"
+              [disabled]="getSelectedCount() === 0 || isBulkUpdating"
+              class="btn btn-sm btn-success bulk-btn"
+              title="Approve all selected users">
+              ✓ Approve Selected
+            </button>
+            
+            <button 
+              (click)="bulkDisableSelected()"
+              [disabled]="getSelectedCount() === 0 || isBulkUpdating"
+              class="btn btn-sm btn-warning bulk-btn"
+              title="Disable all selected users">
+              ⏸ Disable Selected
+            </button>
+            
+            <button 
+              (click)="bulkDeleteSelected()"
+              [disabled]="getSelectedCount() === 0 || isBulkUpdating"
+              class="btn btn-sm btn-danger bulk-btn"
+              title="Permanently delete all selected users">
+              🗑 Delete Selected
+            </button>
+          </div>
+        </div>
+
         <!-- Loading State -->
         <div class="loading-state" *ngIf="isLoading">
           <div class="spinner-border text-primary" role="status">
@@ -49,7 +84,16 @@ import { UserManagementService, User } from '../../services/user-management.serv
           </div>
 
           <div class="users-container">
-            <div *ngFor="let user of users" class="user-card">
+            <div *ngFor="let user of users; let i = index" class="user-card" [class.selected]="selectedUsers[user.id]">
+              <!-- Selection Checkbox -->
+              <div class="selection-checkbox">
+                <input 
+                  type="checkbox" 
+                  [checked]="selectedUsers[user.id]"
+                  (change)="toggleUserSelection(user)"
+                  *ngIf="isAdmin" />
+              </div>
+
               <div class="user-info">
                 <div class="user-avatar">{{ user.email[0].toUpperCase() }}</div>
                 <div class="user-details">
@@ -72,7 +116,7 @@ import { UserManagementService, User } from '../../services/user-management.serv
                   [(ngModel)]="pendingStatus[user.id]" 
                   (change)="onStatusChange(user)"
                   class="form-select form-select-sm status-dropdown"
-                  [disabled]="isUpdating[user.id]">
+                  [disabled]="isUpdating[user.id] || isBulkUpdating">
                   <option value="">Update Status</option>
                   <option value="active">Activate</option>
                   <option value="disabled">Disable</option>
@@ -85,7 +129,7 @@ import { UserManagementService, User } from '../../services/user-management.serv
                   [(ngModel)]="pendingRole[user.id]" 
                   (change)="onRoleChange(user)"
                   class="form-select form-select-sm role-dropdown"
-                  [disabled]="isUpdating[user.id]">
+                  [disabled]="isUpdating[user.id] || isBulkUpdating">
                   <option value="">Update Role</option>
                   <option value="admin">Make Admin</option>
                   <option value="user">Make User</option>
@@ -95,7 +139,7 @@ import { UserManagementService, User } from '../../services/user-management.serv
                   *ngIf="isAdmin && user.status !== 'disabled'" 
                   (click)="deleteUser(user)"
                   class="btn btn-sm btn-danger"
-                  [disabled]="isUpdating[user.id]">
+                  [disabled]="isUpdating[user.id] || isBulkUpdating">
                   Delete
                 </button>
 
@@ -201,6 +245,66 @@ import { UserManagementService, User } from '../../services/user-management.serv
 
     .filter-section select:focus {
       border-color: #6366f1;
+    }
+
+    .bulk-actions-bar {
+      padding: 12px 24px;
+      border-bottom: 1px solid #374151;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      background-color: #1e293b;
+    }
+
+    .select-all-label {
+      color: #9ca3af;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+    }
+
+    .select-all-label input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+    }
+
+    .selected-count {
+      color: #6366f1;
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .bulk-buttons {
+      display: flex;
+      gap: 8px;
+      margin-left: auto;
+    }
+
+    .bulk-btn {
+      padding: 6px 12px;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .user-card.selected {
+      background-color: #374151;
+      border-left: 3px solid #6366f1;
+    }
+
+    .selection-checkbox {
+      margin-right: 12px;
+      display: flex;
+      align-items: center;
+    }
+
+    .selection-checkbox input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+      accent-color: #6366f1;
     }
 
     .loading-state, .error-state {
@@ -365,6 +469,10 @@ export class UserManagementComponent implements OnInit, OnDestroy {
   pendingStatus: { [key: string]: string } = {};
   pendingRole: { [key: string]: string } = {};
   isUpdating: { [key: string]: boolean } = {};
+  
+  // Bulk operation state
+  selectedUsers: { [key: string]: boolean } = {};
+  isBulkUpdating = false;
 
   private userManagementService = inject(UserManagementService);
 
@@ -494,6 +602,131 @@ export class UserManagementComponent implements OnInit, OnDestroy {
       },
       complete: () => {
         this.isUpdating[user.id] = false;
+      }
+    });
+  }
+
+  // Bulk operation methods
+  getSelectedCount(): number {
+    return Object.values(this.selectedUsers).filter(Boolean).length;
+  }
+
+  isAllSelected(): boolean {
+    if (this.users.length === 0) return false;
+    return this.users.every(user => this.selectedUsers[user.id]);
+  }
+
+  hasPendingUsers(): boolean {
+    return this.users.some(u => u.status === 'pending');
+  }
+
+  hasActiveUsers(): boolean {
+    return this.users.some(u => u.status === 'active');
+  }
+
+  hasActiveOrPendingUsers(): boolean {
+    return this.hasActiveUsers() || this.hasPendingUsers();
+  }
+
+  toggleSelectAll(event: Event): void {
+    const target = event.target as HTMLInputElement;
+    const selectAll = target.checked;
+    
+    this.users.forEach(user => {
+      if (user.status !== 'disabled') {
+        this.selectedUsers[user.id] = selectAll;
+      }
+    });
+  }
+
+  toggleUserSelection(user: User): void {
+    if (user.status === 'disabled') return;
+    this.selectedUsers[user.id] = !this.selectedUsers[user.id];
+  }
+
+  bulkApproveSelected(): void {
+    const selectedIds = Object.entries(this.selectedUsers)
+      .filter(([_, selected]) => selected)
+      .map(([id, _]) => id);
+    
+    if (selectedIds.length === 0) return;
+
+    if (!confirm(`Are you sure you want to approve ${selectedIds.length} user(s)?`)) {
+      return;
+    }
+
+    this.isBulkUpdating = true;
+    
+    this.userManagementService.bulkApproveUsers(selectedIds).subscribe({
+      next: (response) => {
+        console.log('Bulk approval successful:', response);
+        alert(response.message || 'Users approved successfully');
+        this.loadUsers(); // Refresh the list
+      },
+      error: (err) => {
+        console.error('Failed to bulk approve users', err);
+        alert('Failed to approve users. Please try again.');
+      },
+      complete: () => {
+        this.isBulkUpdating = false;
+      }
+    });
+  }
+
+  bulkDisableSelected(): void {
+    const selectedIds = Object.entries(this.selectedUsers)
+      .filter(([_, selected]) => selected)
+      .map(([id, _]) => id);
+    
+    if (selectedIds.length === 0) return;
+
+    if (!confirm(`Are you sure you want to disable ${selectedIds.length} user(s)?`)) {
+      return;
+    }
+
+    this.isBulkUpdating = true;
+    
+    this.userManagementService.bulkDisableUsers(selectedIds).subscribe({
+      next: (response) => {
+        console.log('Bulk disable successful:', response);
+        alert(response.message || 'Users disabled successfully');
+        this.loadUsers(); // Refresh the list
+      },
+      error: (err) => {
+        console.error('Failed to bulk disable users', err);
+        alert('Failed to disable users. Please try again.');
+      },
+      complete: () => {
+        this.isBulkUpdating = false;
+      }
+    });
+  }
+
+  bulkDeleteSelected(): void {
+    const selectedIds = Object.entries(this.selectedUsers)
+      .filter(([_, selected]) => selected)
+      .map(([id, _]) => id);
+    
+    if (selectedIds.length === 0) return;
+
+    if (!confirm(`⚠️ WARNING: Are you sure you want to permanently delete ${selectedIds.length} user(s)? This action cannot be undone!`)) {
+      return;
+    }
+
+    this.isBulkUpdating = true;
+    
+    this.userManagementService.bulkDeleteUsers(selectedIds).subscribe({
+      next: (response) => {
+        console.log('Bulk deletion successful:', response);
+        alert(response.message || 'Users deleted successfully');
+        this.loadUsers(); // Refresh the list
+      },
+      error: (err) => {
+        console.error('Failed to bulk delete users', err);
+        alert('Failed to delete users. Please try again.');
+      },
+      complete: () => {
+        this.isBulkUpdating = false;
       }
     });
   }

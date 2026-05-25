@@ -9,13 +9,24 @@ export interface User {
   email: string;
   status: string; // pending, active, disabled, rejected
   role: string; // admin, user
-  created_at: string;
-  updated_at: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface AdminUpdateUserRequest {
   status?: string;
   role?: string;
+}
+
+export interface BulkOperationRequest {
+  user_ids: string[];
+}
+
+export interface BulkOperationResponse {
+  message: string;
+  approved_count?: number;
+  disabled_count?: number;
+  deleted_count?: number;
 }
 
 @Injectable({
@@ -88,6 +99,45 @@ export class UserManagementService {
     return this.http.post(url, { email, password }).pipe(
       catchError(err => {
         console.error('UserManagementService: Failed to register user', err);
+        return throwError(() => err);
+      })
+    );
+  }
+
+  /**
+   * Bulk approve users (set status to active) - admin only
+   */
+  bulkApproveUsers(userIds: string[]): Observable<BulkOperationResponse> {
+    const url = `${this.API_BASE_URL}/admin/users/bulk-approve`;
+    return this.http.post<BulkOperationResponse>(url, { user_ids: userIds }).pipe(
+      catchError(err => {
+        console.error('UserManagementService: Failed to bulk approve users', err);
+        return throwError(() => err);
+      })
+    );
+  }
+
+  /**
+   * Bulk disable users (set status to disabled) - admin only
+   */
+  bulkDisableUsers(userIds: string[]): Observable<BulkOperationResponse> {
+    const url = `${this.API_BASE_URL}/admin/users/bulk-disable`;
+    return this.http.post<BulkOperationResponse>(url, { user_ids: userIds }).pipe(
+      catchError(err => {
+        console.error('UserManagementService: Failed to bulk disable users', err);
+        return throwError(() => err);
+      })
+    );
+  }
+
+  /**
+   * Bulk delete users (permanent deletion) - admin only
+   */
+  bulkDeleteUsers(userIds: string[]): Observable<BulkOperationResponse> {
+    const url = `${this.API_BASE_URL}/admin/users/bulk-delete`;
+    return this.http.delete<BulkOperationResponse>(url, { body: { user_ids: userIds } }).pipe(
+      catchError(err => {
+        console.error('UserManagementService: Failed to bulk delete users', err);
         return throwError(() => err);
       })
     );

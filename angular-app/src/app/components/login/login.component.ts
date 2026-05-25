@@ -204,6 +204,7 @@ export class LoginComponent {
     this.authService.login(this.email, this.password).subscribe({
       next: () => {
         console.log('Login successful');
+        this.isLoading = false;
         this.authService.setCurrentUser({ email: this.email });
         localStorage.setItem('email', this.email);
         this.router.navigate(['/']); // Redirect to home (photo list) after login

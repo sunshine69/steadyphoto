@@ -9,13 +9,13 @@ import (
 
 // User represents a registered user of the system
 type User struct {
-	ID           uuid.UUID `db:"id"`
-	Email        string    `db:"email"`
-	PasswordHash string    `db:"password_hash"`
-	Status       string    `db:"status"` // pending, active, disabled, rejected
-	Role         string    `db:"role"`   // admin or user
-	CreatedAt    time.Time `db:"created_at"`
-	UpdatedAt    time.Time `db:"updated_at"`
+	ID           uuid.UUID `json:"id" db:"id"`
+	Email        string    `json:"email" db:"email"`
+	PasswordHash string    `json:"-" db:"password_hash"` // Never expose password hash in JSON
+	Status       string    `json:"status" db:"status"`   // pending, active, disabled, rejected
+	Role         string    `json:"role" db:"role"`       // admin or user
+	CreatedAt    time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at" db:"updated_at"`
 }
 
 const (
@@ -48,6 +48,10 @@ type UserRepository interface {
 	// Admin methods for user management
 	ListUsers(ctx context.Context, status string) ([]*User, error)
 	GetByUsernameOrEmail(ctx context.Context, identifier string) (*User, error)
+	
+	// Bulk operations for admin management
+	BulkUpdateStatus(ctx context.Context, userIDs []uuid.UUID, newStatus string) error
+	BulkDeleteUsers(ctx context.Context, userIDs []uuid.UUID) error
 }
 
 // SessionRepository defines the interface for session lifecycle management

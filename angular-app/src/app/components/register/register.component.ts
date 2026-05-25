@@ -204,20 +204,53 @@ export class RegisterComponent {
       return;
     }
 
+    console.log('RegisterComponent: Submitting registration form');
     this.isLoading = true;
     this.errorMessage = '';
 
+    // Use a flag to prevent multiple submissions
+    let isSubscribed = true;
+
     this.authService.register(this.email, this.password).subscribe({
-      next: () => {
-        console.log('Registration successful');
-        this.router.navigate(['/login']); // Redirect to login after registration
+      next: (response) => {
+        if (!isSubscribed) return;
+        
+        console.log('RegisterComponent: Registration successful', response);
+        this.isLoading = false;
+        
+        // Small delay to ensure UI updates before navigation
+        setTimeout(() => {
+          if (isSubscribed) {
+            this.router.navigate(['/login']);
+          }
+        }, 100);
       },
       error: (err) => {
-        console.error('Registration error', err);
+        if (!isSubscribed) return;
+        
+        console.error('RegisterComponent: Registration error', err);
         this.errorMessage = 'Failed to create account. The email might already be in use.';
         this.isLoading = false;
+      },
+      complete: () => {
+        console.log('RegisterComponent: Registration request completed');
+        if (isSubscribed) {
+          this.isLoading = false;
+        }
       }
     });
+
+    // Cleanup on component destroy to prevent state corruption
+    const originalDestroy = this.ngOnDestroy.bind(this);
+    this.ngOnDestroy = () => {
+      isSubscribed = false;
+      console.log('RegisterComponent: Component destroyed, subscription cleaned up');
+      originalDestroy();
+    };
+  }
+
+  ngOnDestroy(): void {
+    // This will be overridden above to clean up subscriptions
   }
 
   onReset(): void {

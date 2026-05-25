@@ -112,6 +112,11 @@ func (s *Server) routes() {
 				adminRoutes.Get("/users/{id}", s.handleAdminGetUser)
 				adminRoutes.Patch("/users/{id}", s.handleAdminUpdateUser)
 				adminRoutes.Delete("/users/{id}", s.handleAdminDeleteUser)
+				
+				// Bulk operations
+				adminRoutes.Post("/users/bulk-approve", s.handleBulkApproveUsers)
+				adminRoutes.Post("/users/bulk-disable", s.handleBulkDisableUsers)
+				adminRoutes.Delete("/users/bulk-delete", s.handleBulkDeleteUsers)
 			})
 		})
 

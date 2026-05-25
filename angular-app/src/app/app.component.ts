@@ -9,8 +9,10 @@ import { UploadModalComponent } from './components/upload-modal/upload-modal.com
 import { UploadTriggerService } from './services/upload-trigger.service';
 import { SidebarComponent } from './components/sidebar/sidebar.component';
 import { UserManagementComponent } from './components/user-management/user-management.component';
+import { AuthService, CurrentUser } from './services/auth.service';
 
 import { SearchService, SearchScope } from './services/search.service';
+import { Subscription } from 'rxjs';
 
 @Component({
   selector: 'app-root',
@@ -63,7 +65,7 @@ import { SearchService, SearchScope } from './services/search.service';
             </button>
 
             <!-- User Avatar (click to open user management) -->
-            <div class="user-avatar" (click)="openUserManagement()" title="{{ isAdmin ? 'User Management' : 'Profile' }}">S</div>
+            <div class="user-avatar" (click)="openUserManagement()" title="{{ isAdmin ? 'User Management' : 'Profile' }}">{{ avatarInitial }}</div>
           </div>
         </header>
 
@@ -263,10 +265,14 @@ export class AppComponent implements OnInit, OnDestroy {
   selectedScope: SearchScope = 'all';
   private searchTimeout?: any;
   isAdmin = false;
+  avatarInitial = 'U';
 
   public uploadTrigger = inject(UploadTriggerService);
   
   @ViewChild('userManagement', { static: false }) userManagementComponent!: UserManagementComponent;
+
+  private authService = inject(AuthService);
+  private authSubscription?: Subscription;
 
   constructor(
     public presentationService: PresentationService,
@@ -321,7 +327,18 @@ export class AppComponent implements OnInit, OnDestroy {
       // This could be adapted based on how your app handles state updates
     });
 
-    // Check if current user is admin
+    // Subscribe to auth state changes to keep isAdmin and avatarInitial reactive
+    this.authSubscription = this.authService.isAuthenticated$.subscribe(isAuth => {
+      if (isAuth) {
+        this.checkAdminStatus();
+        this.avatarInitial = this.authService.getUsername();
+      } else {
+        this.isAdmin = false;
+        this.avatarInitial = 'U';
+      }
+    });
+
+    // Initial check for admin status and avatar
     this.checkAdminStatus();
   }
 
