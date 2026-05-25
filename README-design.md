@@ -240,11 +240,9 @@ Client-side search and filtering across the media grid with three scope options:
 ### Outstanding / Future Work
 - [ ] **Packaging - prepare release 1.0** ✅ Partially Complete
   - ✅ Dockerfile created for multi-stage build (Angular + Go)
-  - ⚠️ Docker image not yet built/tested
-  - Server configured to serve Angular static files at `/ui` and API at `/api`
-- [ ] **User Management** ⚠️ Untested
-  - Frontend modal component completed but needs end-to-end testing with backend APIs
-  - Admin access control verification needed
+  - ✅ Docker image, docker-compose deployment tested.
+  - ✅ Server configured to serve Angular static files at `/ui` and API at `/api` - done 
+- [ ] **User Management** - done 
 - [ ] ** Android app** to upload media from android phone.
 - [ ] **EXIF/Video Metadata Extraction**: Parse actual capture times, camera info, video duration/resolution during upload.
 - [ ] **Search** by datetime range.
