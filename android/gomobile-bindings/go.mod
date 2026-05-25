@@ -1,7 +1,12 @@
 module com.steadyphoto/mobile
 
-go 1.22
+go 1.25.0
+
+tool golang.org/x/mobile/cmd/gobind
 
 require (
-	github.com/xor-gate/go-exif/v3 v3.0.0
+	golang.org/x/mobile v0.0.0-20260520154334-0e4426e1883d // indirect
+	golang.org/x/mod v0.36.0 // indirect
+	golang.org/x/sync v0.20.0 // indirect
+	golang.org/x/tools v0.45.0 // indirect
 )

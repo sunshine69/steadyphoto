@@ -1,0 +1,43 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.steadyphoto.sync.app-mergeDebugResources-63:/values-night-v8/values-night-v8.xml",
+            "map": [
+                {
+                    "source": "/mnt/nvme0n1p3/stevek-src/steadyphoto/android/app/src/main/res/values-night/colors.xml",
+                    "from": {
+                        "startLines": "6,2,3,4,5",
+                        "startColumns": "4,4,4,4,4",
+                        "startOffsets": "283,55,141,193,239",
+                        "endColumns": "46,43,51,45,43",
+                        "endOffsets": "325,94,188,234,278"
+                    },
+                    "to": {
+                        "startLines": "2,3,4,5,6",
+                        "startColumns": "4,4,4,4,4",
+                        "startOffsets": "55,102,146,198,244",
+                        "endColumns": "46,43,51,45,43",
+                        "endOffsets": "97,141,193,239,283"
+                    }
+                },
+                {
+                    "source": "/home/stevek/.gradle/caches/transforms-3/90d403245fd99a741d30bfbeb56453c2/transformed/appcompat-1.6.1/res/values-night-v8/values-night-v8.xml",
+                    "from": {
+                        "startLines": "2,3,4,5,6,7,8,9",
+                        "startColumns": "4,4,4,4,4,4,4,4",
+                        "startOffsets": "55,125,209,293,389,491,593,687",
+                        "endColumns": "69,83,83,95,101,101,93,88",
+                        "endOffsets": "120,204,288,384,486,588,682,771"
+                    },
+                    "to": {
+                        "startLines": "7,8,9,10,11,12,13,14",
+                        "startColumns": "4,4,4,4,4,4,4,4",
+                        "startOffsets": "288,358,442,526,622,724,826,920",
+                        "endColumns": "69,83,83,95,101,101,93,88",
+                        "endOffsets": "353,437,521,617,719,821,915,1004"
+                    }
+                }
+            ]
+        }
+    ]
+}

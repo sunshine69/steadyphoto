@@ -47,6 +47,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     composeOptions {
@@ -71,10 +72,10 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
-    implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material3:material3:1.2.0")
 
-    // Compose Icons (for settings, upload icons)
-    implementation("br.com.devsp.horus:horus:1.0.2")
+    // Compose Icons (using Material3 built-in icons instead of horus)
+    // No additional icon library needed - using androidx.compose.material.icons
 
     // Lifecycle & ViewModel
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
@@ -97,6 +98,12 @@ dependencies {
     implementation("io.ktor:ktor-client-content-negotiation:2.3.7")
     implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.7")
 
+    // Networking - Retrofit (for API calls)
+    implementation("com.squareup.retrofit2:retrofit:2.9.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
+
     // Serialization
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
 
@@ -106,6 +113,10 @@ dependencies {
     // Dependency Injection - Koin
     implementation("io.insert-koin:koin-android:3.5.3")
     implementation("io.insert-koin:koin-androidx-workmanager:3.5.3")
+    implementation("io.insert-koin:koin-androidx-compose:3.5.3")
+
+    // Material Icons Extended
+    implementation("androidx.compose.material:material-icons-extended:1.6.0")
 
     // Preferences DataStore (Settings storage)
     implementation("androidx.datastore:datastore-preferences:1.0.0")
