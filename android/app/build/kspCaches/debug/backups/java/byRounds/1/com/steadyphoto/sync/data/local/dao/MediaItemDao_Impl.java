@@ -694,6 +694,63 @@ public final class MediaItemDao_Impl implements MediaItemDao {
     });
   }
 
+  @Override
+  public Object getAllStoredMediaIds(final Continuation<? super List<Long>> $completion) {
+    final String _sql = "SELECT id FROM media_items";
+    final RoomSQLiteQuery _statement = RoomSQLiteQuery.acquire(_sql, 0);
+    final CancellationSignal _cancellationSignal = DBUtil.createCancellationSignal();
+    return CoroutinesRoom.execute(__db, false, _cancellationSignal, new Callable<List<Long>>() {
+      @Override
+      @NonNull
+      public List<Long> call() throws Exception {
+        final Cursor _cursor = DBUtil.query(__db, _statement, false, null);
+        try {
+          final List<Long> _result = new ArrayList<Long>(_cursor.getCount());
+          while (_cursor.moveToNext()) {
+            final Long _item;
+            _item = _cursor.getLong(0);
+            _result.add(_item);
+          }
+          return _result;
+        } finally {
+          _cursor.close();
+          _statement.release();
+        }
+      }
+    }, $completion);
+  }
+
+  @Override
+  public Object deleteByMediaIds(final List<Long> idsToDelete,
+      final Continuation<? super Unit> $completion) {
+    return CoroutinesRoom.execute(__db, true, new Callable<Unit>() {
+      @Override
+      @NonNull
+      public Unit call() throws Exception {
+        final StringBuilder _stringBuilder = StringUtil.newStringBuilder();
+        _stringBuilder.append("DELETE FROM media_items WHERE id IN (");
+        final int _inputSize = idsToDelete.size();
+        StringUtil.appendPlaceholders(_stringBuilder, _inputSize);
+        _stringBuilder.append(")");
+        final String _sql = _stringBuilder.toString();
+        final SupportSQLiteStatement _stmt = __db.compileStatement(_sql);
+        int _argIndex = 1;
+        for (long _item : idsToDelete) {
+          _stmt.bindLong(_argIndex, _item);
+          _argIndex++;
+        }
+        __db.beginTransaction();
+        try {
+          _stmt.executeUpdateDelete();
+          __db.setTransactionSuccessful();
+          return Unit.INSTANCE;
+        } finally {
+          __db.endTransaction();
+        }
+      }
+    }, $completion);
+  }
+
   @NonNull
   public static List<Class<?>> getRequiredConverters() {
     return Collections.emptyList();
