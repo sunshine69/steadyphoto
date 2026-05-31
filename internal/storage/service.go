@@ -121,3 +121,32 @@ func (s *StorageService) DeleteMediaFiles(mediaPath string, thumbRelPath string)
 
 	return nil
 }
+
+// GetUploadTempDir returns the directory where temporary upload files are stored.
+func (s *StorageService) GetUploadTempDir() string {
+	tempDir := filepath.Join(s.baseDir, ".upload-temp")
+	os.MkdirAll(tempDir, 0755) // Create if it doesn't exist
+	return tempDir
+}
+
+// EnsureDirForPath creates the directory structure for a given relative path (without user scoping).
+func (s *StorageService) EnsureDirForPath(relTimePath string) error {
+	fullDirPath := s.GetAbsolutePath(filepath.Dir(relTimePath))
+	if err := os.MkdirAll(fullDirPath, 0755); err != nil {
+		return fmt.Errorf("failed to create storage directory %s: %w", fullDirPath, err)
+	}
+	return nil
+}
+
+// GetThumbnailRelativePath returns the relative path for a thumbnail based on media type.
+func (s *StorageService) GetThumbnailRelativePath(mediaType string, filename string, ext string) string {
+	if strings.ToLower(mediaType) == "video" {
+		cleanPath := strings.TrimPrefix(filename, "storage/")
+		basePart := strings.TrimSuffix(cleanPath, ext)
+		return basePart + ".webp"
+	}
+
+	cleanPath := strings.TrimPrefix(filename, "storage/")
+	basePart := strings.TrimSuffix(cleanPath, ext)
+	return basePart + "_thumb.webp"
+}

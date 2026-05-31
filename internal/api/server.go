@@ -28,6 +28,7 @@ type Server struct {
 	sessionRepo    domain.SessionRepository
 	storageService *storage.StorageService
 	thumbRoot      string
+	sessionManager *UploadSessionManager // For resumable uploads
 }
 
 func NewServer(
@@ -46,6 +47,7 @@ func NewServer(
 		sessionRepo:    sessionRepo,
 		storageService: storageService,
 		thumbRoot:      thumbRoot,
+		sessionManager: NewUploadSessionManager(storageService),
 	}
 	s.routes()
 	return s
@@ -168,6 +170,88 @@ func (s *Server) routes() {
 			protected.Route("/media/upload", func(r chi.Router) {
 				r.Use(LimitBodySizeMiddleware)
 				r.Post("/", uploadHandler.Handle)
+
+				// Single file upload endpoint (mobile client)
+				sessionManager := s.sessionManager
+				singleUploadHandler := NewMediaUploadHandlerSingle(s.mediaRepo, s.storageService, sessionManager)
+				r.Post("/single", singleUploadHandler.HandleSingleFileUpload)
+
+				// Chunked/upload session endpoints for resumable uploads
+				r.Post("/chunk", func(w http.ResponseWriter, r *http.Request) {
+					singleUploadHandler.HandleChunkUpload(w, r, sessionManager)
+				})
+
+				// Upload status endpoint (mobile client)
+				r.Get("/status", singleUploadHandler.HandleStatus)
+
+				// Abort upload endpoint (mobile client)
+				r.Post("/abort", singleUploadHandler.HandleAbort)
+			})
+
+			// Media delete endpoint (mobile client - permanently deletes from storage and DB)
+			protected.Delete("/media/delete", func(w http.ResponseWriter, r *http.Request) {
+				ctx := r.Context()
+				userID, ok := GetUserIDFromContext(ctx)
+				if !ok {
+					http.Error(w, "Unauthorized", http.StatusUnauthorized)
+					return
+				}
+
+				var req struct {
+					MediaIDs []string `json:"media_ids"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+					log.Printf("[ERROR] handleDeleteMedia - decode body: %v", err)
+					http.Error(w, "Invalid request body: "+err.Error(), http.StatusBadRequest)
+					return
+				}
+
+				if len(req.MediaIDs) == 0 {
+					http.Error(w, "No media IDs provided", http.StatusBadRequest)
+					return
+				}
+
+				var deletedCount int
+				for _, idStr := range req.MediaIDs {
+					id, err := uuid.Parse(idStr)
+					if err != nil {
+						log.Printf("[ERROR] handleDeleteMedia - parse UUID (%s): %v", idStr, err)
+						continue // Skip invalid IDs but continue processing others
+					}
+
+					// First get the media to know which files to delete from storage
+					media, err := s.mediaRepo.GetByID(ctx, id, &userID)
+					if err != nil {
+						log.Printf("[ERROR] handleDeleteMedia - GetByID (%s): %v", id, err)
+						continue // Skip if media not found or doesn't belong to user
+					}
+
+					// Delete files from storage (main file and thumbnail if exists)
+					if err := s.storageService.DeleteFile(media.Path); err != nil {
+						log.Printf("[ERROR] handleDeleteMedia - delete main file (%s): %v", media.Path, err)
+						// Continue with DB deletion even if file delete fails to avoid orphaned records
+					}
+
+					// Delete thumbnail separately (it's optional and may not exist)
+					if thumbRelPath := s.storageService.GetThumbnailRelativePath(string(media.MediaType), media.Filename, filepath.Ext(media.Path)); thumbRelPath != "" {
+						s.storageService.DeleteFileSilently(thumbRelPath) // Ignore error for thumbnails
+					}
+
+					// Permanently delete from database
+					if err := s.mediaRepo.PermanentlyDeleteMedia(ctx, id, userID); err != nil {
+						log.Printf("[ERROR] handleDeleteMedia - permanent delete (%s): %v", id, err)
+						continue // Skip if DB deletion fails
+					}
+
+					deletedCount++
+				}
+
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"status":        "success",
+					"deleted_count": deletedCount,
+					"total_requested": len(req.MediaIDs),
+				})
 			})
 
 		})

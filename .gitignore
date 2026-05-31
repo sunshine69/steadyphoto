@@ -8,6 +8,7 @@ android/app/build/
 android/.gradle
 !gradle/wrapper/gradle-wrapper.jar
 !**/src/main/**/build/
+android/app/libs
 
 # Compiled class files
 *.class
