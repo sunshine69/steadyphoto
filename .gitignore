@@ -1,26 +1,76 @@
-# ============================================
-# General Patterns
-# ============================================
+# ====================================================================
+# GOLANG CONFIGURATION
+# ====================================================================
 
-# Build artifacts and outputs
+# Compiled binaries and execution files
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.prof
+
+# Common Go build outputs (if you build to a target bin folder)
+bin/
+pkg/
+
+# Main project binaries (adjust if your output file has a specific name)
+dist/
+/vendor/
+
+# Go toolchain and workspace files
+go.work
+go.work.sum
+
+# ====================================================================
+# KOTLIN ANDROID CONFIGURATION
+# ====================================================================
+
+# Android Studio / IntelliJ IDEA files
+.idea/
+*.iml
+.gradle/
 build/
-android/app/build/
-android/.gradle
-!gradle/wrapper/gradle-wrapper.jar
-!**/src/main/**/build/
-android/app/libs
+captures/
 
-# Compiled class files
-*.class
+# Local configuration files (contains your local SDK paths, passwords, etc.)
+local.properties
+.egl/
+.externalNativeBuild/
+.cxx/
 
-# Log files
+# Keystore files (NEVER commit your signing keys)
+*.jks
+*.keystore
+*.p12
+
+# Google Play Services configuration file
+google-services.json
+
+# Android App Bundle outputs
+*.aab
+*.apk
+
+# Device crash reports and lint reports
+*-crash.txt
+lint/reports/
+
+# ====================================================================
+# GENERAL / SYSTEM CONFIGURATION
+# ====================================================================
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Log files and databases
 *.log
+*.sqlite
 
-# BlueJ files
-*.ctxt
-
-# Mobile Tools for Java (J2ME)
-.mtj.tmp/
+# Environment variables (sensitive data)
+.env
+.env.*
 
 # Package Files
 *.jar
@@ -33,16 +83,6 @@ android/app/libs
 
 # Virtual machine crash logs
 hs_err_pid*
-
-# ============================================
-# Android / Kotlin Project Specific Patterns
-# ============================================
-
-# Gradle
-.gradle/
-build/
-!gradle/wrapper/gradle-wrapper.jar
-!**/src/main/**/build/
 
 # Android Studio
 .idea/
@@ -181,3 +221,6 @@ Thumbs.db
 *.swp
 *.~
 nohup.out 
+!android/app/src/**
+android/app/libs
+android/jni

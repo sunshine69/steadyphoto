@@ -1,0 +1,48 @@
+package com.steadyphoto.sync.ui.screens.auth
+
+import android.util.Log
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.steadyphoto.sync.data.remote.api.ApiClient
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
+
+sealed class AuthUiState {
+    object Idle : AuthUiState()
+    object Loading : AuthUiState()
+    data class Success(val token: String) : AuthUiState()
+    data class Error(val message: String) : AuthUiState()
+}
+
+class AuthViewModel(
+    private val apiService: com.steadyphoto.sync.data.remote.api.ApiService
+) : ViewModel() {
+
+    private val _uiState = MutableStateFlow<AuthUiState>(AuthUiState.Idle)
+    val uiState: StateFlow<AuthUiState> = _uiState
+
+    fun login(email: String, password: String) {
+        viewModelScope.launch {
+            _uiState.value = AuthUiState.Loading
+            try {
+                // Pass strings directly - @Field handles the encoding automatically
+                val response = apiService.login(
+                    email.trim().lowercase(),
+                    password
+                )
+                
+                // Store token for future requests
+                ApiClient.storeAuthToken(response.token)
+                _uiState.value = AuthUiState.Success(response.token)
+            } catch (e: Exception) {
+                Log.e("AuthViewModel", "Login failed", e)
+                _uiState.value = AuthUiState.Error(e.message ?: "Login failed")
+            }
+        }
+    }
+
+    fun resetState() {
+        _uiState.value = AuthUiState.Idle
+    }
+}
