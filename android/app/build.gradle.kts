@@ -54,12 +54,25 @@ android {
         kotlinCompilerExtensionVersion = "1.5.8"
     }
 
+    ndkVersion = "27.0.12077973" // NDK r27 - enables 16KB ELF alignment by default (required for Android 15+ compatibility)
+    
+    externalNativeBuild {
+        cmake {
+            version = "3.22.1"
+        }
+    }
+    
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+        
+        jniLibs {
+            useLegacyPackaging = true
+        }
     }
-}
+
+} // End of android block
 
 dependencies {
     // Core Android

@@ -10,64 +10,63 @@ import (
 	"strings"
 )
 
+// MediaProcessor provides media-related operations for Android.
+type MediaProcessor struct{}
+
+// FileMetadata holds the metadata returned by GetFileMetadata.
+type FileMetadata struct {
+	Size     int64  `json:"size"`
+	MimeType string `json:"mime_type"`
+}
+
 // MediaHasher computes SHA256 hash of a file at the given path.
-// Returns hex-encoded hash string or error.
-func MediaHasher(filePath string) (string, error) {
+func (mp *MediaProcessor) MediaHasher(filePath string) (string, error) {
 	f, err := os.Open(filePath)
 	if err != nil {
-		return "", fmt.Errorf("failed to open file: %w", err)
+		return "", fmt.Errorf("failed to open file: %v", err)
 	}
 	defer f.Close()
 
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
-		return "", fmt.Errorf("failed to hash file: %w", err)
+		return "", fmt.Errorf("failed to hash file: %v", err)
 	}
 
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-// FileMetadata holds basic file information.
-type FileMetadata struct {
-	Size         int64  `json:"size"`
-	MimeType     string `json:"mime_type"`
-}
-
 // GetFileMetadata returns metadata for a given file path.
-func GetFileMetadata(filePath string) (FileMetadata, error) {
-	var meta FileMetadata
-
+func (mp *MediaProcessor) GetFileMetadata(filePath string) (*FileMetadata, error) {
 	info, err := os.Stat(filePath)
 	if err != nil {
-		return meta, fmt.Errorf("failed to stat file: %w", err)
+		return nil, fmt.Errorf("failed to stat file: %v", err)
 	}
 
-	meta.Size = info.Size()
+	size := info.Size()
 
 	// Determine MIME type from extension
 	ext := strings.ToLower(filepath.Ext(filePath))
+	mimeType := "application/octet-stream"
 	switch ext {
 	case ".jpg", ".jpeg":
-		meta.MimeType = "image/jpeg"
+		mimeType = "image/jpeg"
 	case ".png":
-		meta.MimeType = "image/png"
+		mimeType = "image/png"
 	case ".gif":
-		meta.MimeType = "image/gif"
+		mimeType = "image/gif"
 	case ".bmp":
-		meta.MimeType = "image/bmp"
+		mimeType = "image/bmp"
 	case ".webp":
-		meta.MimeType = "image/webp"
+		mimeType = "image/webp"
 	case ".mp4", ".m4v":
-		meta.MimeType = "video/mp4"
+		mimeType = "video/mp4"
 	case ".mov":
-		meta.MimeType = "video/quicktime"
+		mimeType = "video/quicktime"
 	case ".avi":
-		meta.MimeType = "video/x-msvideo"
+		mimeType = "video/x-msvideo"
 	case ".mkv":
-		meta.MimeType = "video/x-matroska"
-	default:
-		meta.MimeType = "application/octet-stream"
+		mimeType = "video/x-matroska"
 	}
 
-	return meta, nil
+	return &FileMetadata{Size: size, MimeType: mimeType}, nil
 }

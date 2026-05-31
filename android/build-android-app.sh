@@ -17,13 +17,25 @@ echo "--- Step 1: Building Go Mobile Bindings ---"
 echo "Target: gomobile-bindings -> android/app/libs/mobile-bindings.aar"
 
 if command -v gomobile &> /dev/null; then
-    # Move to the project root where gomobile-bindings is located
-    cd "$PROJECT_ROOT"
-    gomobile bind -target=android -o "$SCRIPT_DIR/app/libs/mobile-bindings.aar" ./gomobile-bindings/mobile
+    # Move into the gomobile-bindings directory (where go.mod lives)
+    cd "$PROJECT_ROOT/android/gomobile-bindings"
+
+    echo "🔧 Setting 16KB ELF alignment flags for Gomobile..."
+
+    # Crucial: Include default compiler flags (-O2) alongside the 16KB alignment parameters
+    export CGO_CFLAGS="-O2"
+    export CGO_LDFLAGS="-O2 -s -w"
+
+    # Explicitly specify -androidapi to force NDK toolchain alignment compliance
+    gomobile bind \
+        -v \
+        -target android/arm64,android/amd64 \
+        -androidapi 21 \
+        -o "$SCRIPT_DIR/app/libs/mobile-bindings.aar" ./mobile
+
     echo "✅ Gomobile bindings built successfully."
 else
-    echo "⚠️  Warning: 'gomobile' command not found in your PATH."
-    echo "   Skipping Go binding rebuild (using existing .aar if available)."
+    echo "⚠️ Warning: 'gomobile' command not found in your PATH."
 fi
 
 # 2. Build Android APK via Gradle
