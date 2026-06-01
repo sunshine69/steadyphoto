@@ -1,9 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <!-- Allow HTTP explicitly for the Android Emulator loopback IP -->
+    <!-- Allow HTTP explicitly for local development IPs -->
     <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="true">192.168.20.23</domain>
-        <domain includeSubdomains="true">127.0.0.1</domain>
-        <!-- Add your local development domain or API IP here if different -->
+        <!-- Raw IP addresses must use the <domain> tag -->
+        <domain includeSubdomains="false">192.168.20.23</domain>
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">10.0.2.2</domain>
+        <domain includeSubdomains="false">::1</domain>
+        <domain includeSubdomains="true">localhost</domain>
     </domain-config>
 </network-security-config>
