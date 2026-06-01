@@ -6,7 +6,7 @@ import androidx.work.WorkManager
 import com.steadyphoto.sync.data.local.dao.MediaItemDao
 import com.steadyphoto.sync.data.local.entity.MediaItemEntity
 import com.steadyphoto.sync.data.local.entity.UploadStatus
-import com.steadyphoto.sync.data.remote.api.ApiService
+import com.steadyphoto.sync.data.remote.api.ApiClient
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -30,7 +30,7 @@ import kotlin.math.min
  */
 class UploadManager(
     private val context: Context,
-    private val apiService: ApiService,
+    private val apiClient: ApiClient,  // Changed from ApiService to ApiClient
     private val mediaItemDao: MediaItemDao,
     private val networkMonitor: NetworkConnectivityMonitor
 ) {
@@ -278,6 +278,9 @@ class UploadManager(
                     }
                 )
 
+                // Always get fresh ApiService from ApiClient to ensure correct URL is used
+                val apiService = apiClient.apiService
+                
                 val response = apiService.uploadSingleFile(
                     authHeader = "Bearer $token",
                     file = filePart,
@@ -447,6 +450,9 @@ class UploadManager(
                     return false
                 }
 
+                // Always get fresh ApiService from ApiClient to ensure correct URL is used
+                val apiService = apiClient.apiService
+                
                 val response = apiService.uploadChunk(
                     authHeader = "Bearer $token",
                     chunk = MultipartBody.Part.createFormData(

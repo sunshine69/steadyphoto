@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import com.steadyphoto.sync.data.remote.api.ApiClient
 import com.steadyphoto.sync.di.appContainerModule
 import com.steadyphoto.sync.di.appModule
 import com.steadyphoto.sync.worker.MediaScannerWorker
@@ -18,12 +19,11 @@ class SteadyPhotoApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         
-        // Initialize Koin for dependency injection
-        startKoin {
-            androidLogger()
-            androidContext(this@SteadyPhotoApplication)
-            modules(appModule, appContainerModule)
-        }
+        // Initialize ApiClient BEFORE Koin startup to ensure BASE_URL is loaded from SharedPreferences
+        // before any Retrofit instance is created by dependency injection.
+        // This prevents the "failed to connect to localhost/127.0.0.1:8080" error when users 
+        // configure a custom API URL in SetupScreen.
+        ApiClient.init(this)
         
         // Schedule periodic media scanning (every 6 hours)
         val scanWorkRequest = PeriodicWorkRequestBuilder<MediaScannerWorker>(
@@ -46,5 +46,12 @@ class SteadyPhotoApplication : Application() {
             ExistingPeriodicWorkPolicy.KEEP,
             uploadWorkRequest
         )
+        
+        // Initialize Koin for dependency injection (after ApiClient is initialized)
+        startKoin {
+            androidLogger()
+            androidContext(this@SteadyPhotoApplication)
+            modules(appModule, appContainerModule)
+        }
     }
 }

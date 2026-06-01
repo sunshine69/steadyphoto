@@ -295,7 +295,7 @@ class SyncRepositoryImpl(
         return try {
             val token = getAuthToken() ?: return Result.failure(Exception("No auth token"))
             
-            container.apiService.deleteMedia(
+            container.apiClient.apiService.deleteMedia(
                 authHeader = "Bearer $token",
                 mediaId = itemId
             )
@@ -312,7 +312,7 @@ class SyncRepositoryImpl(
         return try {
             val token = getAuthToken() ?: return Result.failure(Exception("No auth token"))
             
-            val response = container.apiService.getSyncStatus(
+            val response = container.apiClient.apiService.getSyncStatus(
                 authHeader = "Bearer $token",
                 limit = limit
             )

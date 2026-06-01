@@ -64,13 +64,22 @@ object ApiClient {
         .writeTimeout(30, TimeUnit.SECONDS)
         .build()
 
-    val apiService: ApiService by lazy {
-        Retrofit.Builder()
-            .baseUrl(BASE_URL)
-            .client(okHttpClient)
-            .addConverterFactory(GsonConverterFactory.create())
-            .build()
-            .create(ApiService::class.java)
+    // Mutable API service that can be recreated when base URL changes
+    private var _apiService: ApiService? = null
+    private var currentBaseUrlForApiService: String = DEFAULT_BASE_URL
+    
+    val apiService: ApiService get() {
+        if (_apiService == null || currentBaseUrlForApiService != BASE_URL) {
+            // Create a new Retrofit instance with the current base URL
+            _apiService = Retrofit.Builder()
+                .baseUrl(BASE_URL)
+                .client(okHttpClient)
+                .addConverterFactory(GsonConverterFactory.create())
+                .build()
+                .create(ApiService::class.java)
+            currentBaseUrlForApiService = BASE_URL
+        }
+        return _apiService!!
     }
 
     /**
@@ -109,10 +118,14 @@ object ApiClient {
     /**
      * Updates the base URL (useful for testing with different servers).
      * Also saves it to SharedPreferences so it persists across app restarts.
+     * This will also recreate the API service if needed.
      */
     fun updateBaseUrl(newUrl: String) {
         BASE_URL = newUrl.trim()
         saveBaseUrl(BASE_URL)
+        // Invalidate the cached API service so it gets recreated with the new URL
+        _apiService = null
+        currentBaseUrlForApiService = DEFAULT_BASE_URL
     }
 
     /**

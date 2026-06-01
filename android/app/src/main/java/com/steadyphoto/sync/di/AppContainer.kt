@@ -5,11 +5,10 @@ import androidx.activity.ComponentActivity
 import androidx.core.content.ContextCompat
 import com.steadyphoto.sync.data.local.dao.MediaItemDao
 import com.steadyphoto.sync.data.local.SyncDatabase
-import com.steadyphoto.sync.data.remote.api.ApiService
+import com.steadyphoto.sync.data.remote.api.ApiClient
 import com.steadyphoto.sync.data.repository.NetworkConnectivityMonitor
 import com.steadyphoto.sync.data.repository.SyncRepository
 import com.steadyphoto.sync.data.repository.SyncRepositoryImpl
-import com.steadyphoto.sync.data.repository.UploadManager
 import com.steadyphoto.sync.ui.screens.auth.AuthViewModel
 import com.steadyphoto.sync.ui.screens.main.MainViewModel
 import org.koin.android.ext.koin.androidContext
@@ -40,29 +39,35 @@ class PermissionHelper(private val context: Context) {
     }
 }
 
-// App Container for dependency access outside Koin scope
+// App Container for dependency access outside Koin scope - includes ApiClient so components 
+// can get the latest ApiService when API URL changes (e.g., after SetupScreen configuration).
 class AppContainer(
-    val apiService: ApiService,
+    val apiClient: ApiClient,
     val database: SyncDatabase,
     val repository: SyncRepository,
     val permissionHelper: PermissionHelper,
-    val uploadManager: UploadManager
+    val uploadManager: com.steadyphoto.sync.data.repository.UploadManager
 ) {
     val mediaItemDao: MediaItemDao
         get() = database.mediaItemDao()
 }
 
 val appModule = module {
-    single<ApiService> { com.steadyphoto.sync.data.remote.api.ApiClient.apiService }
+    // ApiClient is now the single point of API access - components use apiClient.apiService 
+    // directly, which ensures they always get a fresh instance when base URL changes.
+    single<ApiClient> { com.steadyphoto.sync.data.remote.api.ApiClient }
+    
     single<SyncDatabase> { SyncDatabase.getDatabase(androidContext()) }
     single<MediaItemDao> { get<SyncDatabase>().mediaItemDao() }
     single<PermissionHelper> { PermissionHelper(androidContext()) }
     single<NetworkConnectivityMonitor> { NetworkConnectivityMonitor(androidContext()) }
     
-    single<UploadManager> {
-        UploadManager(
+    // UploadManager now takes ApiClient instead of ApiService - it will call 
+    // apiClient.apiService for each API request, ensuring the latest URL is always used.
+    single {
+        com.steadyphoto.sync.data.repository.UploadManager(
             context = androidContext(),
-            apiService = get(),
+            apiClient = get(),
             mediaItemDao = get(),
             networkMonitor = get()
         )
@@ -76,15 +81,15 @@ val appModule = module {
         )
     }
     
-    // ViewModel declarations for Koin
-    factory { AuthViewModel(get()) }
+    // ViewModel declarations for Koin - AuthViewModel no longer takes ApiService as a parameter
+    factory { AuthViewModel() }
     factory { MainViewModel(get<AppContainer>()) }
 }
 
 val appContainerModule = module {
     single<AppContainer> {
         AppContainer(
-            apiService = get(),
+            apiClient = get(),
             database = get(),
             repository = get(),
             permissionHelper = get(),

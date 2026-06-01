@@ -15,9 +15,7 @@ sealed class AuthUiState {
     data class Error(val message: String) : AuthUiState()
 }
 
-class AuthViewModel(
-    private val apiService: com.steadyphoto.sync.data.remote.api.ApiService
-) : ViewModel() {
+class AuthViewModel : ViewModel() {
 
     private val _uiState = MutableStateFlow<AuthUiState>(AuthUiState.Idle)
     val uiState: StateFlow<AuthUiState> = _uiState
@@ -26,6 +24,9 @@ class AuthViewModel(
         viewModelScope.launch {
             _uiState.value = AuthUiState.Loading
             try {
+                // Always get the latest ApiService from ApiClient (handles URL changes)
+                val apiService = ApiClient.apiService
+                
                 // Pass strings directly - @Field handles the encoding automatically
                 val response = apiService.login(
                     email.trim().lowercase(),
