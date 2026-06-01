@@ -295,9 +295,12 @@ class SyncRepositoryImpl(
         return try {
             val token = getAuthToken() ?: return Result.failure(Exception("No auth token"))
             
+            // mediaId is a form field name (singular), Go expects "mediaId" not "media_ids"
+            val mediaIdPart = itemId.toRequestBody("text/plain".toMediaType())
+            
             container.apiClient.apiService.deleteMedia(
                 authHeader = "Bearer $token",
-                body = com.steadyphoto.sync.data.remote.dto.DeleteRequest(media_ids = listOf(itemId))
+                mediaId = mediaIdPart
             )
             
             // Update local status after successful deletion

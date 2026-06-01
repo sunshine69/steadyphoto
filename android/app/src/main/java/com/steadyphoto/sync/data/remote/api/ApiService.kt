@@ -22,11 +22,10 @@ interface ApiService {
     /**
      * Login endpoint - authenticates user and returns JWT token.
      */
-    @FormUrlEncoded
     @POST("/api/v1/auth/login")
     suspend fun login(
-        @Field("email") email: String,
-        @Field("password") password: String
+        @Header("Authorization") authHeader: String? = null,
+        @Body body: com.steadyphoto.sync.data.remote.dto.LoginRequest
     ): com.steadyphoto.sync.data.remote.dto.LoginResponse
 
     /**
@@ -84,7 +83,7 @@ interface ApiService {
     @HTTP(method = "DELETE", path = "/api/v1/media/delete", hasBody = true)
     suspend fun deleteMedia(
         @Header("Authorization") authHeader: String,
-        @Body body: com.steadyphoto.sync.data.remote.dto.DeleteRequest
+        @Part("mediaId") mediaId: RequestBody
     ): com.steadyphoto.sync.data.remote.dto.DeleteResponse
 
     /**
@@ -99,11 +98,11 @@ interface ApiService {
     /**
      * Abort an in-progress upload session.
      */
-    @FormUrlEncoded
+    @Multipart
     @POST("/api/v1/media/upload/abort")
     suspend fun abortUpload(
         @Header("Authorization") authHeader: String,
-        @Field("uploadId") uploadId: String
+        @Part("uploadId") uploadId: RequestBody
     ): com.steadyphoto.sync.data.remote.dto.AbortResponse
 
     companion object {

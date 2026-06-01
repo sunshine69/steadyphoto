@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.steadyphoto.sync.data.remote.api.ApiClient
+import com.steadyphoto.sync.data.remote.dto.LoginRequest
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -27,15 +28,18 @@ class AuthViewModel : ViewModel() {
                 // Always get the latest ApiService from ApiClient (handles URL changes)
                 val apiService = ApiClient.apiService
                 
-                // Pass strings directly - @Field handles the encoding automatically
+                // Pass LoginRequest body - JSON format expected by Go backend
                 val response = apiService.login(
-                    email.trim().lowercase(),
-                    password
+                    authHeader = null,
+                    body = LoginRequest(
+                        email = email.trim().lowercase(),
+                        password = password
+                    )
                 )
                 
-                // Store token for future requests
-                ApiClient.storeAuthToken(response.token)
-                _uiState.value = AuthUiState.Success(response.token)
+                // Store token for future requests (Go returns "access_token")
+                ApiClient.storeAuthToken(response.access_token)
+                _uiState.value = AuthUiState.Success(response.access_token)
             } catch (e: Exception) {
                 Log.e("AuthViewModel", "Login failed", e)
                 _uiState.value = AuthUiState.Error(e.message ?: "Login failed")
