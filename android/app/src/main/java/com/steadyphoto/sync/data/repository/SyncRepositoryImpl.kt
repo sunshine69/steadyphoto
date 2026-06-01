@@ -297,7 +297,7 @@ class SyncRepositoryImpl(
             
             container.apiClient.apiService.deleteMedia(
                 authHeader = "Bearer $token",
-                mediaId = itemId
+                body = com.steadyphoto.sync.data.remote.dto.DeleteRequest(media_ids = listOf(itemId))
             )
             
             // Update local status after successful deletion

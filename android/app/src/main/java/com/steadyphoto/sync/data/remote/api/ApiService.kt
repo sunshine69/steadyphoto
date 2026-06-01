@@ -5,6 +5,8 @@ import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import retrofit2.http.HTTP
+import retrofit2.http.Body
 import retrofit2.http.Field
 import retrofit2.http.FormUrlEncoded
 import retrofit2.http.GET
@@ -21,7 +23,7 @@ interface ApiService {
      * Login endpoint - authenticates user and returns JWT token.
      */
     @FormUrlEncoded
-    @POST("/api/auth/login")
+    @POST("/api/v1/auth/login")
     suspend fun login(
         @Field("email") email: String,
         @Field("password") password: String
@@ -79,11 +81,10 @@ interface ApiService {
     /**
      * Delete a media item from the server.
      */
-    @FormUrlEncoded
-    @POST("/api/v1/media/delete")
+    @HTTP(method = "DELETE", path = "/api/v1/media/delete", hasBody = true)
     suspend fun deleteMedia(
         @Header("Authorization") authHeader: String,
-        @Field("mediaId") mediaId: String
+        @Body body: com.steadyphoto.sync.data.remote.dto.DeleteRequest
     ): com.steadyphoto.sync.data.remote.dto.DeleteResponse
 
     /**
