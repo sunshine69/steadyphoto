@@ -7,7 +7,7 @@ import androidx.work.WorkManager
 import com.steadyphoto.sync.data.local.dao.MediaItemDao
 import com.steadyphoto.sync.data.local.entity.MediaItemEntity
 import com.steadyphoto.sync.data.local.entity.UploadStatus
-import com.steadyphoto.sync.di.AppContainer
+
 import kotlinx.coroutines.flow.Flow
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -16,7 +16,8 @@ import java.io.File
 class SyncRepositoryImpl(
     private val context: Context,
     private val mediaItemDao: MediaItemDao,
-    private val container: AppContainer
+    private val uploadManager: com.steadyphoto.sync.data.repository.UploadManager,
+    private val apiClient: com.steadyphoto.sync.data.remote.api.ApiClient
 ) : SyncRepository {
 
     override fun getPendingItems(): Flow<List<MediaItemEntity>> {
@@ -240,7 +241,7 @@ class SyncRepositoryImpl(
     override suspend fun uploadMedia(items: List<MediaItemEntity>): Result<Unit> {
         return try {
             // Delegate to UploadManager for consistent upload handling with progress tracking
-            val result = container.uploadManager.uploadMedia(items)
+            val result = uploadManager.uploadMedia(items)
             
             if (result.isSuccess) {
                 val uploadResult = result.getOrNull()
@@ -298,7 +299,7 @@ class SyncRepositoryImpl(
             // mediaId is a form field name (singular), Go expects "mediaId" not "media_ids"
             val mediaIdPart = itemId.toRequestBody("text/plain".toMediaType())
             
-            container.apiClient.apiService.deleteMedia(
+            apiClient.apiService.deleteMedia(
                 authHeader = "Bearer $token",
                 mediaId = mediaIdPart
             )
@@ -315,7 +316,7 @@ class SyncRepositoryImpl(
         return try {
             val token = getAuthToken() ?: return Result.failure(Exception("No auth token"))
             
-            val response = container.apiClient.apiService.getSyncStatus(
+            val response = apiClient.apiService.getSyncStatus(
                 authHeader = "Bearer $token",
                 limit = limit
             )
