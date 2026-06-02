@@ -590,10 +590,19 @@ class UploadManager(
         Log.d(TAG, "All uploads cancelled")
     }
 
-    private fun getAuthToken(): String? {
+    /**
+     * Get the auth token from shared preferences.
+     */
+    fun getAuthToken(): String? {
         val prefs = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
         return prefs.getString("auth_token", null)
     }
+
+    /**
+     * Get the application context for WorkManager operations.
+     */
+    val applicationContext: android.content.Context
+        get() = context
 }
 
 /**

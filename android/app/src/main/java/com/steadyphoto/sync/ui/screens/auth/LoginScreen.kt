@@ -24,6 +24,9 @@ fun LoginScreen(
         if (uiState is AuthUiState.Success) {
             onLoginSuccess()
             viewModel.resetState()
+            // Reset fields after successful login
+            email = ""
+            password = ""
         }
     }
 
@@ -67,6 +70,9 @@ fun LoginScreen(
                     
                     Button(
                         onClick = { viewModel.login(email, password) },
+                        enabled = uiState !is AuthUiState.Loading && 
+                                  email.isNotBlank() && 
+                                  password.isNotBlank(),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text("Login")
@@ -74,15 +80,48 @@ fun LoginScreen(
                     
                     if (uiState is AuthUiState.Error) {
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = (uiState as AuthUiState.Error).message,
-                            color = MaterialTheme.colorScheme.error
-                        )
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = "⚠️",
+                                    style = MaterialTheme.typography.headlineSmall,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                                Column {
+                                    Text(
+                                        text = (uiState as AuthUiState.Error).message,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onErrorContainer
+                                    )
+                                    if ((uiState as AuthUiState.Error).message.contains("connection", ignoreCase = true)) {
+                                        Text(
+                                            text = "Check your internet connection and try again.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                     
                     if (uiState is AuthUiState.Loading) {
                         Spacer(modifier = Modifier.height(8.dp))
-                        CircularProgressIndicator()
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            CircularProgressIndicator()
+                            Text("Logging in...")
+                        }
                     }
                 }
             }
