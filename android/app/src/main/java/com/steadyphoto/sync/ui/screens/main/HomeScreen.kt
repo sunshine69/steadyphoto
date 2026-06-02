@@ -1,9 +1,12 @@
 package com.steadyphoto.sync.ui.screens.main
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.StopCircle
 import androidx.compose.foundation.lazy.LazyColumn
@@ -11,7 +14,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.activity.ComponentActivity
-import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -22,11 +24,42 @@ import org.koin.androidx.compose.koinViewModel
 @Composable
 fun HomeScreen(
     onNavigateToSettings: () -> Unit,
+    onLogout: () -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: MainViewModel = koinViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current as ComponentActivity
+
+    // Create an ActivityResultLauncher for requesting permissions
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions(),
+        onResult = { permissions ->
+            // Check if all requested permissions were granted
+            val allGranted = permissions.values.all { it }
+            
+            if (allGranted) {
+                // Permissions granted - clear error state and allow sync to proceed
+                viewModel.handlePermissionResult(isGranted = true, permanentlyDenied = false)
+            } else {
+                // Some permissions denied - check if any were permanently denied
+                val permanentlyDenied = permissions.entries.any { (permissionName, isGranted) ->
+                    !isGranted && context.shouldShowRequestPermissionRationale(permissionName)
+                }
+                
+                viewModel.handlePermissionResult(isGranted = false, permanentlyDenied = permanentlyDenied)
+            }
+        }
+    )
+
+    // Function to request permissions - this will trigger the launcher
+    fun requestPermissions() {
+        val permissionsToRequest = context.let { ctx ->
+            com.steadyphoto.sync.util.PermissionHelper.getMediaPermissionsToRequest(ctx)
+        }
+        
+        permissionLauncher.launch(permissionsToRequest)
+    }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -34,6 +67,10 @@ fun HomeScreen(
             TopAppBar(
                 title = { Text("SteadyPhoto Sync") },
                 actions = {
+                    // Logout button
+                    IconButton(onClick = onLogout) {
+                        Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Logout")
+                    }
                     IconButton(onClick = onNavigateToSettings) {
                         Icon(Icons.Default.MoreVert, contentDescription = "Settings")
                     }
@@ -175,7 +212,7 @@ fun HomeScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onErrorContainer
                         )
-                        Button(onClick = { viewModel.requestMediaPermissions(context) }) {
+                        Button(onClick = { requestPermissions() }) {
                             Text("Grant Permissions")
                         }
                     }
@@ -207,3 +244,5 @@ fun HomeScreen(
         }
     }
 }
+
+

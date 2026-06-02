@@ -97,7 +97,7 @@ object ApiClient {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
             .putString("auth_token", token)
-            .apply()
+            .commit()  // Use commit() to ensure synchronous write before HomeScreen is shown
     }
 
     /**

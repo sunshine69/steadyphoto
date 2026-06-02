@@ -35,6 +35,9 @@ interface MediaItemDao {
     @Query("SELECT COUNT(*) FROM media_items WHERE uploadStatus = 'UPLOADED' AND serverId IS NOT NULL")
     fun getUploadedCount(): Flow<Int>
 
+    @Query("SELECT * FROM media_items ORDER BY createdAt DESC LIMIT :limit")
+    suspend fun getRecentItems(limit: Int): List<MediaItemEntity>
+
     @Query("SELECT id FROM media_items")
     suspend fun getAllStoredMediaIds(): List<Long>
 

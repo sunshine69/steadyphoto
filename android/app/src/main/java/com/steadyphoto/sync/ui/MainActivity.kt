@@ -39,14 +39,27 @@ class MainActivity : ComponentActivity() {
                     LaunchedEffect(Unit) {
                         val isSetupDone = ApiClient.isSetupComplete()
                         showSetupScreen = !isSetupDone
+                        
+                        // Check if user was previously logged in and restore session
+                        isLoggedIn = ApiClient.isLoggedIn()
+                        
+                        // If setup wasn't done yet, always show Setup first (regardless of login status)
+                        // because API URL needs to be configured before login
+                        if (!isSetupDone) {
+                            isLoggedIn = false
+                            showSetupScreen = true
+                        } else if (isLoggedIn) {
+                            // User is logged in and setup is done - go directly to Home
+                            showSetupScreen = false
+                        }
                     }
 
-                    when (true) {
+                    when {
                         showSetupScreen -> {
-                            // Show Setup screen - this is the first time the app is being used
+                            // Show Setup screen - this is the first time the app is being used or API URL not configured
                             SetupScreen(
                                 onSetupComplete = { 
-                                    // After setup, update state to show LoginScreen
+                                    // After setup, update state to show LoginScreen/HomeScreen based on login status
                                     showSetupScreen = false
                                 },
                                 modifier = Modifier.fillMaxSize()
@@ -55,6 +68,10 @@ class MainActivity : ComponentActivity() {
                         isLoggedIn -> {
                             HomeScreen(
                                 onNavigateToSettings = { /* TODO: Navigate to settings */ },
+                                onLogout = { 
+                                    ApiClient.clearAuthToken()
+                                    isLoggedIn = false
+                                },
                                 modifier = Modifier.fillMaxSize()
                             )
                         }

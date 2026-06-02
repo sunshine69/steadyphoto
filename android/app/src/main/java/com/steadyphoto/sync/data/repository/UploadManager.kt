@@ -86,12 +86,14 @@ class UploadManager(
                 return Result.failure(error)
             }
 
-            // Filter out items that don't have a valid local path
-            val validItems = items.filter { it.localPath != null && File(it.localPath!!).exists() }
+            // Filter out items that don't have a valid URI (on Android 10+, localPath may be null but we can still upload via URI)
+            val validItems = items.filter { 
+                it.uri.isNotEmpty() && !it.hash.startsWith("hash_failed_") && !it.hash.startsWith("no_path_")
+            }
 
             if (validItems.isEmpty()) {
-                Log.w(TAG, "No valid items to upload")
-                return Result.failure(Exception("No valid files to upload"))
+                Log.w(TAG, "No valid items to upload - possible scoped storage issue on Android 10+")
+                return Result.failure(Exception("No valid files to upload. This may be due to scoped storage restrictions on Android 10+."))
             }
 
             // Initialize progress tracking
@@ -175,17 +177,14 @@ class UploadManager(
             // Update status to uploading
             mediaItemDao.updateStatus(item.id, UploadStatus.UPLOADING)
 
-            val file = File(item.localPath ?: "")
-            if (!file.exists()) {
-                mediaItemDao.updateStatus(item.id, UploadStatus.FAILED, "File not found")
-                return Result.failure(Exception("File not found: ${item.localPath}"))
-            }
-
+            // On Android 10+, use URI-based access via ContentResolver instead of File objects
+            val uri = android.net.Uri.parse(item.uri)
+            
             // Determine upload strategy based on file size and config
-            val result = if (currentConfig.enableChunkedUpload && file.length() > CHUNK_SIZE) {
+            val result = if (currentConfig.enableChunkedUpload && item.fileSize > CHUNK_SIZE) {
                 performChunkedUpload(item, token, callback)
             } else {
-                performSingleFileUpload(item, token, callback)
+                performSingleFileUpload(item, uri, token, callback)
             }
 
             // Update local status based on result
@@ -220,10 +219,11 @@ class UploadManager(
     }
 
     /**
-     * Perform a single file upload with retry logic.
+     * Perform a single file upload with retry logic using URI-based access.
      */
     private suspend fun performSingleFileUpload(
         item: MediaItemEntity,
+        uri: android.net.Uri,
         token: String,
         callback: UploadProgressCallback? = null
     ): UploadItemResult {
@@ -231,10 +231,12 @@ class UploadManager(
 
         for (attempt in 1..currentConfig.maxRetries) {
             try {
-                val file = File(item.localPath ?: "")
+                // Use ContentResolver.openInputStream() to read file from URI - works on Android 10+ where File access is restricted
+                val inputStream = context.contentResolver.openInputStream(uri) 
+                    ?: throw Exception("Cannot open input stream for $uri")
 
                 // Create multipart part with progress tracking via counting sink
-                val requestFile = file.asRequestBody(item.mimeType.toMediaType())
+                val requestFile = okhttp3.RequestBody.create(item.mimeType.toMediaType(), inputStream.readBytes())
 
                 val filePart = MultipartBody.Part.createFormData(
                     "file",
@@ -282,7 +284,6 @@ class UploadManager(
                 val apiService = apiClient.apiService
                 
                 val response = apiService.uploadSingleFile(
-                    authHeader = "Bearer $token",
                     file = filePart,
                     fileName = item.fileName.toRequestBody("text/plain".toMediaType()),
                     mimeType = item.mimeType.toRequestBody("text/plain".toMediaType()),
@@ -344,25 +345,26 @@ class UploadManager(
     }
 
     /**
-     * Perform chunked upload for large files.
+     * Perform chunked upload for large files using URI-based access.
      */
     private suspend fun performChunkedUpload(
         item: MediaItemEntity,
         token: String,
         callback: UploadProgressCallback? = null
     ): UploadItemResult {
-        val file = File(item.localPath ?: "")
-        if (!file.exists()) {
-            return UploadItemResult.Failed("File not found")
+        // Use the file size from the entity instead of File.length() - works on Android 10+
+        val fileSize = item.fileSize
+        if (fileSize <= 0) {
+            return UploadItemResult.Failed("Invalid file size")
         }
 
         // Generate unique upload ID
         val uploadId = "${item.id}_${System.currentTimeMillis()}"
-        val totalChunks = ((file.length() + CHUNK_SIZE - 1) / CHUNK_SIZE).toInt()
+        val totalChunks = ((fileSize + CHUNK_SIZE - 1) / CHUNK_SIZE).toInt()
 
         Log.d(TAG, "Starting chunked upload for ${item.fileName}: $totalChunks chunks")
 
-        // Upload each chunk with retry logic
+        // Upload each chunk with retry logic using URI-based access
         var uploadedChunks = mutableListOf<Int>()
 
         for (chunkIndex in 0 until totalChunks) {
@@ -372,7 +374,7 @@ class UploadManager(
                 uploadId = uploadId,
                 chunkIndex = chunkIndex,
                 totalChunks = totalChunks,
-                file = file
+                fileSize = fileSize
             )
 
             if (success) {
@@ -381,7 +383,7 @@ class UploadManager(
                 // Update progress
                 val bytesUploaded = min(
                     ((chunkIndex + 1).toLong() * CHUNK_SIZE),
-                    file.length()
+                    fileSize
                 )
 
                 _uploadProgress.update { current ->
@@ -390,7 +392,7 @@ class UploadManager(
                             itemId = item.id,
                             fileName = item.fileName,
                             bytesUploaded = bytesUploaded,
-                            totalBytes = file.length(),
+                            totalBytes = fileSize,
                             status = UploadStatus.UPLOADING,
                             chunkIndex = chunkIndex,
                             totalChunks = totalChunks
@@ -413,8 +415,8 @@ class UploadManager(
                 currentUpload = UploadProgress(
                     itemId = item.id,
                     fileName = item.fileName,
-                    bytesUploaded = file.length(),
-                    totalBytes = file.length(),
+                    bytesUploaded = fileSize,
+                    totalBytes = fileSize,
                     status = UploadStatus.UPLOADED
                 )
             )
@@ -424,7 +426,7 @@ class UploadManager(
     }
 
     /**
-     * Upload a single chunk with retry logic.
+     * Upload a single chunk with retry logic using URI-based access.
      */
     private suspend fun uploadChunkWithRetry(
         item: MediaItemEntity,
@@ -432,42 +434,96 @@ class UploadManager(
         uploadId: String,
         chunkIndex: Int,
         totalChunks: Int,
-        file: File
+        fileSize: Long
     ): Boolean {
         var lastError: Exception? = null
 
         for (attempt in 1..currentConfig.maxRetries) {
             try {
+                val uri = android.net.Uri.parse(item.uri)
                 val offset = chunkIndex * CHUNK_SIZE
-                val remaining = file.length() - offset
+                val remaining = fileSize - offset
                 val currentChunkSize = min(CHUNK_SIZE, remaining).toInt()
 
-                // Create chunk request body
-                val chunkFile = createTempChunk(file, offset, currentChunkSize)
+                // Use ContentResolver.openInputStream() to read the URI and skip to the right position for the chunk
+                // Note: We can't use seek on InputStream, so we'll read from the beginning up to the end of this chunk
+                val inputStream = context.contentResolver.openInputStream(uri) 
+                    ?: throw Exception("Cannot open input stream for $uri")
 
-                if (chunkFile == null) {
-                    Log.e(TAG, "Failed to create temp chunk for ${item.fileName}")
+                // Create a byte array for just this chunk by reading and skipping appropriately
+                var lastErrorForChunk: Exception? = null
+                var chunkData: ByteArray? = null
+                
+                try {
+                    inputStream.use { input ->
+                        if (offset > 0) {
+                            // skip() doesn't guarantee it will skip all requested bytes, so we loop until offset is reached
+                            var skipped = 0L
+                            while (skipped < offset) {
+                                val n = input.skip(offset - skipped)
+                                if (n == 0L && !input.markSupported()) {
+                                    // mark not supported and couldn't skip any more bytes - read remaining to discard
+                                    val discardBuffer = ByteArray(min(8192, (offset - skipped).toInt()))
+                                    while (skipped < offset) {
+                                        val bytesReadDiscard = input.read(discardBuffer, 0, min(discardBuffer.size, (offset - skipped).toInt()))
+                                        if (bytesReadDiscard <= 0) break
+                                        skipped += bytesReadDiscard
+                                    }
+                                } else if (n > 0L) {
+                                    skipped += n
+                                } else if (!input.markSupported()) {
+                                    // mark not supported and skip returned 0 - need to read to discard
+                                    val discardBuffer = ByteArray(min(8192, (offset - skipped).toInt()))
+                                    while (skipped < offset) {
+                                        val bytesReadDiscard = input.read(discardBuffer, 0, min(discardBuffer.size, (offset - skipped).toInt()))
+                                        if (bytesReadDiscard <= 0) break
+                                        skipped += bytesReadDiscard
+                                    }
+                                }
+                            }
+                        }
+                        
+                        val buffer = ByteArray(currentChunkSize)
+                        val bytesRead = input.read(buffer, 0, currentChunkSize)
+                        
+                        if (bytesRead < 0) {
+                            throw Exception("Failed to read chunk data")
+                        }
+                        
+                        // Trim the buffer if we didn't read all bytes (for last chunk)
+                        chunkData = if (bytesRead < currentChunkSize) {
+                            buffer.copyOf(bytesRead)
+                        } else {
+                            buffer
+                        }
+                    }
+                } catch (e: Exception) {
+                    lastErrorForChunk = e
+                    throw e
+                }
+
+                if (chunkData == null || lastErrorForChunk != null) {
+                    Log.e(TAG, "Failed to read chunk data for ${item.fileName}")
                     return false
                 }
+
+                // Create chunk request body from the byte array
+                val chunkBody = okhttp3.RequestBody.create("application/octet-stream".toMediaType(), chunkData!!)
 
                 // Always get fresh ApiService from ApiClient to ensure correct URL is used
                 val apiService = apiClient.apiService
                 
                 val response = apiService.uploadChunk(
-                    authHeader = "Bearer $token",
                     chunk = MultipartBody.Part.createFormData(
                         "chunk",
                         "chunk_${chunkIndex}_${item.fileName}",
-                        chunkFile.asRequestBody("application/octet-stream".toMediaType())
+                        chunkBody
                     ),
                     uploadId = uploadId.toRequestBody("text/plain".toMediaType()),
                     chunkIndex = chunkIndex.toString().toRequestBody("text/plain".toMediaType()),
                     totalChunks = totalChunks.toString().toRequestBody("text/plain".toMediaType()),
                     fileName = item.fileName.toRequestBody("text/plain".toMediaType())
                 )
-
-                // Clean up temp file
-                chunkFile.delete()
 
                 return response.success
 
@@ -487,38 +543,6 @@ class UploadManager(
 
         Log.e(TAG, "Chunk upload failed after ${currentConfig.maxRetries} attempts: ${lastError?.message}")
         return false
-    }
-
-    /**
-     * Create a temporary file containing just the chunk data.
-     */
-    private fun createTempChunk(file: File, offset: Long, size: Int): File? {
-        return try {
-            val tempFile = File.createTempFile("chunk_", "_${file.name}", context.cacheDir)
-
-            file.inputStream().use { input ->
-                tempFile.outputStream().use { output ->
-                    input.skip(offset)
-
-                    val buffer = ByteArray(min(size, 8192))
-                    var bytesRead: Int = -1
-                    var totalBytesWritten = 0L
-
-                    while (totalBytesWritten < size && input.read(buffer).also { bytesRead = it } != -1) {
-                        val toWrite = min(bytesRead.toLong(), size - totalBytesWritten).toInt()
-                        output.write(buffer, 0, toWrite)
-                        totalBytesWritten += toWrite
-                    }
-
-                    output.flush()
-                }
-            }
-
-            tempFile
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to create temp chunk file", e)
-            null
-        }
     }
 
     /**

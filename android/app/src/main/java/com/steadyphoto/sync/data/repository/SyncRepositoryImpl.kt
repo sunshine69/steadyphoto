@@ -85,13 +85,14 @@ class SyncRepositoryImpl(
     private fun scanImages(contentResolver: ContentResolver): List<MediaItemEntity> {
         val items = mutableListOf<MediaItemEntity>()
         
+        // On Android 10+, we don't use DATA column - instead we query by URI and compute hash from InputStream
         val projection = arrayOf(
             MediaStore.Images.Media._ID,
             MediaStore.Images.Media.DISPLAY_NAME,
             MediaStore.Images.Media.MIME_TYPE,
             MediaStore.Images.Media.SIZE,
             MediaStore.Images.Media.DATE_ADDED,
-            MediaStore.Images.Media.DATA
+            // DATA column is removed - we'll compute hash from URI instead
         )
         
         val selection = "${MediaStore.Images.Media.SIZE} > 10240 AND (" +
@@ -121,7 +122,6 @@ class SyncRepositoryImpl(
             val mimeIndex = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.MIME_TYPE)
             val sizeIndex = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.SIZE)
             val dateAddedIndex = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
-            val pathIndex = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA)
             
             while (cursor.moveToNext()) {
                 try {
@@ -130,22 +130,20 @@ class SyncRepositoryImpl(
                     val mimeType = cursor.getString(mimeIndex)
                     val fileSize = cursor.getLong(sizeIndex)
                     val dateAdded = cursor.getLong(dateAddedIndex)
-                    val localPath = cursor.getString(pathIndex)
                     
+                    // Build URI for this media item - works on all Android versions including 10+
                     val uri = "${MediaStore.Images.Media.EXTERNAL_CONTENT_URI}/$id"
                     
-                    // Compute SHA256 hash using Gomobile bindings
-                    val hash = if (localPath != null && localPath.isNotEmpty()) {
-                        com.steadyphoto.sync.util.MediaUtils.computeHash(localPath)
-                            ?: "hash_failed_${fileName}_${dateAdded}"
-                    } else {
-                        "no_path_${fileName}_${dateAdded}"
-                    }
+                    // Compute SHA256 hash using ContentResolver.openInputStream() which works on Android 10+
+                    val hash = com.steadyphoto.sync.util.MediaUtils.computeHashFromUri(
+                        context, 
+                        android.net.Uri.parse(uri)
+                    ) ?: "hash_failed_${fileName}_${dateAdded}"
                     
                     items.add(
                         MediaItemEntity(
                             uri = uri,
-                            localPath = if (localPath.isNotEmpty()) localPath else null,
+                            localPath = null, // localPath is not available on Android 10+ due to scoped storage
                             fileName = fileName,
                             hash = hash,
                             mimeType = mimeType,
@@ -165,13 +163,14 @@ class SyncRepositoryImpl(
     private fun scanVideos(contentResolver: ContentResolver): List<MediaItemEntity> {
         val items = mutableListOf<MediaItemEntity>()
         
+        // On Android 10+, we don't use DATA column - instead we query by URI and compute hash from InputStream
         val projection = arrayOf(
             MediaStore.Video.Media._ID,
             MediaStore.Video.Media.DISPLAY_NAME,
             MediaStore.Video.Media.MIME_TYPE,
             MediaStore.Video.Media.SIZE,
             MediaStore.Video.Media.DATE_ADDED,
-            MediaStore.Video.Media.DATA
+            // DATA column is removed - we'll compute hash from URI instead
         )
         
         val selection = "${MediaStore.Video.Media.SIZE} > 10240 AND (" +
@@ -197,7 +196,6 @@ class SyncRepositoryImpl(
             val mimeIndex = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.MIME_TYPE)
             val sizeIndex = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.SIZE)
             val dateAddedIndex = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_ADDED)
-            val pathIndex = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATA)
             
             while (cursor.moveToNext()) {
                 try {
@@ -206,22 +204,20 @@ class SyncRepositoryImpl(
                     val mimeType = cursor.getString(mimeIndex)
                     val fileSize = cursor.getLong(sizeIndex)
                     val dateAdded = cursor.getLong(dateAddedIndex)
-                    val localPath = cursor.getString(pathIndex)
                     
+                    // Build URI for this media item - works on all Android versions including 10+
                     val uri = "${MediaStore.Video.Media.EXTERNAL_CONTENT_URI}/$id"
                     
-                    // Compute SHA256 hash using Gomobile bindings
-                    val hash = if (localPath != null && localPath.isNotEmpty()) {
-                        com.steadyphoto.sync.util.MediaUtils.computeHash(localPath)
-                            ?: "hash_failed_${fileName}_${dateAdded}"
-                    } else {
-                        "no_path_${fileName}_${dateAdded}"
-                    }
+                    // Compute SHA256 hash using ContentResolver.openInputStream() which works on Android 10+
+                    val hash = com.steadyphoto.sync.util.MediaUtils.computeHashFromUri(
+                        context, 
+                        android.net.Uri.parse(uri)
+                    ) ?: "hash_failed_${fileName}_${dateAdded}"
                     
                     items.add(
                         MediaItemEntity(
                             uri = uri,
-                            localPath = if (localPath.isNotEmpty()) localPath else null,
+                            localPath = null, // localPath is not available on Android 10+ due to scoped storage
                             fileName = fileName,
                             hash = hash,
                             mimeType = mimeType,
@@ -245,25 +241,25 @@ class SyncRepositoryImpl(
             
             if (result.isSuccess) {
                 val uploadResult = result.getOrNull()
-                // Mark successfully uploaded items in the database
+                // Mark successfully uploaded items in the database based on actual success/failure counts
                 uploadResult?.let { res ->
                     var successCount = 0
-                    for (item in items) {
+                    for ((index, item) in items.withIndex()) {
                         if (successCount < res.successCount) {
                             mediaItemDao.updateStatus(item.id, UploadStatus.UPLOADED)
                             successCount++
                         } else {
-                            // Mark remaining as failed
+                            // Mark remaining as failed - these are the ones that actually failed during upload
                             mediaItemDao.updateStatus(
                                 item.id, 
                                 UploadStatus.FAILED, 
-                                "Upload batch partially failed"
+                                "Upload partially failed"
                             )
                         }
                     }
                 }
             } else {
-                // Mark all items as failed for retry
+                // Mark all items as failed for retry if the entire batch fails
                 val error = result.exceptionOrNull()
                 items.forEach { item ->
                     mediaItemDao.updateStatus(
@@ -276,7 +272,7 @@ class SyncRepositoryImpl(
             
             result.map { Unit }
         } catch (e: Exception) {
-            // Mark all items as failed for retry
+            // Mark all items as failed for retry if an exception occurs
             items.forEach { item ->
                 mediaItemDao.updateStatus(
                     item.id, 
@@ -300,7 +296,6 @@ class SyncRepositoryImpl(
             val mediaIdPart = itemId.toRequestBody("text/plain".toMediaType())
             
             apiClient.apiService.deleteMedia(
-                authHeader = "Bearer $token",
                 mediaId = mediaIdPart
             )
             
@@ -317,7 +312,6 @@ class SyncRepositoryImpl(
             val token = getAuthToken() ?: return Result.failure(Exception("No auth token"))
             
             val response = apiClient.apiService.getSyncStatus(
-                authHeader = "Bearer $token",
                 limit = limit
             )
             Result.success(response.items)

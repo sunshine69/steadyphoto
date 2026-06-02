@@ -161,18 +161,17 @@ private suspend fun reconcileDeletedFiles() {
                     // Construct URI for this media item
                     val uri = "${MediaStore.Images.Media.EXTERNAL_CONTENT_URI}/$id"
                     
-                    // Compute SHA256 hash using Gomobile bindings
-                    val hash = if (localPath != null && localPath.isNotEmpty()) {
-                        com.steadyphoto.sync.util.MediaUtils.computeHash(localPath)
-                            ?: "hash_failed_${fileName}_${dateAdded}"
-                    } else {
-                        "no_path_${fileName}_${dateAdded}"
-                    }
+                    // Compute SHA256 hash using URI-based access - works on Android 10+ where localPath is null
+                    val uriForHashing = android.net.Uri.parse(uri)
+                    val hash = com.steadyphoto.sync.util.MediaUtils.computeHashFromUri(
+                        applicationContext, 
+                        uriForHashing
+                    ) ?: "hash_failed_${fileName}_${dateAdded}"
                     
                     items.add(
                         MediaItemEntity(
                             uri = uri,
-                            localPath = if (localPath.isNotEmpty()) localPath else null,
+                            localPath = if (localPath.isNotEmpty()) localPath else null, // Keep for Android 9- compatibility
                             fileName = fileName,
                             hash = hash,
                             mimeType = mimeType,
@@ -243,18 +242,17 @@ private suspend fun reconcileDeletedFiles() {
                     // Construct URI for this media item
                     val uri = "${MediaStore.Video.Media.EXTERNAL_CONTENT_URI}/$id"
                     
-                    // Compute SHA256 hash using Gomobile bindings
-                    val hash = if (localPath != null && localPath.isNotEmpty()) {
-                        com.steadyphoto.sync.util.MediaUtils.computeHash(localPath)
-                            ?: "hash_failed_${fileName}_${dateAdded}"
-                    } else {
-                        "no_path_${fileName}_${dateAdded}"
-                    }
+                    // Compute SHA256 hash using URI-based access - works on Android 10+ where localPath is null
+                    val uriForHashing = android.net.Uri.parse(uri)
+                    val hash = com.steadyphoto.sync.util.MediaUtils.computeHashFromUri(
+                        applicationContext, 
+                        uriForHashing
+                    ) ?: "hash_failed_${fileName}_${dateAdded}"
                     
                     items.add(
                         MediaItemEntity(
                             uri = uri,
-                            localPath = if (localPath.isNotEmpty()) localPath else null,
+                            localPath = if (localPath.isNotEmpty()) localPath else null, // Keep for Android 9- compatibility
                             fileName = fileName,
                             hash = hash,
                             mimeType = mimeType,

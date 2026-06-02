@@ -40,6 +40,7 @@ class MainViewModel(
 
     init {
         loadCountsSafely()
+        loadRecentItemsSafely()
     }
 
     /**
@@ -62,6 +63,54 @@ class MainViewModel(
     }
 
     /**
+     * Load recent items safely on init to display in the UI.
+     */
+    private fun loadRecentItemsSafely() {
+        viewModelScope.launch {
+            try {
+                val recentItems = container.mediaItemDao.getRecentItems(10)
+                _uiState.value = _uiState.value.copy(recentItems = recentItems)
+            } catch (e: Exception) {
+                android.util.Log.e("MainViewModel", "Error loading recent items on init, using defaults", e)
+                // Set safe defaults to prevent crashes
+                _uiState.value = _uiState.value.copy(recentItems = emptyList())
+            }
+        }
+    }
+
+    /**
+     * Refresh recent items after a sync operation.
+     */
+    private fun refreshRecentItems() {
+        viewModelScope.launch {
+            try {
+                val recentItems = container.mediaItemDao.getRecentItems(10)
+                _uiState.value = _uiState.value.copy(recentItems = recentItems)
+            } catch (e: Exception) {
+                android.util.Log.e("MainViewModel", "Error refreshing recent items", e)
+                _uiState.value = _uiState.value.copy(recentItems = emptyList())
+            }
+        }
+    }
+
+    /**
+     * Refresh counts after a sync operation.
+     */
+    private fun refreshCounts() {
+        viewModelScope.launch {
+            try {
+                val pending = container.mediaItemDao.getPendingCount().first()
+                _uiState.value = _uiState.value.copy(pendingCount = pending)
+
+                val uploaded = container.mediaItemDao.getUploadedCount().first()
+                _uiState.value = _uiState.value.copy(uploadedCount = uploaded)
+            } catch (e: Exception) {
+                android.util.Log.e("MainViewModel", "Error refreshing counts", e)
+            }
+        }
+    }
+
+    /**
      * Checks if the required media permissions are granted.
      */
     fun hasMediaPermissions(): Boolean {
@@ -74,39 +123,25 @@ class MainViewModel(
     }
 
     /**
-     * Requests media permissions from the user.
+     * Handle the result of a permission request from ActivityResultLauncher.
      */
-    fun requestMediaPermissions(activity: androidx.activity.ComponentActivity, onPermissionsResult: ((Boolean) -> Unit)? = null) {
-        viewModelScope.launch {
-            try {
-                val permissions = container.permissionHelper.getPermissionsToRequest()
-
-                if (permissions.isEmpty()) {
-                    // All permissions already granted
-                    onPermissionsResult?.invoke(true)
-                    return@launch
-                }
-
-                // Request permissions through the activity
-                if (container.permissionHelper.hasMediaPermissions()) {
-                    onPermissionsResult?.invoke(true)
-                } else {
-                    val permanentlyDenied = container.permissionHelper.isPermanentlyDenied(activity)
-                    _uiState.value = _uiState.value.copy(
-                        showPermissionRationale = !permanentlyDenied,
-                        errorMessage = if (permanentlyDenied) {
-                            "Media permissions have been permanently denied. Please enable them in Settings."
-                        } else null
-                    )
-                    onPermissionsResult?.invoke(false)
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("MainViewModel", "Error requesting permissions", e)
-                _uiState.value = _uiState.value.copy(
-                    errorMessage = "Could not check permissions. Please try again."
-                )
-                onPermissionsResult?.invoke(false)
-            }
+    fun handlePermissionResult(isGranted: Boolean, permanentlyDenied: Boolean = false) {
+        if (isGranted) {
+            _uiState.value = _uiState.value.copy(
+                showPermissionRationale = false,
+                errorMessage = null
+            )
+            android.util.Log.d("MainViewModel", "Permissions granted")
+        } else if (permanentlyDenied) {
+            _uiState.value = _uiState.value.copy(
+                showPermissionRationale = false,
+                errorMessage = "Media permissions have been permanently denied. Please enable them in Settings."
+            )
+        } else {
+            _uiState.value = _uiState.value.copy(
+                showPermissionRationale = true,
+                errorMessage = "Media permissions are required to scan and upload your photos and videos."
+            )
         }
     }
 
@@ -115,10 +150,11 @@ class MainViewModel(
      */
     fun startSync() {
         viewModelScope.launch {
-            // Check permissions first
+            // Check permissions first before doing any work
             if (!hasMediaPermissions()) {
                 _uiState.value = _uiState.value.copy(
-                    errorMessage = "Storage permission is required to scan your photos and videos."
+                    showPermissionRationale = true,
+                    errorMessage = null  // Clear error so Start button becomes enabled again
                 )
                 return@launch
             }
@@ -172,6 +208,15 @@ class MainViewModel(
                 if (authToken.isNullOrEmpty()) {
                     _uiState.value = _uiState.value.copy(
                         errorMessage = "No authentication. Please log in again."
+                    )
+                    return@launch
+                }
+
+                // Check permissions before attempting sync
+                if (!hasMediaPermissions()) {
+                    _uiState.value = _uiState.value.copy(
+                        showPermissionRationale = true,
+                        errorMessage = null  // Clear error so Start button becomes enabled again
                     )
                     return@launch
                 }
@@ -259,6 +304,10 @@ class MainViewModel(
     }
 
     fun clearError() {
-        _uiState.value = _uiState.value.copy(errorMessage = null, showPermissionRationale = false)
+        _uiState.value = _uiState.value.copy(
+            errorMessage = null, 
+            showPermissionRationale = false,
+            syncState = SyncUiState.Idle  // Reset state so Start button becomes enabled again for retrying
+        )
     }
 }

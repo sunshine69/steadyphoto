@@ -35,7 +35,6 @@ interface ApiService {
     @Multipart
     @POST("/api/v1/media/upload")
     suspend fun uploadMedia(
-        @Header("Authorization") authHeader: String,
         @Part files: List<MultipartBody.Part>,
         @Part("albumId") albumId: RequestBody? = null
     ): com.steadyphoto.sync.data.remote.dto.UploadResponse
@@ -46,7 +45,6 @@ interface ApiService {
     @Multipart
     @POST("/api/v1/media/upload/single")
     suspend fun uploadSingleFile(
-        @Header("Authorization") authHeader: String,
         @Part file: MultipartBody.Part,
         @Part("fileName") fileName: RequestBody,
         @Part("mimeType") mimeType: RequestBody,
@@ -60,7 +58,6 @@ interface ApiService {
     @Multipart
     @POST("/api/v1/media/upload/chunk")
     suspend fun uploadChunk(
-        @Header("Authorization") authHeader: String,
         @Part chunk: MultipartBody.Part,
         @Part("uploadId") uploadId: RequestBody,
         @Part("chunkIndex") chunkIndex: RequestBody,
@@ -73,7 +70,6 @@ interface ApiService {
      */
     @GET("/api/v1/media")
     suspend fun getSyncStatus(
-        @Header("Authorization") authHeader: String,
         @Query("limit") limit: Int = 50
     ): com.steadyphoto.sync.data.remote.dto.SyncStatusResponse
 
@@ -82,7 +78,6 @@ interface ApiService {
      */
     @HTTP(method = "DELETE", path = "/api/v1/media/delete", hasBody = true)
     suspend fun deleteMedia(
-        @Header("Authorization") authHeader: String,
         @Part("mediaId") mediaId: RequestBody
     ): com.steadyphoto.sync.data.remote.dto.DeleteResponse
 
@@ -91,7 +86,6 @@ interface ApiService {
      */
     @GET("/api/v1/media/upload/status")
     suspend fun getUploadStatus(
-        @Header("Authorization") authHeader: String,
         @Query("uploadId") uploadId: String
     ): com.steadyphoto.sync.data.remote.dto.UploadSessionResponse
 
@@ -101,7 +95,6 @@ interface ApiService {
     @Multipart
     @POST("/api/v1/media/upload/abort")
     suspend fun abortUpload(
-        @Header("Authorization") authHeader: String,
         @Part("uploadId") uploadId: RequestBody
     ): com.steadyphoto.sync.data.remote.dto.AbortResponse
 
