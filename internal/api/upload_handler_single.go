@@ -33,20 +33,104 @@ type UploadSession struct {
 	UserID       uuid.UUID      `json:"-"` // Not serialized, used internally for ownership check
 	mu           sync.Mutex     // Protects UploadedChunks
 	tempPath     string         // Path to the temp file being assembled
+	IsComplete   bool           `json:"isComplete,omitempty"` // Whether all chunks have been uploaded
 }
 
 // UploadSessionManager manages resumable upload sessions.
 type UploadSessionManager struct {
-	sessions map[string]*UploadSession
-	mu       sync.RWMutex
+	sessions       map[string]*UploadSession
+	mu             sync.RWMutex
 	storageService *storage.StorageService
+	sessionFile    string // Path to JSON file for session persistence
 }
 
 func NewUploadSessionManager(storageService *storage.StorageService) *UploadSessionManager {
-	return &UploadSessionManager{
+	manager := &UploadSessionManager{
 		sessions: make(map[string]*UploadSession),
 		storageService: storageService,
+		// Store sessions in a subdirectory of the upload temp dir for persistence across restarts
+		sessionFile: filepath.Join(storageService.GetUploadTempDir(), ".sessions.json"),
 	}
+
+	// Load existing sessions from disk on startup (for recovery after server restart)
+	manager.loadSessions()
+
+	return manager
+}
+
+// loadSessions loads active sessions from the JSON file on disk.
+func (m *UploadSessionManager) loadSessions() {
+	data, err := os.ReadFile(m.sessionFile)
+	if err != nil {
+		log.Printf("[INFO] UploadSessionManager: No existing session file found (%v). Starting fresh.", err)
+		return
+	}
+
+	var sessions map[string]*UploadSession
+	if err := json.Unmarshal(data, &sessions); err != nil {
+		log.Printf("[ERROR] UploadSessionManager: Failed to parse session file: %v. Discarding corrupt data.", err)
+		return
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for id, session := range sessions {
+		// Verify the temp directory still exists and has all chunk files
+		tempDir := m.storageService.GetUploadTempDir()
+		allChunksExist := true
+		for i := 0; i < session.TotalChunks && session.TotalChunks > 1; i++ {
+			chunkPath := filepath.Join(tempDir, id+fmt.Sprintf("_%d.tmp", i))
+			if _, err := os.Stat(chunkPath); os.IsNotExist(err) {
+				allChunksExist = false
+				log.Printf("[WARN] UploadSessionManager: Missing chunk %d for session %s. Marking as incomplete.", i, id)
+				break
+			}
+		}
+
+		m.sessions[id] = session
+		if !allChunksExist {
+			session.IsComplete = false // Force incomplete if chunks are missing
+		}
+		log.Printf("[INFO] UploadSessionManager: Recovered session %s (%d/%d chunks uploaded)", id, len(session.UploadedChunks), session.TotalChunks)
+	}
+
+	log.Printf("[INFO] UploadSessionManager: Loaded %d sessions from disk", len(m.sessions))
+}
+
+// saveSessions persists all active sessions to the JSON file on disk.
+func (m *UploadSessionManager) saveSessions() {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	data, err := json.Marshal(m.sessions)
+	if err != nil {
+		log.Printf("[ERROR] UploadSessionManager: Failed to serialize sessions for persistence: %v", err)
+		return
+	}
+
+	tempFile := m.sessionFile + ".tmp"
+	if err := os.WriteFile(tempFile, data, 0644); err != nil {
+		log.Printf("[ERROR] UploadSessionManager: Failed to write session file: %v", err)
+		return
+	}
+
+	// Atomically rename temp file to actual file (prevents corruption on crash during write)
+	if err := os.Rename(tempFile, m.sessionFile); err != nil {
+		log.Printf("[ERROR] UploadSessionManager: Failed to rename session file: %v", err)
+		os.Remove(tempFile) // Clean up if rename fails
+	}
+}
+
+// SessionWithStatus wraps a session with additional status information for the client.
+type SessionWithStatus struct {
+	ID           string         `json:"uploadId"`
+	Filename     string         `json:"fileName"`
+	FileSize     int64          `json:"fileSize"`
+	UploadedChunks []int        `json:"uploadedChunks"`
+	TotalChunks  int            `json:"totalChunks"`
+	CreatedAt    time.Time      `json:"createdAt"`
+	IsComplete   bool           `json:"isComplete"`
 }
 
 // GetSession retrieves a session by ID. Returns nil if not found.
@@ -126,6 +210,21 @@ func (m *UploadSessionManager) IsComplete(sessionID string) bool {
 	return true
 }
 
+// MarkComplete marks a session as complete and saves it to disk for persistence.
+func (m *UploadSessionManager) MarkComplete(sessionID string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	session := m.sessions[sessionID]
+	if session == nil || len(session.UploadedChunks) != session.TotalChunks {
+		return false
+	}
+
+	session.IsComplete = true
+	m.saveSessions() // Persist the complete status to disk
+	return true
+}
+
 // GetUploadTempDir returns the temporary upload directory path.
 func (m *UploadSessionManager) GetUploadTempDir() string {
 	return m.storageService.GetUploadTempDir()
@@ -186,7 +285,7 @@ func (h *MediaUploadHandlerSingle) HandleSingleFileUpload(w http.ResponseWriter,
 
 	log.Printf("[DEBUG] UploadHandlerSingle: Starting single file upload for user %s...", userID.String())
 
-	err := r.ParseMultipartForm(32 << 20) // 32MB memory limit
+	err := r.ParseMultipartForm(1 << 30) // 1GB memory limit - allows large single-file uploads without chunking
 	if err != nil {
 		log.Printf("[ERROR] UploadHandlerSingle: Failed to parse form: %v", err)
 		http.Error(w, "Invalid form data.", http.StatusBadRequest)
@@ -440,6 +539,8 @@ func (h *MediaUploadHandlerSingle) HandleChunkUpload(w http.ResponseWriter, r *h
 	}
 
 	sessionManager.AddChunk(uploadIDStr, chunkIndex)
+	// Persist the updated session to disk for recovery after server restart
+	sessionManager.saveSessions()
 
 	bytesReceived := int64(len(chunkData))
 
@@ -480,13 +581,13 @@ func (h *MediaUploadHandlerSingle) HandleStatus(w http.ResponseWriter, r *http.R
 		log.Printf("[WARN] UploadHandlerStatus: Session %s not found for user %s.", uploadID, userID.String())
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"uploadId":   uploadID,
-			"fileName":   "",
-			"fileSize":   0,
+			"uploadId":       uploadID,
+			"fileName":       "",
+			"fileSize":       0,
 			"uploadedChunks": []int{},
-			"totalChunks": 0,
-			"isComplete": false,
-			"createdAt":  nil,
+			"totalChunks":    0,
+			"isComplete":     false,
+			"createdAt":      nil,
 		})
 		return
 	}
@@ -495,13 +596,13 @@ func (h *MediaUploadHandlerSingle) HandleStatus(w http.ResponseWriter, r *http.R
 		log.Printf("[WARN] UploadHandlerStatus: Session %s belongs to different user.", uploadID)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"uploadId":   uploadID,
-			"fileName":   "",
-			"fileSize":   0,
+			"uploadId":       uploadID,
+			"fileName":       "",
+			"fileSize":       0,
 			"uploadedChunks": []int{},
-			"totalChunks": 0,
-			"isComplete": false,
-			"createdAt":  nil,
+			"totalChunks":    0,
+			"isComplete":     false,
+			"createdAt":      nil,
 		})
 		return
 	}
@@ -519,6 +620,253 @@ func (h *MediaUploadHandlerSingle) HandleStatus(w http.ResponseWriter, r *http.R
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
 	log.Printf("[INFO] UploadHandlerStatus: Status returned for session %s (uploadedChunks=%d/%d)", uploadID, len(session.UploadedChunks), session.TotalChunks)
+}
+
+// HandleComplete assembles all uploaded chunks into the final file and creates the media record.
+func (h *MediaUploadHandlerSingle) HandleComplete(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	userID, ok := GetUserIDFromContext(ctx)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	err := r.ParseMultipartForm(1 << 20) // Small limit for complete request
+	if err != nil {
+		log.Printf("[ERROR] UploadHandlerComplete: Failed to parse form: %v", err)
+		http.Error(w, "Invalid form data.", http.StatusBadRequest)
+		return
+	}
+
+	uploadID := r.FormValue("uploadId")
+	if uploadID == "" {
+		http.Error(w, "Missing required field: uploadId", http.StatusBadRequest)
+		return
+	}
+
+	session := h.sessionManager.GetSession(uploadID)
+	if session == nil || !h.sessionManager.IsComplete(session.ID) {
+		log.Printf("[WARN] UploadHandlerComplete: Session %s not complete or not found.", uploadID)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"message": "Upload session is incomplete or does not exist. Upload all chunks first.",
+		})
+		return
+	}
+
+	if session.UserID != userID {
+		log.Printf("[WARN] UploadHandlerComplete: Session %s belongs to different user.", uploadID)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"message": "Session does not belong to you.",
+		})
+		return
+	}
+
+	log.Printf("[INFO] UploadHandlerComplete: Assembling chunks for session %s (totalChunks=%d)", uploadID, session.TotalChunks)
+
+	// Read and combine all chunk temp files in order
+	tempDir := h.sessionManager.GetUploadTempDir()
+	var combinedWriter io.Writer
+	hasher := sha256.New()
+
+	// Create a temporary file to hold the assembled content
+	assembledFile, err := os.CreateTemp("", "assembled-*.tmp")
+	if err != nil {
+		log.Printf("[ERROR] UploadHandlerComplete: Failed to create temp file for assembly: %v", err)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"message": "Failed to assemble chunks.",
+		})
+		return
+	}
+
+	combinedWriter = io.MultiWriter(assembledFile, hasher)
+
+	for i := 0; i < session.TotalChunks; i++ {
+		chunkPath := filepath.Join(tempDir, uploadID+fmt.Sprintf("_%d.tmp", i))
+
+		log.Printf("[DEBUG] UploadHandlerComplete: Reading chunk %d from %s", i, chunkPath)
+
+		chunkData, err := os.ReadFile(chunkPath)
+		if err != nil {
+			log.Printf("[ERROR] UploadHandlerComplete: Failed to read chunk %d for session %s: %v", i, uploadID, err)
+			os.Remove(assembledFile.Name()) // Clean up temp file on error
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"success": false,
+				"message": fmt.Sprintf("Failed to read chunk %d: %v", i+1, err),
+			})
+			return
+		}
+
+		n, err := combinedWriter.Write(chunkData)
+		if err != nil {
+			log.Printf("[ERROR] UploadHandlerComplete: Failed to write chunk %d to assembled file: %v", i, err)
+			os.Remove(assembledFile.Name()) // Clean up temp file on error
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"success": false,
+				"message": fmt.Sprintf("Failed to assemble chunk %d: %v", i+1, err),
+			})
+			return
+		}
+
+		log.Printf("[DEBUG] UploadHandlerComplete: Wrote %d bytes for chunk %d (total assembled so far)", n, i)
+	}
+
+	assembledFile.Close() // Flush all data before reading back
+
+	if _, err := assembledFile.Seek(0, io.SeekStart); err != nil {
+		log.Printf("[ERROR] UploadHandlerComplete: Failed to seek in assembled file for %s: %v", uploadID, err)
+		os.Remove(assembledFile.Name())
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"message": "Failed to assemble chunks.",
+		})
+		return
+	}
+
+	hash := fmt.Sprintf("%x", hasher.Sum(nil))
+	assembledFileSize, _ := assembledFile.Stat()
+
+	log.Printf("[DEBUG] UploadHandlerComplete: Hash calculated for '%s': %x...", session.Filename[:min(10, len(session.Filename))], hasher.Sum(nil)[:8])
+
+	// Check for duplicate by hash
+	existingMedia, dbErr := h.mediaRepo.GetByHash(ctx, hash)
+	if dbErr != nil && !errors.Is(dbErr, sql.ErrNoRows) && !strings.Contains(dbErr.Error(), "no rows") {
+		log.Printf("[ERROR] UploadHandlerComplete: DB error checking duplicate for %s (hash=%s): %v", session.Filename, hash[:8]+"...", dbErr)
+		os.Remove(assembledFile.Name()) // Clean up temp file on error
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"message": "Database error.",
+		})
+		return
+	}
+
+	if existingMedia != nil && existingMedia.ID != uuid.Nil {
+		log.Printf("[INFO] UploadHandlerComplete: Duplicate detected for '%s' (Hash matches ID=%s)", session.Filename, existingMedia.ID.String())
+		response := map[string]interface{}{
+			"uploaded":           []interface{}{},
+			"skipped_duplicates": []map[string]string{{
+				"filename": session.Filename,
+				"id":       existingMedia.ID.String(),
+			}},
+			"errors":             []interface{}{},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+		os.Remove(assembledFile.Name()) // Clean up temp file on error
+		return
+	}
+
+	ext := filepath.Ext(session.Filename)
+	newFilename := fmt.Sprintf("%s%s", uuid.New().String(), ext)
+
+	dateDir := time.Now().Format("2006/01/02")
+	relTimePath := filepath.Join(dateDir, newFilename)
+	relPathFromRoot := filepath.Join(userID.String(), relTimePath)
+
+	if err := h.storageService.EnsureDirForPath(relTimePath); err != nil {
+		log.Printf("[ERROR] UploadHandlerComplete: Failed to ensure directory %s: %v", dateDir, err)
+		os.Remove(assembledFile.Name()) // Clean up temp file on error
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"message": "Failed to prepare storage.",
+		})
+		return
+	}
+
+	absTargetPath := h.storageService.GetAbsolutePath(relPathFromRoot)
+
+	destFile, err := os.Create(absTargetPath)
+	if err != nil {
+		log.Printf("[ERROR] UploadHandlerComplete: Failed to create dest file %s: %v", absTargetPath, err)
+		os.Remove(assembledFile.Name()) // Clean up temp file on error
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"message": "Failed to save uploaded file.",
+		})
+		return
+	}
+
+	n2, err := io.Copy(destFile, assembledFile)
+	if err != nil {
+		log.Printf("[ERROR] UploadHandlerComplete: Failed to save file %s (copied %d/%d bytes): %v", newFilename, n2, assembledFileSize.Size(), err)
+		destFile.Close()
+		os.Remove(absTargetPath) // Clean up dest file on error
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"message": "Failed to save uploaded file.",
+		})
+		return
+	}
+
+	destFile.Close()
+	os.Remove(assembledFile.Name()) // Clean up temp file on success
+
+	extLower := strings.ToLower(ext)
+	var mediaType domain.MediaType = domain.MediaTypePhoto
+	switch extLower {
+	case ".mp4", ".mov", ".avi":
+		mediaType = domain.MediaTypeVideo
+	}
+
+	meta := &domain.Media{
+		ID:         uuid.New(),
+		UserID:     userID,
+		Filename:   session.Filename,
+		MediaType:  mediaType,
+		Path:       relPathFromRoot,
+		SizeBytes:  assembledFileSize.Size(),
+		Hash:       hash,
+		CapturedAt: time.Now(),
+	}
+
+	if err := h.mediaRepo.Create(ctx, meta); err != nil {
+		log.Printf("[ERROR] UploadHandlerComplete: Failed to insert media %s (hash=%s): %v", newFilename, hash[:8]+"...", err)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"message": "Failed to save media record.",
+		})
+		return
+	}
+
+	uploadedMedia := map[string]interface{}{
+		"id":          meta.ID.String(),
+		"filename":    session.Filename,
+		"mediaType":   string(meta.MediaType),
+		"path":        relPathFromRoot,
+		"size":        assembledFileSize.Size(),
+		"captured_at": time.Now().Format(time.RFC3339),
+	}
+
+	response := map[string]interface{}{
+		"uploaded":           []interface{}{uploadedMedia},
+		"skipped_duplicates": []interface{}{},
+		"errors":             []interface{}{},
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+
+	// Clean up all chunk temp files and session from memory
+	for i := 0; i < session.TotalChunks; i++ {
+		chunkPath := filepath.Join(tempDir, uploadID+fmt.Sprintf("_%d.tmp", i))
+		os.Remove(chunkPath) // Remove each chunk file after successful assembly
+	}
+	h.sessionManager.DeleteSession(uploadID)
+
+	log.Printf("[INFO] UploadHandlerComplete: Successfully assembled '%s' (ID=%s)", session.Filename, meta.ID)
 }
 
 // HandleAbort aborts an in-progress resumable upload session and cleans up temp files.
@@ -565,6 +913,8 @@ func (h *MediaUploadHandlerSingle) HandleAbort(w http.ResponseWriter, r *http.Re
 	}
 
 	h.sessionManager.DeleteSession(uploadID)
+	// Persist session deletion to disk for recovery after server restart
+	h.sessionManager.saveSessions()
 
 	log.Printf("[INFO] UploadHandlerAbort: Aborted upload session %s for user %s", uploadID, userID.String())
 
@@ -648,5 +998,3 @@ func (h *MediaUploadHandlerSingle) HandleDelete(w http.ResponseWriter, r *http.R
 		"message": "Media deleted successfully.",
 	})
 }
-
-

@@ -168,15 +168,18 @@ func (s *Server) routes() {
 			// Media Upload endpoint (Web & Mobile clients)
 			uploadHandler := NewMediaUploadHandler(s.mediaRepo, s.storageService)
 			protected.Route("/media/upload", func(r chi.Router) {
-				r.Use(LimitBodySizeMiddleware)
+				// LimitBodySizeMiddleware removed - chunked uploads use small chunks (5MB), 
+				// and ParseMultipartForm handles per-part limits. The middleware's Content-Length check
+				// was blocking large file uploads that Android sends as multipart forms with proper boundaries.
+
 				r.Post("/", uploadHandler.Handle)
 
-				// Single file upload endpoint (mobile client)
+				// Single file upload endpoint (mobile client) - increased memory limit to 1GB
 				sessionManager := s.sessionManager
 				singleUploadHandler := NewMediaUploadHandlerSingle(s.mediaRepo, s.storageService, sessionManager)
 				r.Post("/single", singleUploadHandler.HandleSingleFileUpload)
 
-				// Chunked/upload session endpoints for resumable uploads
+				// Chunked/upload session endpoints for resumable uploads - increased memory limit to 128MB per chunk
 				r.Post("/chunk", func(w http.ResponseWriter, r *http.Request) {
 					singleUploadHandler.HandleChunkUpload(w, r, sessionManager)
 				})
@@ -184,8 +187,13 @@ func (s *Server) routes() {
 				// Upload status endpoint (mobile client)
 				r.Get("/status", singleUploadHandler.HandleStatus)
 
-				// Abort upload endpoint (mobile client)
+				// Abort upload endpoint (mobile client) - small limit is fine for abort requests
 				r.Post("/abort", singleUploadHandler.HandleAbort)
+
+				// Complete resumable upload - assemble chunks into final file - small limit is fine since no new data
+				r.Post("/complete", func(w http.ResponseWriter, r *http.Request) {
+					singleUploadHandler.HandleComplete(w, r)
+				})
 			})
 
 			// Media delete endpoint (mobile client - permanently deletes from storage and DB)

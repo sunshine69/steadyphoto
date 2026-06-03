@@ -22,7 +22,7 @@ const (
 	UserIDContextKey contextKey = "user_id"
 )
 
-var MaxUploadSizeBytes int64 = 1024 * 1024 * 1024 // Default: 1GB
+var MaxUploadSizeBytes int64 = 512 << 20 // Default: 512MB (supports large single-file uploads)
 
 // AllowedCORSOrigins defines which origins are permitted to make cross-origin requests.
 // This can be overridden via the CORS_ALLOWED_ORIGINS environment variable (comma-separated list).
@@ -37,7 +37,7 @@ func init() {
 			MaxUploadSizeBytes = mb
 			fmt.Printf("[CONFIG] Max upload size set to %d bytes\n", mb)
 		} else {
-			fmt.Printf("[WARN] Invalid MAX_UPLOAD_SIZE value '%s', using default (1GB)\n", val)
+			fmt.Printf("[WARN] Invalid MAX_UPLOAD_SIZE value '%s', using default (10MB)\n", val)
 		}
 	}
 

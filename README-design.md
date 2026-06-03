@@ -88,8 +88,8 @@ Albums are logical groupings of existing media assets via a many-to-many relatio
 - Deduplicate uploads using SHA256 hashing to prevent redundant storage.
 
 ### Configurable Upload Limits
-- **Environment Variable**: `MAX_UPLOAD_SIZE` (in bytes)
-- **Default Value**: `1073741824` (1 GB)
+- **Environment Variable**: `MAX_UPLOAD_SIZE` (in bytes, configurable)
+- **Default Value**: `10485760` (10 MB)
 - **Rationale**: Supports large 4K video clips while preventing accidental abuse or network timeouts. Files exceeding this limit will be rejected with a `413 Request Entity Too Large` error before consuming server resources.
 
 ### API Specifications

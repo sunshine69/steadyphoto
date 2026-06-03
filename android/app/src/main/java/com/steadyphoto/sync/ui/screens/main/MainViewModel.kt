@@ -127,11 +127,33 @@ class MainViewModel(
      */
     fun handlePermissionResult(isGranted: Boolean, permanentlyDenied: Boolean = false) {
         if (isGranted) {
+            // Check BEFORE clearing the rationale state - we need to know if it was showing before we clear it
+            val wasShowingRationale = uiState.value.showPermissionRationale
+            
             _uiState.value = _uiState.value.copy(
                 showPermissionRationale = false,
                 errorMessage = null
             )
             android.util.Log.d("MainViewModel", "Permissions granted")
+            
+            // Automatically start sync after permissions are granted if we were showing the rationale
+            if (wasShowingRationale) {
+                viewModelScope.launch {
+                    try {
+                        // Verify permissions are actually granted now before starting
+                        if (hasMediaPermissions()) {
+                            startBackgroundSync()
+                        } else {
+                            android.util.Log.w("MainViewModel", "Permission denied after granting - not starting sync")
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.e("MainViewModel", "Error auto-starting after permission grant", e)
+                        _uiState.value = _uiState.value.copy(
+                            errorMessage = "Could not start sync after permissions granted. Please try again."
+                        )
+                    }
+                }
+            }
         } else if (permanentlyDenied) {
             _uiState.value = _uiState.value.copy(
                 showPermissionRationale = false,
@@ -251,6 +273,7 @@ class MainViewModel(
 
                 _uiState.value = _uiState.value.copy(
                     isBackgroundSyncRunning = false,
+                    syncState = SyncUiState.Idle,  // Reset state so Stop button becomes disabled again
                     errorMessage = "Background sync stopped"
                 )
             } catch (e: Exception) {
@@ -258,6 +281,7 @@ class MainViewModel(
                 // Still update the state even if cancel fails
                 _uiState.value = _uiState.value.copy(
                     isBackgroundSyncRunning = false,
+                    syncState = SyncUiState.Idle,  // Reset state so Stop button becomes disabled again
                     errorMessage = "Could not stop background sync. Please try again."
                 )
             }
