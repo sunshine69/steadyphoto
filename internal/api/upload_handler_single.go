@@ -2,6 +2,7 @@ package api
 
 import (
 	"crypto/sha256"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -277,7 +278,14 @@ func NewMediaUploadHandlerSingle(mediaRepo domain.MediaRepository, storageServic
 // HandleSingleFileUpload processes a single file upload with progress tracking.
 func (h *MediaUploadHandlerSingle) HandleSingleFileUpload(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	userID, ok := GetUserIDFromContext(ctx)
+
+	// Add a database context timeout to prevent DB queries from hanging indefinitely.
+	// The HTTP server already has a 5-minute write timeout, but individual DB operations
+	// should not block for the entire duration if they're stuck (e.g., lock contention).
+	dbCtx, dbCancel := context.WithTimeout(ctx, 30*time.Second)
+	defer dbCancel()
+
+	userID, ok := GetUserIDFromContext(dbCtx)
 	if !ok {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
@@ -346,7 +354,7 @@ func (h *MediaUploadHandlerSingle) HandleSingleFileUpload(w http.ResponseWriter,
 	hash := fmt.Sprintf("%x", hasher.Sum(nil))
 
 	// Check for duplicate by hash
-	existingMedia, dbErr := h.mediaRepo.GetByHash(ctx, hash)
+	existingMedia, dbErr := h.mediaRepo.GetByHash(dbCtx, hash)
 	if dbErr != nil && !errors.Is(dbErr, sql.ErrNoRows) && !strings.Contains(dbErr.Error(), "no rows") {
 		log.Printf("[ERROR] UploadHandlerSingle: DB error checking duplicate for %s (hash=%s): %v", fileName, hash[:8]+"...", dbErr)
 		os.Remove(tempFile.Name())
@@ -425,7 +433,7 @@ func (h *MediaUploadHandlerSingle) HandleSingleFileUpload(w http.ResponseWriter,
 		CapturedAt: time.Now(),
 	}
 
-	if err := h.mediaRepo.Create(ctx, meta); err != nil {
+	if err := h.mediaRepo.Create(dbCtx, meta); err != nil {
 		log.Printf("[ERROR] UploadHandlerSingle: Failed to insert media %s (hash=%s): %v", newFilename, hash[:8]+"...", err)
 		http.Error(w, "Failed to save media record.", http.StatusInternalServerError)
 		return
@@ -625,7 +633,12 @@ func (h *MediaUploadHandlerSingle) HandleStatus(w http.ResponseWriter, r *http.R
 // HandleComplete assembles all uploaded chunks into the final file and creates the media record.
 func (h *MediaUploadHandlerSingle) HandleComplete(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	userID, ok := GetUserIDFromContext(ctx)
+
+	// Add a database context timeout to prevent DB queries from hanging indefinitely.
+	dbCtx, dbCancel := context.WithTimeout(ctx, 30*time.Second)
+	defer dbCancel()
+
+	userID, ok := GetUserIDFromContext(dbCtx)
 	if !ok {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
@@ -737,7 +750,7 @@ func (h *MediaUploadHandlerSingle) HandleComplete(w http.ResponseWriter, r *http
 	log.Printf("[DEBUG] UploadHandlerComplete: Hash calculated for '%s': %x...", session.Filename[:min(10, len(session.Filename))], hasher.Sum(nil)[:8])
 
 	// Check for duplicate by hash
-	existingMedia, dbErr := h.mediaRepo.GetByHash(ctx, hash)
+	existingMedia, dbErr := h.mediaRepo.GetByHash(dbCtx, hash)
 	if dbErr != nil && !errors.Is(dbErr, sql.ErrNoRows) && !strings.Contains(dbErr.Error(), "no rows") {
 		log.Printf("[ERROR] UploadHandlerComplete: DB error checking duplicate for %s (hash=%s): %v", session.Filename, hash[:8]+"...", dbErr)
 		os.Remove(assembledFile.Name()) // Clean up temp file on error
@@ -831,7 +844,7 @@ func (h *MediaUploadHandlerSingle) HandleComplete(w http.ResponseWriter, r *http
 		CapturedAt: time.Now(),
 	}
 
-	if err := h.mediaRepo.Create(ctx, meta); err != nil {
+	if err := h.mediaRepo.Create(dbCtx, meta); err != nil {
 		log.Printf("[ERROR] UploadHandlerComplete: Failed to insert media %s (hash=%s): %v", newFilename, hash[:8]+"...", err)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
@@ -928,7 +941,12 @@ func (h *MediaUploadHandlerSingle) HandleAbort(w http.ResponseWriter, r *http.Re
 // HandleDelete deletes a media item from the server.
 func (h *MediaUploadHandlerSingle) HandleDelete(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	userID, ok := GetUserIDFromContext(ctx)
+
+	// Add a database context timeout to prevent DB queries from hanging indefinitely.
+	dbCtx, dbCancel := context.WithTimeout(ctx, 30*time.Second)
+	defer dbCancel()
+
+	userID, ok := GetUserIDFromContext(dbCtx)
 	if !ok {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
@@ -955,7 +973,7 @@ func (h *MediaUploadHandlerSingle) HandleDelete(w http.ResponseWriter, r *http.R
 	}
 
 	// Get the media item to find its path before deleting from DB
-	media, err := h.mediaRepo.GetByID(ctx, mediaID, &userID)
+	media, err := h.mediaRepo.GetByID(dbCtx, mediaID, &userID)
 	if err != nil {
 		log.Printf("[ERROR] HandleDelete: Failed to get media %s for user %s: %v", mediaIDStr, userID.String(), err)
 		w.Header().Set("Content-Type", "application/json")
@@ -979,7 +997,7 @@ func (h *MediaUploadHandlerSingle) HandleDelete(w http.ResponseWriter, r *http.R
 	}
 
 	// Permanently delete from database
-	err = h.mediaRepo.PermanentlyDeleteMedia(ctx, mediaID, userID)
+	err = h.mediaRepo.PermanentlyDeleteMedia(dbCtx, mediaID, userID)
 	if err != nil {
 		log.Printf("[ERROR] HandleDelete: Failed to permanently delete media %s from DB: %v", mediaIDStr, err)
 		w.Header().Set("Content-Type", "application/json")

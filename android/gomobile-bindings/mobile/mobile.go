@@ -20,7 +20,7 @@ type FileMetadata struct {
 }
 
 // MediaHasher computes SHA256 hash of a file at the given path.
-func (mp *MediaProcessor) MediaHasher(filePath string) (string, error) {
+func (mp MediaProcessor) MediaHasher(filePath string) (string, error) {
 	f, err := os.Open(filePath)
 	if err != nil {
 		return "", fmt.Errorf("failed to open file: %v", err)
@@ -36,7 +36,7 @@ func (mp *MediaProcessor) MediaHasher(filePath string) (string, error) {
 }
 
 // GetFileMetadata returns metadata for a given file path.
-func (mp *MediaProcessor) GetFileMetadata(filePath string) (*FileMetadata, error) {
+func (mp MediaProcessor) GetFileMetadata(filePath string) (*FileMetadata, error) {
 	info, err := os.Stat(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to stat file: %v", err)

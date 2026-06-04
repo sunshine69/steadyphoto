@@ -12,82 +12,9 @@ import (
 	"github.com/google/uuid"
 )
 
-type RegisterRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-}
-
-type LoginRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-}
-
-type UpdateProfileRequest struct {
-	Email    *string `json:"email,omitempty"`
-	Password *string `json:"password,omitempty"`
-}
-
-type AuthResponse struct {
-	AccessToken  string    `json:"access_token"`
-	RefreshToken string    `json:"refresh_token"`
-	UserID       uuid.UUID `json:"user_id"`
-	Role         string    `json:"role"`
-	Status       string    `json:"status"`
-}
-
-// HandleRegister handles POST /api/v1/auth/register
-func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
-	var req RegisterRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	if req.Email == "" || req.Password == "" {
-		http.Error(w, "Email and password are required", http.StatusBadRequest)
-		return
-	}
-
-	// 1. Check if user already exists
-	existingUser, err := s.userRepo.GetByEmail(r.Context(), req.Email)
-	if err == nil && existingUser != nil {
-		http.Error(w, "User already exists", http.StatusConflict)
-		return
-	}
-
-	// 2. Hash password
-	hashedPassword, err := security.HashPassword(req.Password)
-	if err != nil {
-		log.Printf("[ERROR] handleRegister: failed to hash password: %v", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	// 3. Create user (pending approval by default)
-	newUser := &domain.User{
-		ID:           uuid.New(),
-		Email:        req.Email,
-		PasswordHash: hashedPassword,
-		Status:       domain.UserStatusPending, // Pending admin approval
-		Role:         domain.UserRoleUser,      // Default role for new users
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
-	}
-
-	if err := s.userRepo.Create(r.Context(), newUser); err != nil {
-		log.Printf("[ERROR] handleRegister: failed to create user: %v", err)
-		http.Error(w, "Failed to register user", http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
-}
-
-// HandleLogin handles POST /api/v1/auth/refresh
-func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
-	// TODO implement
-	return
+// RefreshRequest represents the request body for token refresh.
+type RefreshRequest struct {
+	RefreshToken string `json:"refresh_token"`
 }
 
 // HandleLogin handles POST /api/v1/auth/login
@@ -176,115 +103,73 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(resp)
 }
 
-// HandleUpdateProfile handles PATCH /api/v1/auth/profile
-func (s *Server) handleUpdateProfile(w http.ResponseWriter, r *http.Request) {
-	userID, ok := GetUserIDFromContext(r.Context())
-	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	var req UpdateProfileRequest
+// HandleRefresh handles POST /api/v1/auth/refresh. It validates the refresh token,
+// revokes the old session, creates a new one, and returns a fresh access token.
+func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
+	// 1. Parse request body
+	var req RefreshRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	// 1. Get current user profile
-	user, err := s.userRepo.GetByID(r.Context(), userID)
-	if err != nil || user == nil {
-		http.Error(w, "User not found", http.StatusNotFound)
+	if req.RefreshToken == "" {
+		http.Error(w, "refresh_token is required", http.StatusBadRequest)
 		return
 	}
 
-	updated := false
+	// 2. Hash the refresh token to look up in DB (never store plain-text tokens)
+	tokenHash := security.HashToken(req.RefreshToken)
 
-	// 2. Update Email if provided
-	if req.Email != nil {
-		newEmail := *req.Email
-		if newEmail == "" || newEmail == user.Email {
-			http.Error(w, "Invalid email address", http.StatusBadRequest)
-			return
-		}
-
-		// Check for conflict with other users
-		existingUser, err := s.userRepo.GetByEmail(r.Context(), newEmail)
-		if err == nil && existingUser != nil && existingUser.ID != user.ID {
-			http.Error(w, "Email already in use", http.StatusConflict)
-			return
-		}
-
-		user.Email = newEmail
-		updated = true
-	}
-
-	// 3. Update Password if provided
-	if req.Password != nil {
-		newPassword := *req.Password
-		if len(newPassword) < 8 {
-			http.Error(w, "Password must be at least 8 characters", http.StatusBadRequest)
-			return
-		}
-
-		hashedPassword, err := security.HashPassword(newPassword)
-		if err != nil {
-			log.Printf("[ERROR] handleUpdateProfile: failed to hash password: %v", err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
-		}
-
-		user.PasswordHash = hashedPassword
-		updated = true
-	}
-
-	if !updated {
-		http.Error(w, "No changes provided", http.StatusBadRequest)
+	// 3. Look up session by hash
+	session, err := s.sessionRepo.GetByRefreshTokenHash(r.Context(), tokenHash)
+	if err != nil {
+		log.Printf("[ERROR] handleRefresh: session lookup failed for refresh token: %v", err)
+		http.Error(w, "Invalid refresh token", http.StatusUnauthorized)
 		return
 	}
 
-	// 4. Save updates
-	user.UpdatedAt = time.Now()
-	if err := s.userRepo.Update(r.Context(), user); err != nil {
-		log.Printf("[ERROR] handleUpdateProfile: failed to update user: %v", err)
-		http.Error(w, "Failed to update profile", http.StatusInternalServerError)
+	if session == nil {
+		http.Error(w, "Invalid refresh token", http.StatusUnauthorized)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
-}
-
-// handleDeleteProfile handles DELETE /api/v1/auth/profile (Soft-Delete)
-func (s *Server) handleDeleteProfile(w http.ResponseWriter, r *http.Request) {
-	userID, ok := GetUserIDFromContext(r.Context())
-	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+	// 4. Check if the session is revoked or expired (using same logic as AuthMiddleware)
+	if session.IsRevoked || time.Now().After(session.ExpiresAt) {
+		log.Printf("[WARN] handleRefresh: Session %s rejected (revoked=%v, expires_at=%v)",
+			session.ID, session.IsRevoked, session.ExpiresAt)
+		http.Error(w, "Refresh token has expired or been revoked", http.StatusUnauthorized)
 		return
 	}
 
-	// 1. Set user to disabled status (Soft-Delete)
-	user, err := s.userRepo.GetByID(r.Context(), userID)
-	if err != nil || user == nil {
-		http.Error(w, "User not found", http.StatusNotFound)
+	// 5. Revoke the old session (one-time-use refresh tokens)
+	if err := s.sessionRepo.RevokeSession(r.Context(), session.ID); err != nil {
+		log.Printf("[ERROR] handleRefresh: failed to revoke old session %s: %v", session.ID, err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	user.Status = domain.UserStatusDisabled
-	user.UpdatedAt = time.Now()
+	// 6. Create a new session with a fresh access token for this user
+	newSession := &domain.UserSession{
+		ID:               uuid.New(),
+		UserID:           session.UserID,
+		RefreshTokenHash: security.HashToken(req.RefreshToken), // Same refresh token hash (token is reused)
+		ExpiresAt:        time.Now().Add(7 * 24 * time.Hour),   // 7 days from now
+		IsRevoked:        false,
+		CreatedAt:        time.Now(),
+	}
 
-	// 2. Update the user record in DB
-	if err := s.userRepo.Update(r.Context(), user); err != nil {
-		log.Printf("[ERROR] handleDeleteProfile: failed to update status: %v", err)
-		http.Error(w, "Failed to delete account", http.StatusInternalServerError)
+	if err := s.sessionRepo.CreateSession(r.Context(), newSession); err != nil {
+		log.Printf("[ERROR] handleRefresh: failed to create new session for user %s: %v", session.UserID, err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
-	// 3. Revoke all active sessions for this user immediately
-	if err := s.sessionRepo.RevokeAllByUserID(r.Context(), userID); err != nil {
-		log.Printf("[ERROR] handleDeleteProfile: failed to revoke sessions: %v", err)
-		// We don't fail the whole request if session revocation fails,
-		// but we log it as a critical security concern for admin follow-up.
+	// 7. Return the new access token (the client already knows who they are)
+	resp := map[string]string{
+		"access_token": newSession.ID.String(),
 	}
 
-	w.WriteHeader(http.StatusNoContent) // 204 No Content is standard successful deletion response
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
 }

@@ -1,5 +1,32 @@
 # SteadyPhoto Android Sync Client
 
+Review all and make sure the follwing design are met
+
+Android Kotlin Layer
+--------------------
+- UI
+- Login/auth
+- MediaStore queries
+- Permissions
+- Foreground service
+- WorkManager scheduling
+- Battery/network constraints
+
+↓ passes file descriptors / paths / streams
+
+Go Sync Engine (gomobile)
+-------------------------
+- file scanning
+- hashing
+- metadata extraction
+- local index db
+- sync comparison
+- upload queue
+- resumable uploads
+- HTTP client
+- retries/backoff
+- conflict handling
+
 ## 1. Project Scope & Purpose
 
 The primary goal of this Android application is **Automated Media Synchronization**. It acts as a secure bridge between the user's device storage and the central SteadyPhoto server.

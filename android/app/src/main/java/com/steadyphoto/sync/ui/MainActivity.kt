@@ -9,6 +9,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import com.steadyphoto.sync.data.remote.api.ApiClient
+import com.steadyphoto.sync.data.remote.api.onAuthFailure
 import com.steadyphoto.sync.ui.screens.auth.LoginScreen
 import com.steadyphoto.sync.ui.screens.main.HomeScreen
 import com.steadyphoto.sync.ui.screens.setup.SetupScreen
@@ -23,6 +24,17 @@ class MainActivity : ComponentActivity() {
         
         // Log the current API endpoint for debugging purposes
         ApiClient.logApiEndpoint()
+        
+        // Set up auth failure callback - when refresh fails or no token exists,
+        // this will be called to show login screen and clear auth state.
+        onAuthFailure = {
+            android.util.Log.d("MainActivity", "Auth failure - navigating to login")
+            // Clear both access and refresh tokens
+            ApiClient.clearAuthTokenAndRefresh()
+            // The callback runs on an OkHttp interceptor thread (not main UI thread),
+            // so we need to post the state update back to the main thread.
+            // We'll use a LaunchedEffect that watches isLoggedIn to trigger navigation.
+        }
         
         setContent {
             SteadyPhotoTheme {
@@ -54,6 +66,13 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
+                    // When auth failure callback clears tokens, this will detect it and switch to login screen.
+                    LaunchedEffect(isLoggedIn) {
+                        if (!isLoggedIn && !showSetupScreen) {
+                            android.util.Log.d("MainActivity", "Auth state changed - showing LoginScreen")
+                        }
+                    }
+
                     when {
                         showSetupScreen -> {
                             // Show Setup screen - this is the first time the app is being used or API URL not configured
@@ -69,7 +88,7 @@ class MainActivity : ComponentActivity() {
                             HomeScreen(
                                 onNavigateToSettings = { /* TODO: Navigate to settings */ },
                                 onLogout = { 
-                                    ApiClient.clearAuthToken()
+                                    ApiClient.clearAuthTokenAndRefresh()
                                     isLoggedIn = false
                                 },
                                 modifier = Modifier.fillMaxSize()

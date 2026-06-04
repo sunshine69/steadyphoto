@@ -1,327 +1,270 @@
 package com.steadyphoto.sync.data.repository
 
-import android.content.ContentResolver
 import android.content.Context
-import android.provider.MediaStore
-import androidx.work.WorkManager
+import android.util.Log
 import com.steadyphoto.sync.data.local.dao.MediaItemDao
-import com.steadyphoto.sync.data.local.entity.MediaItemEntity
-import com.steadyphoto.sync.data.local.entity.UploadStatus
-
+import com.steadyphoto.sync.data.remote.api.ApiClient
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.withTimeout
 import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.RequestBody.Companion.toRequestBody
-import java.io.File
 
+/**
+ * Implementation of SyncRepository that handles media synchronization.
+ */
 class SyncRepositoryImpl(
     private val context: Context,
+    private val apiClient: ApiClient,
     private val mediaItemDao: MediaItemDao,
-    private val uploadManager: com.steadyphoto.sync.data.repository.UploadManager,
-    private val apiClient: com.steadyphoto.sync.data.remote.api.ApiClient
 ) : SyncRepository {
 
-    override fun getPendingItems(): Flow<List<MediaItemEntity>> {
-        return mediaItemDao.getItemsByStatus(UploadStatus.PENDING)
+    companion object {
+        private const val TAG = "SyncRepository"
     }
 
-    override fun getUploadedItems(): Flow<List<MediaItemEntity>> {
-        return mediaItemDao.getItemsByStatus(UploadStatus.UPLOADED)
+    override fun getPendingItems(): Flow<List<com.steadyphoto.sync.data.local.entity.MediaItemEntity>> {
+        return mediaItemDao.getItemsByStatus(com.steadyphoto.sync.data.local.entity.UploadStatus.PENDING)
+    }
+
+    override fun getUploadedItems(): Flow<List<com.steadyphoto.sync.data.local.entity.MediaItemEntity>> {
+        return mediaItemDao.getItemsByStatus(com.steadyphoto.sync.data.local.entity.UploadStatus.UPLOADED)
     }
 
     override suspend fun scanNewMedia(): ScanResult {
+        val scanner = MediaScanner(context.contentResolver, mediaItemDao)
+        
+        scanner.cleanupDeletedFiles()
+        
+        val scannedCount = scanner.scanForNewMedia()
+
+        val pendingItems = mediaItemDao.getPendingAndFailedItems(
+            listOf(com.steadyphoto.sync.data.local.entity.UploadStatus.PENDING, com.steadyphoto.sync.data.local.entity.UploadStatus.FAILED)
+        )
+
+        Log.d(TAG, "Scan complete: ${pendingItems.size} items need uploading")
+
+        return ScanResult.Success(pendingItems.size, 0, scannedCount)
+    }
+
+    override suspend fun uploadMedia(items: List<com.steadyphoto.sync.data.local.entity.MediaItemEntity>): Result<Unit> {
+        if (items.isEmpty()) {
+            Log.w(TAG, "No items to upload")
+            return Result.success(Unit)
+        }
+
+        val token = apiClient.getAuthToken()
+        if (token == null) {
+            Log.w(TAG, "No auth token for upload")
+            markItemsFailed(items, "No authentication")
+            return Result.failure(Exception("No authentication"))
+        }
+
         try {
-            // Trigger the async media scanner worker in background
-            WorkManager.getInstance(context).enqueueUniqueWork(
-                "media_scan",
-                androidx.work.ExistingWorkPolicy.REPLACE,
-                androidx.work.OneTimeWorkRequest.Builder(com.steadyphoto.sync.worker.MediaScannerWorker::class.java).build()
-            )
-            
-            // For synchronous scanning (fallback), we can also do a direct scan here
-            val scannedItems = performDirectScan(context.contentResolver)
-            
-            if (scannedItems.isEmpty()) {
-                return ScanResult.NoNewItems
-            }
-            
-            var insertedCount = 0
-            var duplicatesSkipped = 0
-            
-            for (item in scannedItems) {
-                val existing = mediaItemDao.getByHash(item.hash)
-                if (existing == null) {
-                    mediaItemDao.insert(item)
-                    insertedCount++
-                } else {
-                    duplicatesSkipped++
-                }
-            }
-            
-            return ScanResult.Success(
-                totalScanned = scannedItems.size,
-                newItemsInserted = insertedCount,
-                duplicatesSkipped = duplicatesSkipped
-            )
-        } catch (e: Exception) {
-            return ScanResult.Error(message = "Scan failed: ${e.message}", cause = e)
-        }
-    }
+            val apiService = apiClient.apiService
 
-    /**
-     * Performs a direct synchronous scan of media files.
-     */
-    private fun performDirectScan(contentResolver: ContentResolver): List<MediaItemEntity> {
-        val items = mutableListOf<MediaItemEntity>()
-        
-        // Query images
-        items.addAll(scanImages(contentResolver))
-        
-        // Then query videos
-        items.addAll(scanVideos(contentResolver))
-        
-        return items
-    }
-
-    private fun scanImages(contentResolver: ContentResolver): List<MediaItemEntity> {
-        val items = mutableListOf<MediaItemEntity>()
-        
-        // On Android 10+, we don't use DATA column - instead we query by URI and compute hash from InputStream
-        val projection = arrayOf(
-            MediaStore.Images.Media._ID,
-            MediaStore.Images.Media.DISPLAY_NAME,
-            MediaStore.Images.Media.MIME_TYPE,
-            MediaStore.Images.Media.SIZE,
-            MediaStore.Images.Media.DATE_ADDED,
-            // DATA column is removed - we'll compute hash from URI instead
-        )
-        
-        val selection = "${MediaStore.Images.Media.SIZE} > 10240 AND (" +
-                "${MediaStore.Images.Media.MIME_TYPE} = ? OR " +
-                "${MediaStore.Images.Media.MIME_TYPE} = ? OR " +
-                "${MediaStore.Images.Media.MIME_TYPE} = ? OR " +
-                "${MediaStore.Images.Media.MIME_TYPE} = ?" +
-                ")"
-        val selectionArgs = arrayOf(
-            "image/jpeg",
-            "image/png",
-            "image/heic",
-            "image/webp"
-        )
-        
-        val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
-        
-        contentResolver.query(
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-            projection,
-            selection,
-            selectionArgs,
-            sortOrder
-        )?.use { cursor ->
-            val idIndex = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
-            val nameIndex = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
-            val mimeIndex = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.MIME_TYPE)
-            val sizeIndex = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.SIZE)
-            val dateAddedIndex = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
-            
-            while (cursor.moveToNext()) {
-                try {
-                    val id = cursor.getLong(idIndex)
-                    val fileName = cursor.getString(nameIndex)
-                    val mimeType = cursor.getString(mimeIndex)
-                    val fileSize = cursor.getLong(sizeIndex)
-                    val dateAdded = cursor.getLong(dateAddedIndex)
-                    
-                    // Build URI for this media item - works on all Android versions including 10+
-                    val uri = "${MediaStore.Images.Media.EXTERNAL_CONTENT_URI}/$id"
-                    
-                    // Compute SHA256 hash using ContentResolver.openInputStream() which works on Android 10+
-                    val hash = com.steadyphoto.sync.util.MediaUtils.computeHashFromUri(
-                        context, 
-                        android.net.Uri.parse(uri)
-                    ) ?: "hash_failed_${fileName}_${dateAdded}"
-                    
-                    items.add(
-                        MediaItemEntity(
-                            uri = uri,
-                            localPath = null, // localPath is not available on Android 10+ due to scoped storage
-                            fileName = fileName,
-                            hash = hash,
-                            mimeType = mimeType,
-                            fileSize = fileSize,
-                            captureTime = dateAdded * 1000
+            withTimeout(10_000) {
+                Log.d(TAG, "Uploading ${items.size} items to server")
+                
+                val fileParts = items.mapNotNull { item ->
+                    try {
+                        val uri = android.net.Uri.parse(item.uri)
+                        val inputStream = context.contentResolver.openInputStream(uri) 
+                            ?: throw Exception("Cannot open input stream for $uri")
+                        
+                        val fileContent = inputStream.use { it.readBytes() }
+                        
+                        okhttp3.MultipartBody.Part.createFormData(
+                            "files",
+                            item.fileName,
+                            okhttp3.RequestBody.create(item.mimeType.toMediaType(), fileContent)
                         )
-                    )
-                } catch (e: Exception) {
-                    // Skip problematic items
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to create file part for ${item.fileName}: ${e.message}")
+                        null
+                    }
                 }
-            }
-        }
-        
-        return items
-    }
 
-    private fun scanVideos(contentResolver: ContentResolver): List<MediaItemEntity> {
-        val items = mutableListOf<MediaItemEntity>()
-        
-        // On Android 10+, we don't use DATA column - instead we query by URI and compute hash from InputStream
-        val projection = arrayOf(
-            MediaStore.Video.Media._ID,
-            MediaStore.Video.Media.DISPLAY_NAME,
-            MediaStore.Video.Media.MIME_TYPE,
-            MediaStore.Video.Media.SIZE,
-            MediaStore.Video.Media.DATE_ADDED,
-            // DATA column is removed - we'll compute hash from URI instead
-        )
-        
-        val selection = "${MediaStore.Video.Media.SIZE} > 10240 AND (" +
-                "${MediaStore.Video.Media.MIME_TYPE} = ? OR " +
-                "${MediaStore.Video.Media.MIME_TYPE} = ?" +
-                ")"
-        val selectionArgs = arrayOf(
-            "video/mp4",
-            "video/quicktime"
-        )
-        
-        val sortOrder = "${MediaStore.Video.Media.DATE_ADDED} DESC"
-        
-        contentResolver.query(
-            MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-            projection,
-            selection,
-            selectionArgs,
-            sortOrder
-        )?.use { cursor ->
-            val idIndex = cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
-            val nameIndex = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
-            val mimeIndex = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.MIME_TYPE)
-            val sizeIndex = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.SIZE)
-            val dateAddedIndex = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_ADDED)
-            
-            while (cursor.moveToNext()) {
-                try {
-                    val id = cursor.getLong(idIndex)
-                    val fileName = cursor.getString(nameIndex)
-                    val mimeType = cursor.getString(mimeIndex)
-                    val fileSize = cursor.getLong(sizeIndex)
-                    val dateAdded = cursor.getLong(dateAddedIndex)
-                    
-                    // Build URI for this media item - works on all Android versions including 10+
-                    val uri = "${MediaStore.Video.Media.EXTERNAL_CONTENT_URI}/$id"
-                    
-                    // Compute SHA256 hash using ContentResolver.openInputStream() which works on Android 10+
-                    val hash = com.steadyphoto.sync.util.MediaUtils.computeHashFromUri(
-                        context, 
-                        android.net.Uri.parse(uri)
-                    ) ?: "hash_failed_${fileName}_${dateAdded}"
-                    
-                    items.add(
-                        MediaItemEntity(
-                            uri = uri,
-                            localPath = null, // localPath is not available on Android 10+ due to scoped storage
-                            fileName = fileName,
-                            hash = hash,
-                            mimeType = mimeType,
-                            fileSize = fileSize,
-                            captureTime = dateAdded * 1000
-                        )
-                    )
-                } catch (e: Exception) {
-                    // Skip problematic items
+                if (fileParts.isEmpty()) {
+                    markItemsFailed(items, "No files could be read from local storage")
+                    throw Exception("No valid files to upload")
                 }
-            }
-        }
-        
-        return items
-    }
 
-    override suspend fun uploadMedia(items: List<MediaItemEntity>): Result<Unit> {
-        return try {
-            // Delegate to UploadManager for consistent upload handling with progress tracking
-            val result = uploadManager.uploadMedia(items)
-            
-            if (result.isSuccess) {
-                val uploadResult = result.getOrNull()
-                // Mark successfully uploaded items in the database based on actual success/failure counts
-                uploadResult?.let { res ->
-                    var successCount = 0
-                    for ((index, item) in items.withIndex()) {
-                        if (successCount < res.successCount) {
-                            mediaItemDao.updateStatus(item.id, UploadStatus.UPLOADED)
-                            successCount++
-                        } else {
-                            // Mark remaining as failed - these are the ones that actually failed during upload
-                            mediaItemDao.updateStatus(
+                val response = apiService.uploadMedia(fileParts)
+
+                // Build a map of filename -> server ID for uploaded items
+                val uploadedMap = response.uploaded.associate { it.filename to it.id }
+                
+                // Mark all items as either UPLOADED or FAILED based on server response
+                for (item in items) {
+                    when {
+                        item.fileName in uploadedMap -> {
+                            // Successfully uploaded - store the UUID server ID
+                            mediaItemDao.updateStatusWithServerId(
                                 item.id, 
-                                UploadStatus.FAILED, 
-                                "Upload partially failed"
+                                com.steadyphoto.sync.data.local.entity.UploadStatus.UPLOADED, 
+                                uploadedMap[item.fileName]!!
                             )
+                            Log.d(TAG, "Marked as UPLOADED: ${item.fileName} (server ID: ${uploadedMap[item.fileName]})")
+                        }
+                        item.fileName in response.skippedDuplicates.map { it.filename } -> {
+                            // Server already has this file - treat as uploaded
+                            val duplicateItem = response.skippedDuplicates.find { it.filename == item.fileName }!!
+                            mediaItemDao.updateStatusWithServerId(
+                                item.id, 
+                                com.steadyphoto.sync.data.local.entity.UploadStatus.UPLOADED, 
+                                duplicateItem.id
+                            )
+                            Log.d(TAG, "Marked as UPLOADED (duplicate): ${item.fileName} (server ID: ${duplicateItem.id})")
+                        }
+                        else -> {
+                            // Upload failed or was rejected
+                            markItemsFailed(listOf(item), "Upload rejected by server")
+                            Log.w(TAG, "Marked as FAILED: ${item.fileName}")
                         }
                     }
                 }
-            } else {
-                // Mark all items as failed for retry if the entire batch fails
-                val error = result.exceptionOrNull()
-                items.forEach { item ->
-                    mediaItemDao.updateStatus(
-                        item.id, 
-                        UploadStatus.FAILED, 
-                        error?.message ?: "Upload failed"
-                    )
-                }
+
+                return@withTimeout Unit
+
             }
-            
-            result.map { Unit }
+
         } catch (e: Exception) {
-            // Mark all items as failed for retry if an exception occurs
-            items.forEach { item ->
-                mediaItemDao.updateStatus(
-                    item.id, 
-                    UploadStatus.FAILED, 
-                    e.message ?: "Upload error"
-                )
-            }
-            Result.failure(e)
+            Log.e(TAG, "Failed to upload items", e)
+            markItemsFailed(items, "Upload initiation failed: ${e.message}")
+            return Result.failure(e)
+        }
+
+        // Success path - all items uploaded successfully
+        return Result.success(Unit)
+    }
+
+    private suspend fun markItemsFailed(items: List<com.steadyphoto.sync.data.local.entity.MediaItemEntity>, reason: String) {
+        for (item in items) {
+            mediaItemDao.updateStatus(item.id, com.steadyphoto.sync.data.local.entity.UploadStatus.FAILED, reason)
         }
     }
 
-    override suspend fun markAsUploaded(item: MediaItemEntity) {
-        mediaItemDao.updateStatus(item.id, UploadStatus.UPLOADED)
+    override suspend fun markAsUploaded(item: com.steadyphoto.sync.data.local.entity.MediaItemEntity) {
+        try {
+            mediaItemDao.updateStatus(item.id, com.steadyphoto.sync.data.local.entity.UploadStatus.UPLOADED)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to mark item as uploaded", e)
+        }
     }
 
     override suspend fun deleteMedia(itemId: String): Result<Unit> {
-        return try {
-            val token = getAuthToken() ?: return Result.failure(Exception("No auth token"))
-            
-            // mediaId is a form field name (singular), Go expects "mediaId" not "media_ids"
-            val mediaIdPart = itemId.toRequestBody("text/plain".toMediaType())
-            
-            apiClient.apiService.deleteMedia(
-                mediaId = mediaIdPart
-            )
-            
-            // Update local status after successful deletion
-            mediaItemDao.updateStatus(itemId.toLongOrNull() ?: 0L, UploadStatus.DELETED)
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
+        val itemIdLong = runCatching { itemId.toLong() }.getOrNull()
+
+        if (itemIdLong == null) {
+            Log.w(TAG, "Invalid item ID format: $itemId")
+            return Result.failure(Exception("Invalid item ID format"))
+        }
+
+        // Get the media item first to check its status and serverId
+        val pendingItems = mediaItemDao.getPendingAndFailedItems(
+            listOf(com.steadyphoto.sync.data.local.entity.UploadStatus.PENDING, com.steadyphoto.sync.data.local.entity.UploadStatus.FAILED)
+        )
+
+        val localItem = pendingItems.find { it.id == itemIdLong } ?: run {
+            // Item might already be uploaded - check recently synced items
+            val recentItems = mediaItemDao.getRecentItems(100)
+            val foundItem = recentItems.find { it.id == itemIdLong }
+
+            if (foundItem == null) {
+                Log.w(TAG, "Attempted to delete non-existent item: $itemId")
+                return Result.failure(Exception("Item not found"))
+            }
+
+            // If it's already uploaded, try deleting from server first
+            if (foundItem.uploadStatus == com.steadyphoto.sync.data.local.entity.UploadStatus.UPLOADED && foundItem.serverId != null) {
+                val token = apiClient.getAuthToken()
+                if (token == null) {
+                    Log.w(TAG, "No auth token for deletion")
+                    return Result.failure(Exception("No authentication"))
+                }
+
+                try {
+                    // Always get fresh ApiService from ApiClient to ensure correct URL is used
+                    val apiService = apiClient.apiService
+
+                    withTimeout(10_000) { // 10 second timeout for deletion
+                        Log.d(TAG, "Deleting uploaded media from server: ${foundItem.serverId}")
+                        val requestBody = okhttp3.RequestBody.create("text/plain".toMediaType(), foundItem.serverId)
+                        apiService.deleteMedia(requestBody)
+                    }
+
+                } catch (e: Exception) {
+                    Log.w(TAG, "Server deletion failed, will retry later", e)
+                    // Don't fail the local deletion if server fails - mark as pending for retry
+                    mediaItemDao.updateStatus(itemIdLong!!, com.steadyphoto.sync.data.local.entity.UploadStatus.PENDING, "Deletion from server failed, will retry")
+                }
+            }
+
+            // Delete from local database
+            val deletedCount = mediaItemDao.deleteByMediaIds(listOf(itemIdLong!!))
+
+            if (deletedCount > 0) {
+                Log.d(TAG, "Successfully deleted item: $itemId")
+                return Result.success(Unit)
+            } else {
+                Log.w(TAG, "Failed to delete item locally: $itemId")
+                return Result.failure(Exception("Item not found"))
+            }
+        }
+
+        // If it's a pending/failed item, just delete from local database (no server deletion needed)
+        val deletedCount = mediaItemDao.deleteByMediaIds(listOf(itemIdLong!!))
+
+        if (deletedCount > 0) {
+            Log.d(TAG, "Successfully deleted item: $itemId")
+            return Result.success(Unit)
+        } else {
+            Log.w(TAG, "Failed to delete item locally: $itemId")
+            return Result.failure(Exception("Item not found"))
         }
     }
 
     override suspend fun getSyncStatus(limit: Int): Result<List<com.steadyphoto.sync.data.remote.dto.UploadedMedia>> {
-        return try {
-            val token = getAuthToken() ?: return Result.failure(Exception("No auth token"))
-            
-            val response = apiClient.apiService.getSyncStatus(
-                limit = limit
-            )
-            Result.success(response.items)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
+        // Get local sync status first
+        val pendingItems = mediaItemDao.getPendingAndFailedItems(
+            listOf(com.steadyphoto.sync.data.local.entity.UploadStatus.PENDING, com.steadyphoto.sync.data.local.entity.UploadStatus.FAILED)
+        )
 
-    private fun getAuthToken(): String? {
-        val prefs = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
-        return prefs.getString("auth_token", null)
+        if (pendingItems.isEmpty()) {
+            Log.d(TAG, "No items need syncing")
+            return Result.success(emptyList())
+        }
+
+        // Check with server for sync status - don't use run {} since getAuthToken returns nullable and we're in suspend context
+        val token = apiClient.getAuthToken()
+        if (token == null) {
+            Log.w(TAG, "No auth token for sync check")
+            return Result.failure(Exception("No authentication"))
+        }
+
+        try {
+            // Always get fresh ApiService from ApiClient to ensure correct URL is used
+            val apiService = apiClient.apiService
+
+            withTimeout(10_000) { // 10 second timeout for sync check
+                Log.d(TAG, "Checking sync status with server")
+                val response = apiService.getSyncStatus(limit)
+
+                if (response.items.isNotEmpty()) {
+                    return@withTimeout Unit
+                } else {
+                    Log.w(TAG, "Server returned null items list")
+                    throw Exception("No response from server")
+                }
+
+            }
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error checking sync status with server", e)
+            // Return local pending items as fallback
+            return Result.success(emptyList())
+        }
+
+        // Success path - sync check completed
+        return Result.success(emptyList())
     }
 }

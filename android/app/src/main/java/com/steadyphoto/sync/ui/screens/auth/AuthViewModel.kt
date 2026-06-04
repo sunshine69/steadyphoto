@@ -37,9 +37,12 @@ class AuthViewModel : ViewModel() {
                     )
                 )
                 
-                // Store token for future requests (Go returns "access_token")
-                ApiClient.storeAuthToken(response.access_token)
-                _uiState.value = AuthUiState.Success(response.access_token)
+                // Store access token for future requests (Go returns "access_token")
+                ApiClient.storeAuthToken(response.accessToken)
+                // Also store refresh token so the client can auto-refresh when access token expires
+                ApiClient.storeRefreshToken(token = response.refreshToken)
+                
+                _uiState.value = AuthUiState.Success(response.accessToken)
             } catch (e: Exception) {
                 Log.e("AuthViewModel", "Login failed", e)
                 _uiState.value = AuthUiState.Error(e.message ?: "Login failed")

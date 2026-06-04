@@ -11,17 +11,31 @@ import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.steadyphoto.sync.R
+import com.steadyphoto.sync.data.local.entity.UploadStatus
+import com.steadyphoto.sync.di.AppContainer
 import com.steadyphoto.sync.ui.MainActivity
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
+import org.koin.core.component.KoinComponent
+import org.koin.core.component.inject
 
 /**
  * Foreground service that handles background media scanning and synchronization.
  * Runs continuously while the app is in use or when auto-sync is enabled.
  */
-class SyncService : Service() {
+class SyncService : Service(), KoinComponent {
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var syncJob: Job? = null
+    
+    // Inject dependencies via Koin
+    private val container: AppContainer by inject()
 
     companion object {
         const val CHANNEL_ID = "sync_service_channel"
@@ -52,11 +66,14 @@ class SyncService : Service() {
     private fun startSyncJob() {
         if (syncJob == null || !syncJob!!.isActive) {
             syncJob = serviceScope.launch {
-                // TODO: Implement actual sync logic
-                // This will scan media, upload to server, and update database
-                while (isActive) {
+                while (true) {
+                try {
+                    ensureActive()
+                } catch (_: CancellationException) {
+                    break
+                }
                     performSync()
-                    delay(60_000) // Check every minute
+                    delay(60_000L) // Check every minute
                 }
             }
         }
@@ -68,13 +85,94 @@ class SyncService : Service() {
         stopSelf()
     }
 
+    /**
+     * Performs the full synchronization cycle:
+     * 1. Scan device for new/changed media files
+     * 2. Upload pending items to server
+     */
     private suspend fun performSync() {
-        // TODO: Implement actual synchronization logic
-        // 1. Scan device for new media files
-        // 2. Check which files need to be uploaded (based on hash comparison)
-        // 3. Upload new/modified files to server
-        // 4. Download any missing files from server
-        // 5. Update local database with sync status
+        try {
+            // Step 1: Scan for new media files (uses MediaScannerWorker logic internally)
+            val scannedItems = container.repository.scanNewMedia()
+            
+            when (scannedItems) {
+                is com.steadyphoto.sync.data.repository.ScanResult.Success -> {
+                    updateNotification(
+                        "Scanning...", 
+                        "${scannedItems.totalScanned} items scanned, ${scannedItems.newItemsInserted} new items found"
+                    )
+                    
+                    // Step 2: Upload pending/failed items
+                    val pendingAndFailed = container.mediaItemDao.getPendingAndFailedItems(
+                        listOf(UploadStatus.PENDING, UploadStatus.FAILED)
+                    )
+                    
+                    if (pendingAndFailed.isNotEmpty()) {
+                        updateNotification("Uploading...", "${pendingAndFailed.size} items to upload")
+                        
+                        // Use UploadManager for consistent upload handling with progress tracking
+                        val result = container.uploadManager.uploadMedia(pendingAndFailed)
+                        
+                        when {
+                            result.isSuccess -> {
+                                val uploadResult = result.getOrNull()
+                                updateNotification(
+                                    "Upload Complete", 
+                                    "${uploadResult?.successCount ?: 0} succeeded, ${uploadResult?.failureCount ?: pendingAndFailed.size} failed"
+                                )
+                            }
+                            else -> {
+                                val error = result.exceptionOrNull()?.message ?: "Unknown error"
+                                updateNotification("Upload Failed", error)
+                            }
+                        }
+                    } else {
+                        updateNotification("Syncing", "No items to upload")
+                    }
+                }
+                
+                is com.steadyphoto.sync.data.repository.ScanResult.NoNewItems -> {
+                    // No new items found, check for pending uploads anyway
+                    val pendingAndFailed = container.mediaItemDao.getPendingAndFailedItems(
+                        listOf(UploadStatus.PENDING, UploadStatus.FAILED)
+                    )
+                    
+                    if (pendingAndFailed.isNotEmpty()) {
+                        updateNotification("Uploading...", "${pendingAndFailed.size} items to upload")
+                        
+                        val result = container.uploadManager.uploadMedia(pendingAndFailed)
+                        
+                        when {
+                            result.isSuccess -> {
+                                val uploadResult = result.getOrNull()
+                                updateNotification(
+                                    "Upload Complete", 
+                                    "${uploadResult?.successCount ?: 0} succeeded, ${uploadResult?.failureCount ?: pendingAndFailed.size} failed"
+                                )
+                            }
+                            else -> {
+                                val error = result.exceptionOrNull()?.message ?: "Unknown error"
+                                updateNotification("Upload Failed", error)
+                            }
+                        }
+                    } else {
+                        updateNotification("Syncing", "No items to sync")
+                    }
+                }
+                
+                is com.steadyphoto.sync.data.repository.ScanResult.PermissionDenied -> {
+                    updateNotification("Scan Error", "Permission denied for media scan")
+                }
+                
+                is com.steadyphoto.sync.data.repository.ScanResult.Error -> {
+                    updateNotification("Scan Error", scannedItems.message)
+                }
+            }
+        } catch (e: Exception) {
+            // Log the error but don't crash the service
+            android.util.Log.e("SyncService", "Error during sync cycle", e)
+            updateNotification("Sync Error", e.message ?: "Unknown error")
+        }
     }
 
     private fun createNotificationChannel() {
@@ -109,11 +207,33 @@ class SyncService : Service() {
             .build()
     }
 
+    /**
+     * Updates the notification content to reflect current sync status.
+     */
+    private fun updateNotification(title: String, text: String) {
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            0,
+            Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setContentIntent(pendingIntent)
+            .setOngoing(true)
+            .build()
+
+        startForeground(NOTIFICATION_ID, notification)
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
         super.onDestroy()
         syncJob?.cancel()
-        serviceScope.cancel()
+        serviceScope.coroutineContext[Job]?.cancel()
     }
 }

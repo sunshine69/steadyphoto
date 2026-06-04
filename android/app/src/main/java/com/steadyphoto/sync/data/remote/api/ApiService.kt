@@ -5,6 +5,7 @@ import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import retrofit2.Call
 import retrofit2.http.HTTP
 import retrofit2.http.Body
 import retrofit2.http.Field
@@ -27,6 +28,22 @@ interface ApiService {
         @Header("Authorization") authHeader: String? = null,
         @Body body: com.steadyphoto.sync.data.remote.dto.LoginRequest
     ): com.steadyphoto.sync.data.remote.dto.LoginResponse
+
+    /**
+     * Refresh endpoint - validates the refresh token and returns a new access token.
+     */
+    @POST("/api/v1/auth/refresh")
+    suspend fun refresh(
+        @Body body: com.steadyphoto.sync.data.remote.dto.RefreshRequest
+    ): com.steadyphoto.sync.data.remote.dto.RefreshResponse
+
+    /**
+     * Synchronous version of refresh for use in OkHttp interceptor.
+     */
+    @POST("/api/v1/auth/refresh")
+    fun refreshSync(
+        @Body body: com.steadyphoto.sync.data.remote.dto.RefreshRequest
+    ): Call<com.steadyphoto.sync.data.remote.dto.RefreshResponse>
 
     /**
      * Upload media files to the server.

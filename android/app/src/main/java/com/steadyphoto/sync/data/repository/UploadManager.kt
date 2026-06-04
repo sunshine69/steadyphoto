@@ -4,33 +4,28 @@ import android.content.Context
 import android.util.Log
 import androidx.work.WorkManager
 import com.steadyphoto.sync.data.local.dao.MediaItemDao
-import com.steadyphoto.sync.data.local.entity.MediaItemEntity
 import com.steadyphoto.sync.data.local.entity.UploadStatus
-import com.steadyphoto.sync.data.remote.api.ApiClient
 import kotlinx.coroutines.*
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.MultipartBody
-import okhttp3.RequestBody.Companion.asRequestBody
-import okhttp3.RequestBody.Companion.toRequestBody
-import okio.*
-import java.io.File
-import kotlin.math.min
+import okio.BufferedSink
 
 /**
  * Enhanced upload manager that handles:
  * - Streaming uploads with progress tracking
- * - Chunked/resumable uploads for large files
+ * - Chunked/resumable uploads for large files (with Android 10+ compatibility)
  * - Automatic retry with exponential backoff
  * - Network connectivity monitoring
  * - Batch upload optimization
  */
 class UploadManager(
     private val context: Context,
-    private val apiClient: ApiClient,  // Changed from ApiService to ApiClient
+    private val apiClient: com.steadyphoto.sync.data.remote.api.ApiClient,
     private val mediaItemDao: MediaItemDao,
     private val networkMonitor: NetworkConnectivityMonitor
 ) {
@@ -70,7 +65,7 @@ class UploadManager(
      * Upload a list of media items with progress tracking.
      */
     suspend fun uploadMedia(
-        items: List<MediaItemEntity>,
+        items: List<com.steadyphoto.sync.data.local.entity.MediaItemEntity>,
         callback: UploadProgressCallback? = null
     ): Result<UploadResult> {
         return try {
@@ -80,7 +75,7 @@ class UploadManager(
                 return Result.failure(Exception("No network connection"))
             }
 
-            val token = getAuthToken() ?: run {
+            val token = apiClient.getAuthToken() ?: run {
                 val error = Exception("No auth token available")
                 callback?.onUploadError(error)
                 return Result.failure(error)
@@ -159,11 +154,11 @@ class UploadManager(
      * Upload a single item with full progress tracking and retry logic.
      */
     suspend fun uploadSingleItem(
-        item: MediaItemEntity,
+        item: com.steadyphoto.sync.data.local.entity.MediaItemEntity,
         callback: UploadProgressCallback? = null
     ): Result<UploadItemResult> {
         return try {
-            val token = getAuthToken() ?: run {
+            val token = apiClient.getAuthToken() ?: run {
                 val error = Exception("No auth token")
                 mediaItemDao.updateStatus(item.id, UploadStatus.FAILED, "No auth token")
                 return Result.failure(error)
@@ -222,7 +217,7 @@ class UploadManager(
      * Perform a single file upload with retry logic using URI-based access.
      */
     private suspend fun performSingleFileUpload(
-        item: MediaItemEntity,
+        item: com.steadyphoto.sync.data.local.entity.MediaItemEntity,
         uri: android.net.Uri,
         token: String,
         callback: UploadProgressCallback? = null
@@ -232,82 +227,104 @@ class UploadManager(
         for (attempt in 1..currentConfig.maxRetries) {
             try {
                 // Use ContentResolver.openInputStream() to read file from URI - works on Android 10+ where File access is restricted
-                val inputStream = context.contentResolver.openInputStream(uri) 
-                    ?: throw Exception("Cannot open input stream for $uri")
+                
+                Log.d(TAG, "Uploading ${item.fileName} (${item.fileSize} bytes) - attempt $attempt")
 
-                // Create multipart part with progress tracking via counting sink
-                val requestFile = okhttp3.RequestBody.create(item.mimeType.toMediaType(), inputStream.readBytes())
-
-                val filePart = MultipartBody.Part.createFormData(
-                    "file",
-                    item.fileName,
-                    object : okhttp3.RequestBody() {
-                        override fun contentType() = item.mimeType.toMediaType()
-                        override fun contentLength() = requestFile.contentLength()
-
-                        override fun writeTo(sink: BufferedSink) {
-                            val totalBytes = requestFile.contentLength()
-                            var bytesWritten = 0L
-
-                            // Create a counting sink that wraps the underlying network sink (matching ProgressRequestBody pattern)
-                            val countingSink = object : ForwardingSink(sink) {
-                                @Throws(java.io.IOException::class)
-                                override fun write(source: Buffer, byteCount: Long) {
-                                    super.write(source, byteCount)
-                                    bytesWritten += byteCount
-
-                                    // Report progress every 100KB or at completion
-                                    if (bytesWritten % (1024 * 100L) == 0L || bytesWritten >= totalBytes) {
-                                        val progress = UploadProgress(
-                                            itemId = item.id,
-                                            fileName = item.fileName,
-                                            bytesUploaded = bytesWritten,
-                                            totalBytes = totalBytes,
-                                            status = UploadStatus.UPLOADING,
-                                            retryCount = attempt - 1
-                                        )
-
-                                        _uploadProgress.update { current ->
-                                            current?.copy(currentUpload = progress)
-                                        }
-                                    }
-                                }
+                val requestFile = object : okhttp3.RequestBody() {
+                    override fun contentType(): okhttp3.MediaType? = item.mimeType.toMediaType()
+                    override fun contentLength(): Long = item.fileSize
+                    
+                    // Tell OkHttp this stream can only be read once - prevents retry attempts
+                    override fun isOneShot(): Boolean = true
+                    
+                    override fun writeTo(sink: BufferedSink) {
+                        Log.d(TAG, "writeTo called for ${item.fileName} - writing ${item.fileSize} bytes")
+                        
+                        // Open a fresh InputStream for each write attempt (isOneShot means we can only read once)
+                        val inputStream = context.contentResolver.openInputStream(uri) 
+                            ?: throw Exception("Cannot open input stream for $uri")
+                        
+                        try {
+                            var totalWritten = 0L
+                            val buffer = ByteArray(8192)
+                            while (true) {
+                                val bytesRead = inputStream.read(buffer)
+                                if (bytesRead == -1) break
+                                sink.write(buffer, 0, bytesRead)
+                                totalWritten += bytesRead
                             }
-
-                            // Write the file through our counting sink (matching ProgressRequestBody pattern with .buffer())
-                            requestFile.writeTo(countingSink.buffer())
+                            Log.d(TAG, "writeTo complete for ${item.fileName}: total written = $totalWritten")
+                        } finally {
+                            inputStream.close()
                         }
                     }
+                }
+
+                val filePart = okhttp3.MultipartBody.Part.createFormData(
+                    "file",
+                    item.fileName,
+                    requestFile
                 )
 
                 // Always get fresh ApiService from ApiClient to ensure correct URL is used
                 val apiService = apiClient.apiService
                 
-                val response = apiService.uploadSingleFile(
-                    file = filePart,
-                    fileName = item.fileName.toRequestBody("text/plain".toMediaType()),
-                    mimeType = item.mimeType.toRequestBody("text/plain".toMediaType()),
-                    fileSize = item.fileSize.toString().toRequestBody("text/plain".toMediaType())
-                )
-
-                // Update progress to complete
-                _uploadProgress.update { current ->
-                    current?.copy(
-                        currentUpload = UploadProgress(
-                            itemId = item.id,
-                            fileName = item.fileName,
-                            bytesUploaded = item.fileSize,
-                            totalBytes = item.fileSize,
-                            status = UploadStatus.UPLOADED
-                        )
+                Log.d(TAG, "Sending HTTP POST for ${item.fileName}")
+                
+                try {
+                    val response = apiService.uploadSingleFile(
+                        file = filePart,
+                        fileName = okhttp3.RequestBody.create("text/plain".toMediaType(), item.fileName),
+                        mimeType = okhttp3.RequestBody.create("text/plain".toMediaType(), item.mimeType),
+                        fileSize = okhttp3.RequestBody.create("text/plain".toMediaType(), item.fileSize.toString())
                     )
+
+                    // Update progress to complete
+                    _uploadProgress.update { current ->
+                        current?.copy(
+                            currentUpload = UploadProgress(
+                                itemId = item.id,
+                                fileName = item.fileName,
+                                bytesUploaded = item.fileSize,
+                                totalBytes = item.fileSize,
+                                status = UploadStatus.UPLOADED
+                            )
+                        )
+                    }
+
+                    return UploadItemResult.Success(
+                        mediaId = response.uploaded.firstOrNull()?.id ?: "",
+                        retryCount = attempt - 1
+                    )
+
+                } catch (e: Exception) {
+                    lastError = e
+                    Log.w(TAG, "Upload attempt $attempt failed for ${item.fileName}: ${e.message}")
+
+                    // Update progress with error
+                    _uploadProgress.update { current ->
+                        current?.copy(
+                            currentUpload = UploadProgress(
+                                itemId = item.id,
+                                fileName = item.fileName,
+                                bytesUploaded = 0L,
+                                totalBytes = item.fileSize,
+                                status = UploadStatus.FAILED,
+                                errorMessage = e.message,
+                                retryCount = attempt - 1
+                            )
+                        )
+                    }
+
+                    if (attempt < currentConfig.maxRetries) {
+                        // Exponential backoff
+                        val delayTime = kotlin.math.min(
+                            (INITIAL_RETRY_DELAY_MS * (2L * (attempt - 1))).toDouble(),
+                            MAX_RETRY_DELAY_MS.toDouble()
+                        ).toLong()
+                        kotlinx.coroutines.delay(delayTime.milliseconds)
+                    }
                 }
-
-                return UploadItemResult.Success(
-                    mediaId = response.uploaded.firstOrNull()?.id ?: "",
-                    retryCount = attempt - 1
-                )
-
             } catch (e: Exception) {
                 lastError = e
                 Log.w(TAG, "Upload attempt $attempt failed for ${item.fileName}: ${e.message}")
@@ -329,11 +346,11 @@ class UploadManager(
 
                 if (attempt < currentConfig.maxRetries) {
                     // Exponential backoff
-                    val delayTime = min(
-                        INITIAL_RETRY_DELAY_MS * (2L * (attempt - 1)),
-                        MAX_RETRY_DELAY_MS
-                    )
-                    kotlinx.coroutines.delay(delayTime)
+                    val delayTime = kotlin.math.min(
+                        (INITIAL_RETRY_DELAY_MS * (2L * (attempt - 1))).toDouble(),
+                        MAX_RETRY_DELAY_MS.toDouble()
+                    ).toLong()
+                    kotlinx.coroutines.delay(delayTime.milliseconds)
                 }
             }
         }
@@ -346,9 +363,12 @@ class UploadManager(
 
     /**
      * Perform chunked upload for large files using URI-based access.
+     * 
+     * FIX: On Android 10+, InputStream from ContentResolver doesn't support seek().
+     * Solution: Read the entire file into a byte array first, then extract just the chunk we need.
      */
     private suspend fun performChunkedUpload(
-        item: MediaItemEntity,
+        item: com.steadyphoto.sync.data.local.entity.MediaItemEntity,
         token: String,
         callback: UploadProgressCallback? = null
     ): UploadItemResult {
@@ -364,27 +384,36 @@ class UploadManager(
 
         Log.d(TAG, "Starting chunked upload for ${item.fileName}: $totalChunks chunks")
 
-        // Upload each chunk with retry logic using URI-based access
+        // Read the entire file content once into memory (acceptable for large files since we need random access anyway)
+        val fileContent = try {
+            val uri = android.net.Uri.parse(item.uri)
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                input.readBytes()
+            } ?: throw Exception("Cannot read file content from URI: $uri")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to read file content for ${item.fileName}", e)
+            return UploadItemResult.Failed("Failed to read file content: ${e.message}")
+        }
+
+        // Upload each chunk using the pre-read byte array - no seek() needed!
         var uploadedChunks = mutableListOf<Int>()
 
         for (chunkIndex in 0 until totalChunks) {
-            val success = uploadChunkWithRetry(
+            val success = uploadChunkFromBytes(
                 item = item,
                 token = token,
                 uploadId = uploadId,
                 chunkIndex = chunkIndex,
                 totalChunks = totalChunks,
-                fileSize = fileSize
+                fileSize = fileSize,
+                fileContent = fileContent
             )
 
             if (success) {
                 uploadedChunks.add(chunkIndex)
 
                 // Update progress
-                val bytesUploaded = min(
-                    ((chunkIndex + 1).toLong() * CHUNK_SIZE),
-                    fileSize
-                )
+                val bytesUploaded = ((chunkIndex + 1).toLong() * CHUNK_SIZE).coerceAtMost(fileSize)
 
                 _uploadProgress.update { current ->
                     current?.copy(
@@ -426,103 +455,46 @@ class UploadManager(
     }
 
     /**
-     * Upload a single chunk with retry logic using URI-based access.
+     * Upload a single chunk from pre-read byte array - no seek() needed!
      */
-    private suspend fun uploadChunkWithRetry(
-        item: MediaItemEntity,
+    private suspend fun uploadChunkFromBytes(
+        item: com.steadyphoto.sync.data.local.entity.MediaItemEntity,
         token: String,
         uploadId: String,
         chunkIndex: Int,
         totalChunks: Int,
-        fileSize: Long
+        fileSize: Long,
+        fileContent: ByteArray
     ): Boolean {
         var lastError: Exception? = null
 
         for (attempt in 1..currentConfig.maxRetries) {
             try {
-                val uri = android.net.Uri.parse(item.uri)
                 val offset = chunkIndex * CHUNK_SIZE
                 val remaining = fileSize - offset
-                val currentChunkSize = min(CHUNK_SIZE, remaining).toInt()
-
-                // Use ContentResolver.openInputStream() to read the URI and skip to the right position for the chunk
-                // Note: We can't use seek on InputStream, so we'll read from the beginning up to the end of this chunk
-                val inputStream = context.contentResolver.openInputStream(uri) 
-                    ?: throw Exception("Cannot open input stream for $uri")
-
-                // Create a byte array for just this chunk by reading and skipping appropriately
-                var lastErrorForChunk: Exception? = null
-                var chunkData: ByteArray? = null
+                val currentChunkSize = kotlin.math.min(CHUNK_SIZE, remaining).toInt()
                 
-                try {
-                    inputStream.use { input ->
-                        if (offset > 0) {
-                            // skip() doesn't guarantee it will skip all requested bytes, so we loop until offset is reached
-                            var skipped = 0L
-                            while (skipped < offset) {
-                                val n = input.skip(offset - skipped)
-                                if (n == 0L && !input.markSupported()) {
-                                    // mark not supported and couldn't skip any more bytes - read remaining to discard
-                                    val discardBuffer = ByteArray(min(8192, (offset - skipped).toInt()))
-                                    while (skipped < offset) {
-                                        val bytesReadDiscard = input.read(discardBuffer, 0, min(discardBuffer.size, (offset - skipped).toInt()))
-                                        if (bytesReadDiscard <= 0) break
-                                        skipped += bytesReadDiscard
-                                    }
-                                } else if (n > 0L) {
-                                    skipped += n
-                                } else if (!input.markSupported()) {
-                                    // mark not supported and skip returned 0 - need to read to discard
-                                    val discardBuffer = ByteArray(min(8192, (offset - skipped).toInt()))
-                                    while (skipped < offset) {
-                                        val bytesReadDiscard = input.read(discardBuffer, 0, min(discardBuffer.size, (offset - skipped).toInt()))
-                                        if (bytesReadDiscard <= 0) break
-                                        skipped += bytesReadDiscard
-                                    }
-                                }
-                            }
-                        }
-                        
-                        val buffer = ByteArray(currentChunkSize)
-                        val bytesRead = input.read(buffer, 0, currentChunkSize)
-                        
-                        if (bytesRead < 0) {
-                            throw Exception("Failed to read chunk data")
-                        }
-                        
-                        // Trim the buffer if we didn't read all bytes (for last chunk)
-                        chunkData = if (bytesRead < currentChunkSize) {
-                            buffer.copyOf(bytesRead)
-                        } else {
-                            buffer
-                        }
-                    }
-                } catch (e: Exception) {
-                    lastErrorForChunk = e
-                    throw e
-                }
-
-                if (chunkData == null || lastErrorForChunk != null) {
-                    Log.e(TAG, "Failed to read chunk data for ${item.fileName}")
-                    return false
-                }
+                // Extract just the bytes we need from the pre-read array - no seek needed!
+                val chunkData = fileContent.sliceArray((offset.toInt()) until ((offset + currentChunkSize).toInt()))
 
                 // Create chunk request body from the byte array
-                val chunkBody = okhttp3.RequestBody.create("application/octet-stream".toMediaType(), chunkData!!)
+                val chunkBody = okhttp3.RequestBody.create("application/octet-stream".toMediaType(), chunkData)
 
                 // Always get fresh ApiService from ApiClient to ensure correct URL is used
                 val apiService = apiClient.apiService
                 
+                Log.d(TAG, "Uploading chunk $chunkIndex of ${totalChunks} for ${item.fileName}")
+                
                 val response = apiService.uploadChunk(
-                    chunk = MultipartBody.Part.createFormData(
+                    chunk = okhttp3.MultipartBody.Part.createFormData(
                         "chunk",
                         "chunk_${chunkIndex}_${item.fileName}",
                         chunkBody
                     ),
-                    uploadId = uploadId.toRequestBody("text/plain".toMediaType()),
-                    chunkIndex = chunkIndex.toString().toRequestBody("text/plain".toMediaType()),
-                    totalChunks = totalChunks.toString().toRequestBody("text/plain".toMediaType()),
-                    fileName = item.fileName.toRequestBody("text/plain".toMediaType())
+                    uploadId = okhttp3.RequestBody.create("text/plain".toMediaType(), uploadId),
+                    chunkIndex = okhttp3.RequestBody.create("text/plain".toMediaType(), chunkIndex.toString()),
+                    totalChunks = okhttp3.RequestBody.create("text/plain".toMediaType(), totalChunks.toString()),
+                    fileName = okhttp3.RequestBody.create("text/plain".toMediaType(), item.fileName)
                 )
 
                 return response.success
@@ -532,11 +504,11 @@ class UploadManager(
                 Log.w(TAG, "Chunk upload attempt $attempt failed for ${item.fileName}: ${e.message}")
 
                 if (attempt < currentConfig.maxRetries) {
-                    val delayTime = min(
-                        INITIAL_RETRY_DELAY_MS * (2L * (attempt - 1)),
-                        MAX_RETRY_DELAY_MS
-                    )
-                    kotlinx.coroutines.delay(delayTime)
+                    val delayTime = kotlin.math.min(
+                        (INITIAL_RETRY_DELAY_MS * (2L * (attempt - 1))).toDouble(),
+                        MAX_RETRY_DELAY_MS.toDouble()
+                    ).toLong()
+                    kotlinx.coroutines.delay(delayTime.milliseconds)
                 }
             }
         }
@@ -549,7 +521,7 @@ class UploadManager(
      * Upload a batch of items using concurrent uploads.
      */
     private suspend fun uploadBatch(
-        items: List<MediaItemEntity>,
+        items: List<com.steadyphoto.sync.data.local.entity.MediaItemEntity>,
         token: String,
         callback: UploadProgressCallback? = null
     ): BatchResult {
@@ -612,14 +584,6 @@ class UploadManager(
             )
         }
         Log.d(TAG, "All uploads cancelled")
-    }
-
-    /**
-     * Get the auth token from shared preferences.
-     */
-    fun getAuthToken(): String? {
-        val prefs = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
-        return prefs.getString("auth_token", null)
     }
 
     /**

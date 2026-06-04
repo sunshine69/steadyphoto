@@ -26,6 +26,9 @@ interface MediaItemDao {
     @Query("UPDATE media_items SET uploadStatus = :status, errorMessage = :errorMessage WHERE id = :id")
     suspend fun updateStatus(id: Long, status: UploadStatus, errorMessage: String? = null)
 
+    @Query("UPDATE media_items SET uploadStatus = :status, serverId = :serverId WHERE id = :id")
+    suspend fun updateStatusWithServerId(id: Long, status: UploadStatus, serverId: String?)
+
     @Query("DELETE FROM media_items WHERE uploadStatus = 'UPLOADED' AND serverId IS NOT NULL")
     suspend fun cleanupUploadedItems()
 
@@ -42,5 +45,5 @@ interface MediaItemDao {
     suspend fun getAllStoredMediaIds(): List<Long>
 
     @Query("DELETE FROM media_items WHERE id IN (:idsToDelete)")
-    suspend fun deleteByMediaIds(idsToDelete: List<Long>)
+    suspend fun deleteByMediaIds(idsToDelete: List<Long>): Int
 }

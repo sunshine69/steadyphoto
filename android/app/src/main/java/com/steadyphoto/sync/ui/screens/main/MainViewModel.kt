@@ -226,7 +226,7 @@ class MainViewModel(
         viewModelScope.launch {
             try {
                 // Check if we have a valid auth token first
-                val authToken = container.uploadManager.getAuthToken()
+                val authToken = container.apiClient.getAuthToken()
                 if (authToken.isNullOrEmpty()) {
                     _uiState.value = _uiState.value.copy(
                         errorMessage = "No authentication. Please log in again."

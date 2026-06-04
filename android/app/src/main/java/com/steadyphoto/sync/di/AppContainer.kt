@@ -76,9 +76,8 @@ val appModule = module {
     single<SyncRepository> { 
         SyncRepositoryImpl(
             context = androidContext(),
-            mediaItemDao = get(),
-            uploadManager = get(),
-            apiClient = get()
+            apiClient = get(),
+            mediaItemDao = get()
         )
     }
     

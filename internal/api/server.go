@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"steadyphoto/internal/domain"
 	"steadyphoto/internal/storage"
@@ -59,6 +60,10 @@ func (s *Server) routes() {
 	s.router.Use(middleware.RealIP)
 	s.router.Use(middleware.Logger)
 	s.router.Use(middleware.Recoverer)
+
+	// Request timeout - prevents DB queries from hanging indefinitely and causing "unexpected end of stream" errors.
+	// Returns 504 Gateway Timeout if any request exceeds this duration, giving OkHttp a proper HTTP response instead of a closed connection.
+	s.router.Use(middleware.Timeout(30 * time.Second))
 
 	// API Versioning
 	s.router.Route("/api/v1", func(r chi.Router) {
