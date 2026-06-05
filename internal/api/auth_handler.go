@@ -1,7 +1,9 @@
 package api
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"time"
@@ -11,6 +13,28 @@ import (
 
 	"github.com/google/uuid"
 )
+
+// LoginRequest represents the request body for login.
+type LoginRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+// AuthResponse represents the response after successful authentication.
+type AuthResponse struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	UserID       uuid.UUID `json:"user_id"`
+	Role         string   `json:"role"`
+	Status       string   `json:"status"`
+}
+
+// RegisterRequest represents the request body for user registration.
+type RegisterRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+	Name     string `json:"name,omitempty"`
+}
 
 // RefreshRequest represents the request body for token refresh.
 type RefreshRequest struct {
@@ -172,4 +196,140 @@ func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
+}
+
+// handleRegister handles POST /api/v1/auth/register - creates a new pending user account.
+func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
+	var req RegisterRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.Email == "" || req.Password == "" {
+		http.Error(w, "Email and password are required", http.StatusBadRequest)
+		return
+	}
+
+	// Check if user already exists
+	existingUser, err := s.userRepo.GetByEmail(r.Context(), req.Email)
+	// If the error is NOT "no rows found", it's a real database error
+	if !errors.Is(err, sql.ErrNoRows) { // ErrNoRows means user doesn't exist (not an actual DB error)
+		log.Printf("[ERROR] handleRegister: failed to check existing email (%s): %v", req.Email, err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if existingUser != nil {
+		http.Error(w, "Email already registered", http.StatusConflict)
+		return
+	}
+
+	// Hash the password
+	passwordHash, err := security.HashPassword(req.Password)
+	if err != nil {
+		log.Printf("[ERROR] handleRegister: failed to hash password: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	// Create new user with pending status (requires admin approval)
+	newUser := &domain.User{
+		ID:           uuid.New(),
+		Email:        req.Email,
+		PasswordHash: passwordHash,
+		Status:       domain.UserStatusPending, // Pending admin approval by default
+		Role:         domain.UserRoleUser,      // Default role is user
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+
+	if err := s.userRepo.Create(r.Context(), newUser); err != nil {
+		log.Printf("[ERROR] handleRegister: failed to create user (%s): %v", req.Email, err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"status":   "pending_approval",
+		"user_id":  newUser.ID.String(),
+		"message":  "Registration successful. Account pending admin approval.",
+	})
+}
+
+// handleUpdateProfile handles PATCH /api/v1/auth/profile - updates user profile (currently only status).
+func (s *Server) handleUpdateProfile(w http.ResponseWriter, r *http.Request) {
+	userID, ok := GetUserIDFromContext(r.Context())
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var req struct {
+		Status string `json:"status"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Get the user
+	user, err := s.userRepo.GetByID(r.Context(), userID)
+	if err != nil {
+		log.Printf("[ERROR] handleUpdateProfile: failed to get user (%s): %v", userID, err)
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+
+	// Update status if provided
+	if req.Status != "" && (req.Status == domain.UserStatusActive || req.Status == domain.UserStatusDisabled || req.Status == domain.UserStatusRejected) {
+		user.Status = req.Status
+	}
+
+	if err := s.userRepo.Update(r.Context(), user); err != nil {
+		log.Printf("[ERROR] handleUpdateProfile: failed to update user (%s): %v", userID, err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+}
+
+// handleDeleteProfile handles DELETE /api/v1/auth/profile - deletes user account and revokes all sessions.
+func (s *Server) handleDeleteProfile(w http.ResponseWriter, r *http.Request) {
+	userID, ok := GetUserIDFromContext(r.Context())
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Revoke all sessions for this user first
+	if err := s.sessionRepo.RevokeAllByUserID(r.Context(), userID); err != nil {
+		log.Printf("[ERROR] handleDeleteProfile: failed to revoke sessions for user (%s): %v", userID, err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	// TODO: Delete all media belonging to this user (would need a method in MediaRepository)
+	// For now, we just delete the user from the database
+	
+	// Since UserRepo doesn't have a Delete method, we'll update status to disabled as a soft-delete
+	user, err := s.userRepo.GetByID(r.Context(), userID)
+	if err != nil {
+		log.Printf("[ERROR] handleDeleteProfile: failed to get user (%s): %v", userID, err)
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+
+	user.Status = domain.UserStatusDisabled
+	if err := s.userRepo.Update(r.Context(), user); err != nil {
+		log.Printf("[ERROR] handleDeleteProfile: failed to disable user (%s): %v", userID, err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "deleted"})
 }

@@ -18,6 +18,9 @@
     
     <!-- Wake lock to prevent sleep during uploads -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    
+    <!-- Boot completed to start SyncService on device startup -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
         android:name=".SteadyPhotoApplication"
@@ -48,6 +51,23 @@
             android:name=".worker.SyncService"
             android:foregroundServiceType="dataSync"
             android:exported="false" />
+
+        <!-- BroadcastReceiver to detect media scanner events (USB/MTP downloads, etc.) -->
+        <receiver
+            android:name=".worker.MediaChangeReceiver"
+            android:exported="true">
+            <intent-filter>
+                <!-- Fires when system starts scanning for new media files -->
+                <action android:name="android.intent.action.MEDIA_SCANNER_STARTED" />
+                <!-- Fires when system finishes scanning - this is the key event! -->
+                <action android:name="android.intent.action.MEDIA_SCANNER_FINISHED" />
+            </intent-filter>
+            <intent-filter>
+                <!-- Also listen for external storage events (USB mount/unmount) -->
+                <action android:name="android.intent.action.ACTION_EXTERNAL_APPLICATIONS_AVAILABLE" />
+                <action android:name="android.intent.action.ACTION_EXTERNAL_APPLICATIONS_UNAVAILABLE" />
+            </intent-filter>
+        </receiver>
 
     </application>
 

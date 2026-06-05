@@ -22,21 +22,29 @@ class MediaScannerWorker(
 
     override suspend fun doWork(): Result {
         return try {
-            // 1. Scan device storage for media files (Standard Sync)
-            val newItems = scanMediaFiles(applicationContext.contentResolver)
-            
-            if (newItems.isNotEmpty()) {
-                var insertedCount = 0
-                for (item in newItems) {
-                    val existing = container.mediaItemDao.getByHash(item.hash)
-                    if (existing == null) {
-                        container.mediaItemDao.insert(item)
-                        insertedCount++
-                    }
+            // Use repository's scanNewMedia with forceFullScan=true to catch downloaded files
+            // that may have wrong/missing MIME types (extension-based fallback)
+            val scanResult = container.repository.scanNewMedia(forceFullScan = true)
+
+            when (scanResult) {
+                is com.steadyphoto.sync.data.repository.ScanResult.Success -> {
+                    Log.d(
+                        "MediaScannerWorker",
+                        "Scanned ${scanResult.totalScanned} files, inserted ${scanResult.newItemsInserted} new items"
+                    )
                 }
-                Log.d("MediaScannerWorker", "Scanned ${newItems.size} files, inserted $insertedCount new items")
-            } else {
-                Log.d("MediaScannerWorker", "No new media files found during scan phase")
+
+                is com.steadyphoto.sync.data.repository.ScanResult.NoNewItems -> {
+                    Log.d("MediaScannerWorker", "No new media files found during scan phase")
+                }
+
+                is com.steadyphoto.sync.data.repository.ScanResult.PermissionDenied -> {
+                    Log.w("MediaScannerWorker", "Permission denied for media scan")
+                }
+
+                is com.steadyphoto.sync.data.repository.ScanResult.Error -> {
+                    Log.e("MediaScannerWorker", "Scan error: ${scanResult.message}")
+                }
             }
 
             // 2. Reconciliation (Cleanup Phase) - Remove ghost entries of deleted files

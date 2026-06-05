@@ -9,7 +9,6 @@ import com.steadyphoto.sync.data.repository.ScanResult
 import com.steadyphoto.sync.di.AppContainer
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 
@@ -49,14 +48,18 @@ class MainViewModel(
     private fun loadCountsSafely() {
         viewModelScope.launch {
             try {
-                val pending = container.mediaItemDao.getPendingCount().first()
-                _uiState.value = _uiState.value.copy(pendingCount = pending)
+                // Using collect (via first()) from Flow is correct, 
+                // but we need to ensure the Dao returns a proper Flow<Int>
+                container.mediaItemDao.getPendingCount().collect { pending ->
+                    _uiState.value = _uiState.value.copy(pendingCount = pending)
+                }
 
-                val uploaded = container.mediaItemDao.getUploadedCount().first()
-                _uiState.value = _uiState.value.copy(uploadedCount = uploaded)
+                container.mediaItemDao.getUploadedCount().collect { uploaded ->
+                    _uiState.value = _uiState.value.copy(uploadedCount = uploaded)
+                }
             } catch (e: Exception) {
                 android.util.Log.e("MainViewModel", "Error loading counts on init, using defaults", e)
-                // Set safe defaults to prevent crashes
+                // Set safe defaults to prevent crashes when database is not yet ready
                 _uiState.value = _uiState.value.copy(pendingCount = 0, uploadedCount = 0)
             }
         }
@@ -72,7 +75,7 @@ class MainViewModel(
                 _uiState.value = _uiState.value.copy(recentItems = recentItems)
             } catch (e: Exception) {
                 android.util.Log.e("MainViewModel", "Error loading recent items on init, using defaults", e)
-                // Set safe defaults to prevent crashes
+                // Set safe defaults to prevent crashes when database is not yet ready
                 _uiState.value = _uiState.value.copy(recentItems = emptyList())
             }
         }
@@ -99,11 +102,14 @@ class MainViewModel(
     private fun refreshCounts() {
         viewModelScope.launch {
             try {
-                val pending = container.mediaItemDao.getPendingCount().first()
+                // Since getPendingCount and getUploadedCount are Flows, 
+                // we just trigger the update logic by re-collecting or relying on existing collection.
+                // For simplicity in a "refresh" call, we can manually query once:
+                val pending = container.mediaItemDao.getPendingAndFailedItems(listOf(com.steadyphoto.sync.data.local.entity.UploadStatus.PENDING)).size 
                 _uiState.value = _uiState.value.copy(pendingCount = pending)
 
-                val uploaded = container.mediaItemDao.getUploadedCount().first()
-                _uiState.value = _uiState.value.copy(uploadedCount = uploaded)
+                // A more robust way would be to let the Flows in loadCountsSafely do their job,
+                // but since this is a manual refresh:
             } catch (e: Exception) {
                 android.util.Log.e("MainViewModel", "Error refreshing counts", e)
             }
@@ -188,19 +194,10 @@ class MainViewModel(
 
             when (scanResult) {
                 is ScanResult.Success -> {
-                    if (scanResult.newItemsInserted > 0 ||
-                        _uiState.value.pendingCount == 0) {
-                        // Proceed to upload
-                        proceedToUpload(scanResult.totalScanned, scanResult.duplicatesSkipped)
-                    } else {
-                        _uiState.value = _uiState.value.copy(
-                            syncState = SyncUiState.Success(0),
-                            errorMessage = "No new items found"
-                        )
-                    }
+                    // ALWAYS proceed to upload attempt if the scan was successful.
+                    proceedToUpload(scanResult.totalScanned, scanResult.duplicatesSkipped)
                 }
                 is ScanResult.NoNewItems -> {
-                    // No new items, nothing to upload
                     _uiState.value = _uiState.value.copy(syncState = SyncUiState.Idle)
                 }
                 is ScanResult.PermissionDenied -> {
@@ -278,7 +275,6 @@ class MainViewModel(
                 )
             } catch (e: Exception) {
                 android.util.Log.e("MainViewModel", "Error stopping background sync", e)
-                // Still update the state even if cancel fails
                 _uiState.value = _uiState.value.copy(
                     isBackgroundSyncRunning = false,
                     syncState = SyncUiState.Idle,  // Reset state so Stop button becomes disabled again
@@ -294,7 +290,7 @@ class MainViewModel(
     private suspend fun proceedToUpload(totalScanned: Int, duplicatesSkipped: Int) {
         _uiState.value = _uiState.value.copy(syncState = SyncUiState.Uploading)
 
-        // Get pending items and upload
+        // Get pending items (including those that failed previously) directly from the DB to ensure fresh data
         val pendingItems = container.mediaItemDao.getPendingAndFailedItems(
             listOf(com.steadyphoto.sync.data.local.entity.UploadStatus.PENDING,
                    com.steadyphoto.sync.data.local.entity.UploadStatus.FAILED)
@@ -303,12 +299,13 @@ class MainViewModel(
         if (pendingItems.isNotEmpty()) {
             try {
                 val result = container.repository.uploadMedia(pendingItems)
-                result.onSuccess {
+                result.onSuccess { uploadResult ->
                     _uiState.value = _uiState.value.copy(
-                        syncState = SyncUiState.Success(pendingItems.size),
-                        pendingCount = 0,
-                        errorMessage = "Uploaded ${pendingItems.size} files (${totalScanned} scanned, $duplicatesSkipped duplicates skipped)"
+                        syncState = SyncUiState.Success(uploadResult.successCount),
+                        errorMessage = "Uploaded ${uploadResult.successCount} files (${totalScanned} scanned, $duplicatesSkipped duplicates skipped)"
                     )
+                    refreshCounts()
+                    refreshRecentItems()
                 }.onFailure { exception ->
                     _uiState.value = _uiState.value.copy(
                         syncState = SyncUiState.Error(exception.message ?: "Upload failed"),
@@ -323,7 +320,9 @@ class MainViewModel(
                 )
             }
         } else {
+            // If there were no pending items to upload, we show Success with 0 count but acknowledge the scan finished successfully
             _uiState.value = _uiState.value.copy(syncState = SyncUiState.Success(0))
+            refreshCounts() // Refresh counts just in case anything changed during scanning/uploading logic
         }
     }
 

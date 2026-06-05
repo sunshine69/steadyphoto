@@ -29,26 +29,56 @@ class SyncRepositoryImpl(
         return mediaItemDao.getItemsByStatus(com.steadyphoto.sync.data.local.entity.UploadStatus.UPLOADED)
     }
 
-    override suspend fun scanNewMedia(): ScanResult {
+    override suspend fun scanNewMedia(forceFullScan: Boolean): ScanResult {
         val scanner = MediaScanner(context.contentResolver, mediaItemDao)
         
+        // Clean up deleted files first
         scanner.cleanupDeletedFiles()
         
-        val scannedCount = scanner.scanForNewMedia()
+        // Perform the actual scan - returns detailed result with scanning statistics
+        val scanResult = scanner.scanForNewMedia(forceFullScan)
 
         val pendingItems = mediaItemDao.getPendingAndFailedItems(
             listOf(com.steadyphoto.sync.data.local.entity.UploadStatus.PENDING, com.steadyphoto.sync.data.local.entity.UploadStatus.FAILED)
         )
 
-        Log.d(TAG, "Scan complete: ${pendingItems.size} items need uploading")
+        Log.d(TAG, "Scan complete: ${scanResult.totalScanned} scanned, ${scanResult.newItemsInserted} inserted, $pendingItems pending")
 
-        return ScanResult.Success(pendingItems.size, 0, scannedCount)
+        // Only return NoNewItems if nothing was actually scanned (totalScanned == 0)
+        // This shouldn't happen normally but could indicate a permissions issue
+        if (scanResult.totalScanned == 0 && scanResult.newItemsInserted == 0) {
+            Log.d(TAG, "No files found in MediaStore - possible permission issue")
+            return ScanResult.NoNewItems
+        }
+
+        // If new items were inserted or duplicates were skipped, return Success
+        if (scanResult.newItemsInserted > 0 || scanResult.duplicatesSkipped > 0) {
+            return ScanResult.Success(
+                totalScanned = scanResult.totalScanned,
+                newItemsInserted = scanResult.newItemsInserted,
+                duplicatesSkipped = scanResult.duplicatesSkipped
+            )
+        }
+
+        // If nothing was inserted and no duplicates were skipped but we did scan some files,
+        // it means all found items already exist in the DB (fully synced)
+        if (scanResult.totalScanned > 0 && scanResult.newItemsInserted == 0 && scanResult.duplicatesSkipped == 0) {
+            Log.d(TAG, "All scanned items are already in database - fully synced")
+            return ScanResult.NoNewItems
+        }
+
+        // Fallback: treat as success with no new items
+        return ScanResult.Success(
+            totalScanned = scanResult.totalScanned,
+            newItemsInserted = 0,
+            duplicatesSkipped = 0
+        )
     }
 
-    override suspend fun uploadMedia(items: List<com.steadyphoto.sync.data.local.entity.MediaItemEntity>): Result<Unit> {
+    override suspend fun uploadMedia(items: List<com.steadyphoto.sync.data.local.entity.MediaItemEntity>): Result<UploadResult> {
         if (items.isEmpty()) {
             Log.w(TAG, "No items to upload")
-            return Result.success(Unit)
+            return Result.success(UploadResult(successCount = 0, failureCount = 0))
         }
 
         val token = apiClient.getAuthToken()
@@ -63,6 +93,9 @@ class SyncRepositoryImpl(
 
             withTimeout(10_000) {
                 Log.d(TAG, "Uploading ${items.size} items to server")
+                
+                var successCount = 0
+                var failureCount = 0
                 
                 val fileParts = items.mapNotNull { item ->
                     try {
@@ -104,6 +137,7 @@ class SyncRepositoryImpl(
                                 uploadedMap[item.fileName]!!
                             )
                             Log.d(TAG, "Marked as UPLOADED: ${item.fileName} (server ID: ${uploadedMap[item.fileName]})")
+                            successCount++
                         }
                         item.fileName in response.skippedDuplicates.map { it.filename } -> {
                             // Server already has this file - treat as uploaded
@@ -114,16 +148,18 @@ class SyncRepositoryImpl(
                                 duplicateItem.id
                             )
                             Log.d(TAG, "Marked as UPLOADED (duplicate): ${item.fileName} (server ID: ${duplicateItem.id})")
+                            successCount++
                         }
                         else -> {
                             // Upload failed or was rejected
                             markItemsFailed(listOf(item), "Upload rejected by server")
                             Log.w(TAG, "Marked as FAILED: ${item.fileName}")
+                            failureCount++
                         }
                     }
                 }
 
-                return@withTimeout Unit
+                return@withTimeout UploadResult(successCount = successCount, failureCount = failureCount)
 
             }
 
@@ -133,8 +169,8 @@ class SyncRepositoryImpl(
             return Result.failure(e)
         }
 
-        // Success path - all items uploaded successfully
-        return Result.success(Unit)
+        // Should not reach here - withTimeout should always throw or return
+        return Result.success(UploadResult(successCount = 0, failureCount = items.size))
     }
 
     private suspend fun markItemsFailed(items: List<com.steadyphoto.sync.data.local.entity.MediaItemEntity>, reason: String) {
