@@ -158,10 +158,10 @@ android/gomobile-bindings/*.aar
 
 # Go build artifacts
 *.exe
-server
-worker
-scanner
-main
+server.exe 
+worker.exe 
+scanner.exe 
+main.exe 
 
 # Go test coverage
 coverage/

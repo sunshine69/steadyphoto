@@ -385,7 +385,7 @@ func (h *MediaUploadHandlerSingle) HandleSingleFileUpload(w http.ResponseWriter,
 	relTimePath := filepath.Join(dateDir, newFilename)
 	relPathFromRoot := filepath.Join(userID.String(), relTimePath)
 
-	if err := h.storageService.EnsureDirForPath(relTimePath); err != nil {
+	if err := h.storageService.EnsureDir(userID, relTimePath); err != nil {
 		log.Printf("[ERROR] UploadHandlerSingle: Failed to ensure directory %s: %v", dateDir, err)
 		os.Remove(tempFile.Name())
 		http.Error(w, "Failed to prepare storage.", http.StatusInternalServerError)
@@ -785,7 +785,7 @@ func (h *MediaUploadHandlerSingle) HandleComplete(w http.ResponseWriter, r *http
 	relTimePath := filepath.Join(dateDir, newFilename)
 	relPathFromRoot := filepath.Join(userID.String(), relTimePath)
 
-	if err := h.storageService.EnsureDirForPath(relTimePath); err != nil {
+	if err := h.storageService.EnsureDir(userID, relTimePath); err != nil {
 		log.Printf("[ERROR] UploadHandlerComplete: Failed to ensure directory %s: %v", dateDir, err)
 		os.Remove(assembledFile.Name()) // Clean up temp file on error
 		w.Header().Set("Content-Type", "application/json")
