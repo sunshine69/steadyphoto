@@ -224,3 +224,40 @@ nohup.out
 !android/app/src/**
 android/app/libs
 android/jni
+# Gradle
+.gradle/
+build/
+app/build/
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+*.iws
+.DS_Store
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Local configuration
+local.properties
+
+# Build Artifacts
+*.apk
+*.aar
+app/libs/mobile-bindings.aar
+
+# Keystores
+*.jks
+*.keystore
+
+# Logs
+logs/
+*.log
+
+# Project specific non-code files
+todo.txt
+issue.txt
+
+# Go / Gomobile
+gomobile-bindings/bin/
+gomobile-bindings/pkg/
