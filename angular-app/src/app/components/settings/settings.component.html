@@ -62,7 +62,8 @@
           <div class="form-actions">
             <button type="submit" 
                     [disabled]="profileLoading || !profileEmail.includes('@')"
-                    (click)="updateEmail()">
+                    (click)="updateEmail()"
+                    class="btn-save">
               {{ profileLoading ? 'Updating...' : 'Update Email' }}
             </button>
           </div>

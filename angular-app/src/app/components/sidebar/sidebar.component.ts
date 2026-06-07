@@ -1,8 +1,8 @@
 import { Component, OnInit, OnDestroy, inject } from '@angular/core';
+import { Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { RouterModule, RouterLinkActive } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
-import { Router } from '@angular/router';
 import { Subscription } from 'rxjs';
 
 @Component({
@@ -72,6 +72,7 @@ import { Subscription } from 'rxjs';
             <span>Favorites</span>
           </a>
 
+          <!-- Albums link - navigates to /albums page -->
           <a routerLink="/albums" routerLinkActive="active" class="nav-item">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z"/>
@@ -79,32 +80,6 @@ import { Subscription } from 'rxjs';
             </svg>
             <span>Albums</span>
           </a>
-
-          <div class="nav-subsection">
-            <a routerLink="/camera" routerLinkActive="active" class="nav-item sub-item">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
-                <circle cx="12" cy="13" r="4"/>
-              </svg>
-              <span>Camera</span>
-            </a>
-
-            <a routerLink="/screenshots" routerLinkActive="active" class="nav-item sub-item">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
-                <line x1="8" y1="21" x2="16" y2="21"/>
-                <line x1="12" y1="17" x2="12" y2="21"/>
-              </svg>
-              <span>Screenshots</span>
-            </a>
-
-            <a routerLink="/messenger" routerLinkActive="active" class="nav-item sub-item">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-              </svg>
-              <span>Messenger</span>
-            </a>
-          </div>
 
           <a routerLink="/utilities" routerLinkActive="active" class="nav-item">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -151,7 +126,7 @@ import { Subscription } from 'rxjs';
           </div>
         </div>
 
-        <!-- Dropdown Menu -->
+        <!-- Dropdown Menu - Settings and Logout -->
         <div class="dropdown-menu" *ngIf="isMenuOpen" (click)="$event.stopPropagation()">
           <ul class="menu-list">
             <li class="menu-item" (click)="onSettings()">
@@ -265,17 +240,6 @@ import { Subscription } from 'rxjs';
 
     .nav-item svg {
       flex-shrink: 0;
-    }
-
-    /* Subsection */
-    .nav-subsection {
-      margin-left: 16px;
-      padding-left: 12px;
-      border-left: 1px solid #374151;
-    }
-
-    .sub-item {
-      font-size: 13px;
     }
 
     /* Footer */

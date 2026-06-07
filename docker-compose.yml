@@ -19,7 +19,7 @@ services:
     environment:
       DATABASE_URL: postgres://steadyphoto:password@db:5432/steadyphoto?sslmode=disable
       STORAGE_DIR: /app/storage
-      API_PORT: :8080
+      API_PORT: 8080
     volumes:
       - app_storage:/app/storage # Persistent storage for media files
     depends_on:
