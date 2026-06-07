@@ -105,6 +105,9 @@ func (s *Server) routes() {
 				profile.Use(s.AuthMiddleware)
 				profile.Patch("/profile", s.handleUpdateProfile)
 				profile.Delete("/profile", s.handleDeleteProfile)
+				profile.Get("/profile", s.handleGetProfile)
+				profile.Patch("/profile/email", s.handleUpdateProfileEmail)
+				profile.Patch("/profile/password", s.handleChangePassword)
 			})
 		})
 

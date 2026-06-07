@@ -17,6 +17,7 @@ import { UtilitiesComponent } from './components/utilities/utilities.component';
 import { ArchiveComponent } from './components/archive/archive.component';
 import { LockedComponent } from './components/locked/locked.component';
 import { TrashComponent } from './components/trash/trash.component';
+import { SettingsComponent } from './components/settings/settings.component';
 import { authGuard } from './guards/auth.guard';
 
 export const routes: Routes = [
@@ -47,6 +48,7 @@ export const routes: Routes = [
   
   // Special Routes
   { path: 'presentation', component: PresentationComponent, canActivate: [authGuard] },
+  { path: 'settings', component: SettingsComponent, canActivate: [authGuard] },
   
   // Auth Routes (Public)
   { path: 'login', component: LoginComponent },

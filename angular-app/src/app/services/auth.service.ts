@@ -1,6 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { BehaviorSubject, Observable, tap, catchError, finalize, throwError } from 'rxjs';
+import { BehaviorSubject, Observable, throwError } from 'rxjs';
+import { catchError, tap } from 'rxjs/operators';
 import { environment } from '../../environments/environment';
 
 export interface AuthResponse {
@@ -29,6 +30,51 @@ export interface User {
 export class AuthService {
   private http = inject(HttpClient);
   private API_BASE_URL = environment.apiBaseUrl;
+
+  /**
+   * Gets the current user's profile information.
+   */
+  getProfile(): Observable<any> {
+    return this.http.get(`${this.API_BASE_URL}/auth/profile`, { withCredentials: true })
+      .pipe(
+        tap((res) => console.log('AuthService: Profile fetched', res)),
+        catchError(err => {
+          console.error('AuthService: Failed to fetch profile', err);
+          return throwError(() => err);
+        })
+      );
+  }
+
+  /**
+   * Updates the user's email address.
+   */
+  updateEmail(newEmail: string): Observable<any> {
+    return this.http.patch(`${this.API_BASE_URL}/auth/profile/email`, { new_email: newEmail }, { withCredentials: true })
+      .pipe(
+        tap((res) => console.log('AuthService: Email updated', res)),
+        catchError(err => {
+          console.error('AuthService: Failed to update email', err);
+          return throwError(() => err);
+        })
+      );
+  }
+
+  /**
+   * Changes the user's password.
+   */
+  changePassword(currentPassword: string, newPassword: string): Observable<any> {
+    return this.http.patch(`${this.API_BASE_URL}/auth/profile/password`, { 
+      current_password: currentPassword,
+      new_password: newPassword
+    }, { withCredentials: true })
+      .pipe(
+        tap((res) => console.log('AuthService: Password changed', res)),
+        catchError(err => {
+          console.error('AuthService: Failed to change password', err);
+          return throwError(() => err);
+        })
+      );
+  }
 
   /**
    * Logs in a user and sets session cookies via backend response.
@@ -72,7 +118,7 @@ export class AuthService {
           // Ensure we don't trigger token refresh for registration errors
           return throwError(() => err);
         }),
-        finalize(() => {
+        tap(() => {
           console.log('AuthService: Registration request completed');
         })
       );

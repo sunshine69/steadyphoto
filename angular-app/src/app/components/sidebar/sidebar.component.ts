@@ -415,7 +415,7 @@ export class SidebarComponent implements OnInit, OnDestroy {
 
   onSettings(): void {
     console.log('Settings clicked');
-    // TODO: Implement settings page navigation later
+    this.router.navigate(['/settings']);
     this.isMenuOpen = false;
   }
 
