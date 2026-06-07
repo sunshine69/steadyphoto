@@ -22,15 +22,18 @@ if command -v gomobile &> /dev/null; then
 
     echo "🔧 Setting 16KB ELF alignment flags for Gomobile..."
 
-    # Crucial: Include default compiler flags (-O2) alongside the 16KB alignment parameters
+    # Include default compiler flags (-O2) alongside the 16KB alignment parameters
+    # -Wl,-z,max-page-size=16384 is the standard linker flag for 16KB alignment
     export CGO_CFLAGS="-O2"
-    export CGO_LDFLAGS="-O2 -s -w"
+    export CGO_LDFLAGS="-O2 -s -w -Wl,-z,max-page-size=16384"
 
     # Explicitly specify -androidapi to force NDK toolchain alignment compliance
+    # Also passing it via -ldflags for the Go linker
     gomobile bind \
         -v \
         -target android/arm64,android/amd64 \
         -androidapi 21 \
+        -ldflags="-extldflags=-Wl,-z,max-page-size=16384" \
         -o "$SCRIPT_DIR/app/libs/mobile-bindings.aar" ./mobile
 
     echo "✅ Gomobile bindings built successfully."

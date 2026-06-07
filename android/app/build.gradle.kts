@@ -68,7 +68,10 @@ android {
         }
         
         jniLibs {
-            useLegacyPackaging = true
+            // Set to false to allow libraries to be memory-mapped directly from the APK.
+            // This requires 16KB alignment (which we've added to the gomobile build script)
+            // and is required for full Android 15+ compatibility.
+            useLegacyPackaging = false
         }
     }
 
