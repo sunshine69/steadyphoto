@@ -1,8 +1,11 @@
 package com.steadyphoto.sync.data.repository
 
 import android.content.ContentResolver
+import android.media.MediaScannerConnection
+import android.os.Build
 import android.provider.MediaStore
 import android.util.Log
+import java.io.File
 import java.security.MessageDigest
 
 /**
@@ -16,42 +19,41 @@ class MediaScanner(
     companion object {
         private const val TAG = "MediaScanner"
         
-        // MIME types we consider as valid media - used for initial filtering on non-force-scan
-        private val IMAGE_MIME_TYPES = arrayOf("image/jpeg", "image/png", "image/heic")
+        private val IMAGE_MIME_TYPES = arrayOf("image/jpeg", "image/png", "image/heic", "image/webp")
         private val VIDEO_MIME_TYPES = arrayOf("video/mp4", "video/quicktime", "video/x-ms-wmv")
         
-        // File extensions we consider as valid media - used when MIME type is missing/wrong (e.g., downloaded files)
-        private val IMAGE_EXTENSIONS = setOf(".jpg", ".jpeg", ".png", ".heic", ".heif", ".webp", ".gif")
-        private val VIDEO_EXTENSIONS = setOf(".mp4", ".mov", ".wmv", ".avi", ".mkv")
+        // Removed leading dots to match substringAfterLast result
+        private val IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "heic", "heif", "webp", "gif")
+        private val VIDEO_EXTENSIONS = setOf("mp4", "mov", "wmv", "avi", "mkv", "webm")
     }
 
     /**
      * Scan the device for new media files and add them to the database if not already present.
-     * 
-     * @param forceFullScan If true, scan ALL rows from MediaStore without MIME type filtering.
-     *                      This is critical for catching downloaded files that may have wrong/missing MIME types.
      */
     suspend fun scanForNewMedia(forceFullScan: Boolean = false): MediaScanResult {
         var totalScanned = 0
         var newItemsInserted = 0
 
-        if (forceFullScan) {
-            // UNIFIED FULL SCAN: Query EVERYTHING in external storage via the Files provider.
-            // This is the "nuclear option" to catch files that Android hasn't correctly categorized yet.
-            Log.d(TAG, "Running unified full MediaStore scan for ALL media types")
-            
-            val projection = arrayOf(
-                MediaStore.MediaColumns._ID, 
-                MediaStore.MediaColumns.DISPLAY_NAME, 
-                MediaStore.MediaColumns.MIME_TYPE, 
-                MediaStore.MediaColumns.SIZE
-            )
+        // 1. ALWAYS perform the reliable, type-specific scans first. 
+        Log.d(TAG, "Running standard MediaStore scan (Images & Video)")
+        
+        val imageResult = scanMediaType(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, IMAGE_MIME_TYPES)
+        totalScanned += imageResult.totalScanned
+        newItemsInserted += imageResult.newItemsInserted
+        
+        val videoResult = scanMediaType(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, VIDEO_MIME_TYPES)
+        totalScanned += videoResult.totalScanned
+        newItemsInserted += videoResult.newItemsInserted
 
-            // We query the generic Files provider which includes Images AND Videos + other files.
+        // 2. Perform the broad "Files" scan if requested OR if no new items were found.
+        // This helps catch newly added files that MediaStore hasn't indexed yet.
+        if (forceFullScan || newItemsInserted == 0) {
+            Log.d(TAG, "Running broad Files provider scan as fallback")
+            
             val unifiedCursor = contentResolver.query(
                 MediaStore.Files.getContentUri("external"),
-                projection,
-                "${MediaStore.MediaColumns.SIZE} > 1024", // Skip tiny system/metadata files (<1KB)
+                projectionForScan(),
+                "${MediaStore.MediaColumns.SIZE} > 1024", 
                 null,
                 null
             )
@@ -63,47 +65,18 @@ class MediaScanner(
             } ?: run {
                 Log.e(TAG, "Failed to query MediaStore for unified files")
             }
-
-        } else {
-            // Normal scan - filter by MIME type only (faster but may miss downloaded files with wrong MIME types)
-            val imageResult = scanMediaType(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, IMAGE_MIME_TYPES)
-            totalScanned += imageResult.totalScanned
-            newItemsInserted += imageResult.newItemsInserted
-            
-            val videoResult = scanMediaType(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, VIDEO_MIME_TYPES)
-            totalScanned += videoResult.totalScanned
-            newItemsInserted += videoResult.newItemsInserted
-
-            // Secondary check for files that might have correct extensions but were missed by MIME filtering
-            Log.d(TAG, "Running secondary extension-based scan for downloaded media")
-            val fileCursor = contentResolver.query(
-                MediaStore.Files.getContentUri("external"),
-                projectionForScan(), 
-                "${MediaStore.MediaColumns.SIZE} > 10240", // Only files > 10KB to avoid tiny system files
-                null,
-                null
-            )
-
-            fileCursor?.use { cursor ->
-                val result = scanAllRows(cursor)
-                totalScanned += result.totalScanned
-                newItemsInserted += result.newItemsInserted
-            } ?: run {
-                Log.e(TAG, "Failed to query MediaStore for external files during normal scan")
-            }
         }
 
         Log.d(TAG, "Scan complete: $totalScanned scanned, $newItemsInserted inserted")
         
-        // Calculate how many items were already in the DB (including newly inserted ones) 
-        // to help with reporting/logic elsewhere if needed.
+        // 3. Count total pending/failed items in DB to decide if uploader should run
         val pendingItems = mediaItemDao.getPendingAndFailedItems(
-            listOf(com.steadyphoto.sync.data.local.entity.UploadStatus.PENDING, com.steadyphoto.sync.data.local.entity.UploadStatus.FAILED)
+            listOf(com.steadyphoto.sync.data.local.entity.UploadStatus.PENDING, 
+                   com.steadyphoto.sync.data.local.entity.UploadStatus.FAILED,
+                   com.steadyphoto.sync.data.local.entity.UploadStatus.UPLOADING)
         )
         
-        // duplicatesSkipped logic: if we scanned everything and found nothing new to insert, 
-        // it means all files were already in the DB or aren't media.
-        val duplicatesSkipped = maxOf(0, pendingItems.size - (newItemsInserted)) // simplified for this context
+        val duplicatesSkipped = maxOf(0, pendingItems.size - newItemsInserted)
 
         return MediaScanResult(totalScanned, newItemsInserted, duplicatesSkipped)
     }
@@ -115,9 +88,6 @@ class MediaScanner(
             MediaStore.MediaColumns.SIZE
     )
 
-    /**
-     * Scan ALL rows from a cursor without MIME type filtering.
-     */
     private suspend fun scanAllRows(cursor: android.database.Cursor): MediaScanResult {
         var totalScanned = 0
         var newItemsInserted = 0
@@ -134,54 +104,39 @@ class MediaScanner(
                     val mimeType = it.getString(it.getColumnIndexOrThrow(MediaStore.MediaColumns.MIME_TYPE))
                     val fileSize = it.getLong(it.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE))
 
-                    // IDENTIFICATION LOGIC: 
-                    // Is this actually a media file? Check MIME type OR extension.
-                    val isImage = (mimeType?.startsWith("image/") == true) || isImageByExtension(fileName)
-                    val isVideo = (mimeType?.startsWith("video/") == true) || isVideoByExtension(fileName)
+                    val ext = fileName.substringAfterLast('.', "").lowercase()
+                    val isImage = (mimeType?.startsWith("image/") == true) || IMAGE_EXTENSIONS.contains(ext)
+                    val isVideo = (mimeType?.startsWith("video/") == true) || VIDEO_EXTENSIONS.contains(ext)
 
-                    if (!isImage && !isVideo) {
-                        // It's a file, but not an image or video. Skip it.
-                        continue 
-                    }
+                    if (!isImage && !isVideo) continue 
 
-                    // Construct URI for this media item using the generic MediaStore pattern.
-                    // Note: Using Files provider works for all types identified above.
                     val contentUri = MediaStore.Files.getContentUri("external").buildUpon()
                         .appendPath(id.toString())
                         .build()
 
-                    // Check if already in database by hash or URI to avoid duplicates
-                    val existingByHash = mediaItemDao.getByHash(contentUri.toString())
-                    if (existingByHash != null && existingByHash.uploadStatus == com.steadyphoto.sync.data.local.entity.UploadStatus.UPLOADED) {
-                        continue
-                    }
+                    if (isAlreadyInDb(contentUri.toString())) continue
 
-                    // Compute hash for deduplication using Content URI (first 1MB only)
                     val hash = computeHashFromContentUri(contentUri)
-                    
-                    // Check if file with same hash exists in DB (even different path - could be copy)
-                    val existingByHashValue = mediaItemDao.getByHash(hash)
-                    if (existingByHashValue != null && existingByHashValue.uploadStatus == com.steadyphoto.sync.data.local.entity.UploadStatus.UPLOADED) {
-                        continue
-                    }
+                    if (isAlreadyInDbByHash(hash)) continue
 
-                    // Add to database with PENDING status
                     val entity = com.steadyphoto.sync.data.local.entity.MediaItemEntity(
                         uri = contentUri.toString(),
                         localPath = null, 
                         fileName = fileName,
                         hash = hash,
-                        mimeType = mimeType ?: if (isImage) "image/jpeg" else "video/mp4", // Fallback MIME types
+                        mimeType = mimeType ?: if (isImage) "image/jpeg" else "video/mp4",
                         fileSize = fileSize,
                         uploadStatus = com.steadyphoto.sync.data.local.entity.UploadStatus.PENDING,
                     )
 
-                    mediaItemDao.insert(entity)
-                    newItemsInserted++
-                    Log.d(TAG, "Added new file to sync queue: $fileName ($fileSize bytes)")
+                    val insertedId = mediaItemDao.insert(entity)
+                    if (insertedId != -1L) {
+                        newItemsInserted++
+                        Log.d(TAG, "Added new file via Files provider: $fileName")
+                    }
 
                 } catch (e: Exception) {
-                    Log.w(TAG, "Error processing media item", e)
+                    Log.w(TAG, "Error processing media item in broad scan", e)
                 }
             }
         }
@@ -189,32 +144,33 @@ class MediaScanner(
         return MediaScanResult(totalScanned, newItemsInserted, 0)
     }
 
-    private fun isImageByExtension(fileName: String): Boolean = IMAGE_EXTENSIONS.contains(fileName.substringAfterLast('.', "").lowercase())
-    private fun isVideoByExtension(fileName: String): Boolean = VIDEO_EXTENSIONS.contains(fileName.substringAfterLast('.', "").lowercase())
+    private suspend fun isAlreadyInDb(uri: String): Boolean {
+        val existing = mediaItemDao.getByUri(uri)
+        return existing != null && (existing.uploadStatus == com.steadyphoto.sync.data.local.entity.UploadStatus.UPLOADED || 
+                                   existing.uploadStatus == com.steadyphoto.sync.data.local.entity.UploadStatus.PENDING ||
+                                   existing.uploadStatus == com.steadyphoto.sync.data.local.entity.UploadStatus.UPLOADING)
+    }
 
-    /**
-     * Scan a specific media type (images or videos).
-     */
+    private suspend fun isAlreadyInDbByHash(hash: String): Boolean {
+        if (hash.isEmpty()) return false
+        val existing = mediaItemDao.getByHash(hash)
+        return existing != null && (existing.uploadStatus == com.steadyphoto.sync.data.local.entity.UploadStatus.UPLOADED ||
+                                   existing.uploadStatus == com.steadyphoto.sync.data.local.entity.UploadStatus.PENDING ||
+                                   existing.uploadStatus == com.steadyphoto.sync.data.local.entity.UploadStatus.UPLOADING)
+    }
+
     private suspend fun scanMediaType(uri: android.net.Uri, mimeTypes: Array<String>): MediaScanResult {
         var totalScanned = 0
         var newItemsInserted = 0
         
         val mimeTypeColumn = MediaStore.MediaColumns.MIME_TYPE
-        // Images and Videos have different _ID columns in some Android versions/providers, but standardizing on MediaColumns._ID is safer when using Files provider context
-        val idColumnName = if (uri == MediaStore.Images.Media.EXTERNAL_CONTENT_URI) {
-            MediaStore.Images.ImageColumns._ID 
-        } else {
-            MediaStore.Video.VideoColumns._ID
-        }
-        
-        // Safety: fallback to standard _ID if the specific one fails
-        val finalIdColumn = try { idColumnName } catch (e: Exception) { MediaStore.MediaColumns._ID }
+        val idColumnName = MediaStore.MediaColumns._ID
 
         val mimeTypeSelection = "$mimeTypeColumn IN (${mimeTypes.joinToString(",") { "'$it'" }})"
         
         contentResolver.query(
             uri,
-            arrayOf(finalIdColumn, MediaStore.MediaColumns.DISPLAY_NAME, mimeTypeColumn, MediaStore.MediaColumns.SIZE),
+            arrayOf(idColumnName, MediaStore.MediaColumns.DISPLAY_NAME, mimeTypeColumn, MediaStore.MediaColumns.SIZE),
             mimeTypeSelection + " AND ${MediaStore.MediaColumns.SIZE} > 0",
             null,
             null
@@ -222,23 +178,17 @@ class MediaScanner(
             while (cursor.moveToNext()) {
                 try {
                     totalScanned++
-                    val id = cursor.getLong(cursor.getColumnIndexOrThrow(finalIdColumn))
+                    val id = cursor.getLong(cursor.getColumnIndexOrThrow(idColumnName))
                     val fileName = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)) ?: continue
                     val mimeType = cursor.getString(cursor.getColumnIndexOrThrow(mimeTypeColumn)) ?: continue
                     val fileSize = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE))
 
                     val contentUri = uri.buildUpon().appendPath(id.toString()).build()
 
-                    val existingByHash = mediaItemDao.getByHash(contentUri.toString())
-                    if (existingByHash != null && existingByHash.uploadStatus == com.steadyphoto.sync.data.local.entity.UploadStatus.UPLOADED) {
-                        continue
-                    }
+                    if (isAlreadyInDb(contentUri.toString())) continue
 
                     val hash = computeHashFromContentUri(contentUri)
-                    val existingByHashValue = mediaItemDao.getByHash(hash)
-                    if (existingByHashValue != null && existingByHashValue.uploadStatus == com.steadyphoto.sync.data.local.entity.UploadStatus.UPLOADED) {
-                        continue
-                    }
+                    if (isAlreadyInDbByHash(hash)) continue
 
                     val entity = com.steadyphoto.sync.data.local.entity.MediaItemEntity(
                         uri = contentUri.toString(),
@@ -250,47 +200,45 @@ class MediaScanner(
                         uploadStatus = com.steadyphoto.sync.data.local.entity.UploadStatus.PENDING,
                     )
 
-                    mediaItemDao.insert(entity)
-                    newItemsInserted++
+                    val insertedId = mediaItemDao.insert(entity)
+                    if (insertedId != -1L) {
+                        newItemsInserted++
+                        Log.d(TAG, "Added new file via type scan: $fileName")
+                    }
                 } catch (e: Exception) {
                     Log.w(TAG, "Error processing media item", e)
                 }
             }
-        } ?: run {
-            Log.e(TAG, "Failed to query MediaStore for $uri")
         }
-
         return MediaScanResult(totalScanned, newItemsInserted, 0)
     }
 
-    /**
-     * Compute SHA-256 hash of file content using Content URI.
-     */
     private fun computeHashFromContentUri(contentUri: android.net.Uri): String {
         try {
             val digest = MessageDigest.getInstance("SHA-256")
-            var bytesRead = 0L
+            var totalBytesRead = 0L
             val buffer = ByteArray(8192)
 
             contentResolver.openInputStream(contentUri)?.use { input ->
-                while (input.read(buffer).also { bytesRead += it } > 0 && bytesRead < 1_048_576) { // Read first 1MB only for performance
-                    digest.update(buffer, 0, bytesRead.toInt())
+                var read: Int
+                while (input.read(buffer).also { read = it } > 0 && totalBytesRead < 1_048_576) { 
+                    digest.update(buffer, 0, read)
+                    totalBytesRead += read
                 }
             }
 
             return digest.digest().joinToString("") { "%02x".format(it) }
         } catch (e: Exception) {
             Log.w(TAG, "Failed to compute hash for $contentUri", e)
-            return contentUri.toString() // Fallback to URI string if hashing fails
+            return "hash_failed_${contentUri.lastPathSegment}_${System.currentTimeMillis()}"
         }
     }
 
-    /**
-     * Remove files that no longer exist on disk from the database.
-     */
     suspend fun cleanupDeletedFiles() {
         val pendingItems = mediaItemDao.getPendingAndFailedItems(
-            listOf(com.steadyphoto.sync.data.local.entity.UploadStatus.PENDING, com.steadyphoto.sync.data.local.entity.UploadStatus.FAILED)
+            listOf(com.steadyphoto.sync.data.local.entity.UploadStatus.PENDING, 
+                   com.steadyphoto.sync.data.local.entity.UploadStatus.FAILED,
+                   com.steadyphoto.sync.data.local.entity.UploadStatus.UPLOADING)
         )
 
         var deletedCount = 0
@@ -305,10 +253,6 @@ class MediaScanner(
                 mediaItemDao.updateStatus(item.id, com.steadyphoto.sync.data.local.entity.UploadStatus.FAILED, "File not accessible")
                 deletedCount++
             }
-        }
-
-        if (deletedCount > 0) {
-            Log.d(TAG, "Cleaned up $deletedCount deleted files from database")
         }
     }
 }

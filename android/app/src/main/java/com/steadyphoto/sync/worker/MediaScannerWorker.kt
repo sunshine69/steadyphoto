@@ -1,17 +1,18 @@
 package com.steadyphoto.sync.worker
 
-import android.content.ContentResolver
 import android.content.Context
-import android.database.Cursor
-import android.provider.MediaStore
+import android.media.MediaScannerConnection
+import android.os.Environment
 import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.steadyphoto.sync.data.local.entity.MediaItemEntity
+import com.steadyphoto.sync.data.local.entity.UploadStatus
 import com.steadyphoto.sync.di.AppContainer
-import org.koin.androidx.compose.koinViewModel
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
+import java.io.File
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
 
 class MediaScannerWorker(
     context: Context,
@@ -22,260 +23,60 @@ class MediaScannerWorker(
 
     override suspend fun doWork(): Result {
         return try {
-            // Use repository's scanNewMedia with forceFullScan=true to catch downloaded files
-            // that may have wrong/missing MIME types (extension-based fallback)
+            Log.d("MediaScannerWorker", "Background media scan started")
+
+            // 1. Force a MediaStore scan of the common camera directories.
+            // This ensures files added via ADB or other apps are indexed before we query.
+            scanCameraDirectories()
+
+            // 2. Perform the database scan
             val scanResult = container.repository.scanNewMedia(forceFullScan = true)
 
             when (scanResult) {
                 is com.steadyphoto.sync.data.repository.ScanResult.Success -> {
-                    Log.d(
-                        "MediaScannerWorker",
-                        "Scanned ${scanResult.totalScanned} files, inserted ${scanResult.newItemsInserted} new items"
-                    )
+                    Log.d("MediaScannerWorker", "Scan success: ${scanResult.newItemsInserted} new items")
                 }
-
-                is com.steadyphoto.sync.data.repository.ScanResult.NoNewItems -> {
-                    Log.d("MediaScannerWorker", "No new media files found during scan phase")
-                }
-
-                is com.steadyphoto.sync.data.repository.ScanResult.PermissionDenied -> {
-                    Log.w("MediaScannerWorker", "Permission denied for media scan")
-                }
-
-                is com.steadyphoto.sync.data.repository.ScanResult.Error -> {
-                    Log.e("MediaScannerWorker", "Scan error: ${scanResult.message}")
-                }
+                else -> Log.d("MediaScannerWorker", "No new items found via MediaStore")
             }
 
-            // 2. Reconciliation (Cleanup Phase) - Remove ghost entries of deleted files
-            reconcileDeletedFiles()
+            // 3. Check for any pending items (including stuck ones)
+            val pendingItems = container.mediaItemDao.getPendingAndFailedItems(
+                listOf(UploadStatus.PENDING, UploadStatus.FAILED, UploadStatus.UPLOADING)
+            )
+            
+            if (pendingItems.isNotEmpty()) {
+                Log.d("MediaScannerWorker", "Found ${pendingItems.size} items to sync, triggering uploader")
+                SyncManager.getInstance(applicationContext).triggerUpload()
+            }
 
             Result.success()
         } catch (e: Exception) {
-            Log.e("MediaScannerWorker", "Scan or reconciliation failed", e)
+            Log.e("MediaScannerWorker", "Scan phase failed", e)
             Result.retry()
         }
     }
 
-private suspend fun reconcileDeletedFiles() {
-    val contentResolver = applicationContext.contentResolver
-    try {
-        // Get all IDs currently in our local Room database
-        val storedIds = container.mediaItemDao.getAllStoredMediaIds().toSet()
-        if (storedIds.isEmpty()) return
+    /**
+     * Forces MediaStore to index the camera and pictures directories.
+     */
+    private suspend fun scanCameraDirectories() {
+        val paths = listOf(
+            File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM), "Camera"),
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM)
+        ).filter { it.exists() }.map { it.absolutePath }.toTypedArray()
 
-        // Query MediaStore for ALL valid image/video IDs currently on the system
-        val validSystemIds = mutableSetOf<Long>()
-        val projection = arrayOf(MediaStore.MediaColumns._ID)
+        if (paths.isEmpty()) return
 
-        // Scan Images
-        contentResolver.query(
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-            projection, null, null, null
-        )?.use { cursor ->
-            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
-            while (cursor.moveToNext()) validSystemIds.add(cursor.getLong(idColumn))
-        }
-
-        // Scan Videos
-        contentResolver.query(
-            MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-            projection, null, null, null
-        )?.use { cursor ->
-            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
-            while (cursor.moveToNext()) validSystemIds.add(cursor.getLong(idColumn))
-        }
-
-        // Identify "Ghosts" (In DB but not in MediaStore)
-        val idsToDelete = storedIds.filter { it !in validSystemIds }
-
-        if (idsToDelete.isNotEmpty()) {
-            container.mediaItemDao.deleteByMediaIds(idsToDelete)
-            Log.i("MediaScannerWorker", "Reconciliation: Removed ${idsToDelete.size} ghost entries from database.")
-        } else {
-            Log.d("MediaScannerWorker", "Reconciliation: No deleted files found to clean up.")
-        }
-    } catch (e: Exception) {
-        Log.e("MediaScannerWorker", "Error during reconciliation phase", e)
-    }
-}
-
-    private fun scanMediaFiles(contentResolver: ContentResolver): List<MediaItemEntity> {
-        val items = mutableListOf<MediaItemEntity>()
+        Log.d("MediaScannerWorker", "Requesting MediaStore scan for: ${paths.joinToString()}")
         
-        // Query images first
-        items.addAll(scanImages(contentResolver))
-        
-        // Then query videos
-        items.addAll(scanVideos(contentResolver))
-        
-        Log.d("MediaScannerWorker", "Found ${items.size} total media files")
-        return items
-    }
-
-    private fun scanImages(contentResolver: ContentResolver): List<MediaItemEntity> {
-        val items = mutableListOf<MediaItemEntity>()
-        
-        // Define the columns we want to retrieve
-        val projection = arrayOf(
-            MediaStore.Images.Media._ID,
-            MediaStore.Images.Media.DISPLAY_NAME,
-            MediaStore.Images.Media.MIME_TYPE,
-            MediaStore.Images.Media.SIZE,
-            MediaStore.Images.Media.DATE_ADDED,
-            MediaStore.Images.Media.DATA // Absolute path (deprecated but still useful)
-        )
-        
-        // Filter for common image types and minimum size (>10KB to skip thumbnails)
-        val selection = "${MediaStore.Images.Media.SIZE} > 10240 AND (" +
-                "${MediaStore.Images.Media.MIME_TYPE} = ? OR " +
-                "${MediaStore.Images.Media.MIME_TYPE} = ? OR " +
-                "${MediaStore.Images.Media.MIME_TYPE} = ? OR " +
-                "${MediaStore.Images.Media.MIME_TYPE} = ?" +
-                ")"
-        val selectionArgs = arrayOf(
-            "image/jpeg",
-            "image/png",
-            "image/heic",
-            "image/webp"
-        )
-        
-        // Sort by date added descending (newest first)
-        val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
-        
-        contentResolver.query(
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-            projection,
-            selection,
-            selectionArgs,
-            sortOrder
-        )?.use { cursor ->
-            val idIndex = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
-            val nameIndex = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
-            val mimeIndex = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.MIME_TYPE)
-            val sizeIndex = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.SIZE)
-            val dateAddedIndex = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
-            val pathIndex = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA)
-            
-            while (cursor.moveToNext()) {
-                try {
-                    val id = cursor.getLong(idIndex)
-                    val fileName = cursor.getString(nameIndex)
-                    val mimeType = cursor.getString(mimeIndex)
-                    val fileSize = cursor.getLong(sizeIndex)
-                    val dateAdded = cursor.getLong(dateAddedIndex)
-                    val localPath = cursor.getString(pathIndex)
-                    
-                    // Construct URI for this media item
-                    val uri = "${MediaStore.Images.Media.EXTERNAL_CONTENT_URI}/$id"
-                    
-                    // Compute SHA256 hash using URI-based access - works on Android 10+ where localPath is null
-                    val uriForHashing = android.net.Uri.parse(uri)
-                    val hash = com.steadyphoto.sync.util.MediaUtils.computeHashFromUri(
-                        applicationContext, 
-                        uriForHashing
-                    ) ?: "hash_failed_${fileName}_${dateAdded}"
-                    
-                    items.add(
-                        MediaItemEntity(
-                            uri = uri,
-                            localPath = if (localPath.isNotEmpty()) localPath else null, // Keep for Android 9- compatibility
-                            fileName = fileName,
-                            hash = hash,
-                            mimeType = mimeType,
-                            fileSize = fileSize,
-                            captureTime = dateAdded * 1000 // Convert seconds to milliseconds
-                        )
-                    )
-                } catch (e: Exception) {
-                    Log.w("MediaScannerWorker", "Error processing image cursor row", e)
-                }
+        suspendCoroutine { continuation ->
+            MediaScannerConnection.scanFile(applicationContext, paths, null) { path, uri ->
+                Log.v("MediaScannerWorker", "Scanned $path -> $uri")
+                // We don't wait for every individual file, just triggering the scan is usually enough
             }
-        } ?: run {
-            Log.e("MediaScannerWorker", "Failed to query images from MediaStore")
+            // Give it a small head start
+            continuation.resume(Unit)
         }
-        
-        return items
-    }
-
-    private fun scanVideos(contentResolver: ContentResolver): List<MediaItemEntity> {
-        val items = mutableListOf<MediaItemEntity>()
-        
-        // Define the columns we want to retrieve
-        val projection = arrayOf(
-            MediaStore.Video.Media._ID,
-            MediaStore.Video.Media.DISPLAY_NAME,
-            MediaStore.Video.Media.MIME_TYPE,
-            MediaStore.Video.Media.SIZE,
-            MediaStore.Video.Media.DATE_ADDED,
-            MediaStore.Video.Media.DATA // Absolute path (deprecated but still useful)
-        )
-        
-        // Filter for common video types and minimum size (>10KB to skip thumbnails)
-        val selection = "${MediaStore.Video.Media.SIZE} > 10240 AND (" +
-                "${MediaStore.Video.Media.MIME_TYPE} = ? OR " +
-                "${MediaStore.Video.Media.MIME_TYPE} = ?" +
-                ")"
-        val selectionArgs = arrayOf(
-            "video/mp4",
-            "video/quicktime" // .mov files from iPhone
-        )
-        
-        // Sort by date added descending (newest first)
-        val sortOrder = "${MediaStore.Video.Media.DATE_ADDED} DESC"
-        
-        contentResolver.query(
-            MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-            projection,
-            selection,
-            selectionArgs,
-            sortOrder
-        )?.use { cursor ->
-            val idIndex = cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
-            val nameIndex = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
-            val mimeIndex = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.MIME_TYPE)
-            val sizeIndex = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.SIZE)
-            val dateAddedIndex = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_ADDED)
-            val pathIndex = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATA)
-            
-            while (cursor.moveToNext()) {
-                try {
-                    val id = cursor.getLong(idIndex)
-                    val fileName = cursor.getString(nameIndex)
-                    val mimeType = cursor.getString(mimeIndex)
-                    val fileSize = cursor.getLong(sizeIndex)
-                    val dateAdded = cursor.getLong(dateAddedIndex)
-                    val localPath = cursor.getString(pathIndex)
-                    
-                    // Construct URI for this media item
-                    val uri = "${MediaStore.Video.Media.EXTERNAL_CONTENT_URI}/$id"
-                    
-                    // Compute SHA256 hash using URI-based access - works on Android 10+ where localPath is null
-                    val uriForHashing = android.net.Uri.parse(uri)
-                    val hash = com.steadyphoto.sync.util.MediaUtils.computeHashFromUri(
-                        applicationContext, 
-                        uriForHashing
-                    ) ?: "hash_failed_${fileName}_${dateAdded}"
-                    
-                    items.add(
-                        MediaItemEntity(
-                            uri = uri,
-                            localPath = if (localPath.isNotEmpty()) localPath else null, // Keep for Android 9- compatibility
-                            fileName = fileName,
-                            hash = hash,
-                            mimeType = mimeType,
-                            fileSize = fileSize,
-                            captureTime = dateAdded * 1000 // Convert seconds to milliseconds
-                        )
-                    )
-                } catch (e: Exception) {
-                    Log.w("MediaScannerWorker", "Error processing video cursor row", e)
-                }
-            }
-        } ?: run {
-            Log.e("MediaScannerWorker", "Failed to query videos from MediaStore")
-        }
-        
-        return items
     }
 }

@@ -22,9 +22,10 @@ class UploadWorker(
 
     override suspend fun doWork(): Result {
         return try {
-            // Get pending and failed items for upload
+            // Get items for upload. Include UPLOADING status in case a previous worker crashed
+            // and left items in that state.
             val itemsToUpload = container.mediaItemDao.getPendingAndFailedItems(
-                listOf(UploadStatus.PENDING, UploadStatus.FAILED)
+                listOf(UploadStatus.PENDING, UploadStatus.FAILED, UploadStatus.UPLOADING)
             )
             
             if (itemsToUpload.isEmpty()) {
@@ -32,6 +33,8 @@ class UploadWorker(
                 return Result.success()
             }
             
+            Log.d("UploadWorker", "Found ${itemsToUpload.size} items to upload")
+
             // Create a progress callback that updates WorkManager's progress data
             val progressCallback = object : UploadProgressCallback {
                 override suspend fun onProgressUpdated(progress: UploadSessionProgress) {
@@ -45,71 +48,28 @@ class UploadWorker(
                 }
 
                 override suspend fun onUploadComplete(successCount: Int, failureCount: Int) {
-                    Log.d("UploadWorker", "Upload complete: $successCount succeeded, $failureCount failed")
+                    Log.d("UploadWorker", "Upload session complete: $successCount succeeded, $failureCount failed")
                 }
 
                 override suspend fun onUploadError(error: Throwable) {
-                    Log.e("UploadWorker", "Upload error from callback: ${error.message}", error)
+                    Log.e("UploadWorker", "Upload session error: ${error.message}", error)
                 }
             }
             
-            // Use the enhanced UploadManager for uploads with progress tracking
-            var uploadedCount = 0
+            // Use the UploadManager for uploads. 
+            // Note: UploadManager ALREADY updates the database status for each item (PENDING -> UPLOADING -> UPLOADED/FAILED).
+            // We don't need to manually update statuses here anymore.
+            val result = container.uploadManager.uploadMedia(itemsToUpload, progressCallback)
             
-            for (chunk in itemsToUpload.chunked(10)) {
-                try {
-                    val result = container.uploadManager.uploadMedia(chunk, progressCallback)
-                    
-                    if (result.isSuccess) {
-                        val uploadResult = result.getOrNull()
-                        uploadedCount += uploadResult?.successCount ?: chunk.size
-                        
-                        // Mark successfully uploaded items
-                        uploadResult?.let { res ->
-                            var successItems = 0
-                            for (item in chunk) {
-                                if (successItems < res.successCount) {
-                                    container.mediaItemDao.updateStatus(item.id, UploadStatus.UPLOADED)
-                                    successItems++
-                                } else {
-                                    // Mark remaining as failed
-                                    container.mediaItemDao.updateStatus(
-                                        item.id, 
-                                        UploadStatus.FAILED, 
-                                        "Upload batch partially failed"
-                                    )
-                                }
-                            }
-                        }
-                    } else {
-                        val error = result.exceptionOrNull()
-                        Log.e("UploadWorker", "Batch upload failed: ${error?.message}", error)
-                        
-                        // Mark all items as failed for retry
-                        chunk.forEach { item ->
-                            container.mediaItemDao.updateStatus(
-                                item.id, 
-                                UploadStatus.FAILED, 
-                                error?.message ?: "Upload failed"
-                            )
-                        }
-                    }
-                } catch (e: Exception) {
-                    Log.e("UploadWorker", "Batch upload exception", e)
-                    
-                    // Mark all items as failed for retry
-                    chunk.forEach { item ->
-                        container.mediaItemDao.updateStatus(
-                            item.id, 
-                            UploadStatus.FAILED, 
-                            e.message ?: "Upload failed"
-                        )
-                    }
-                }
+            if (result.isSuccess) {
+                Log.d("UploadWorker", "All items processed successfully")
+                Result.success()
+            } else {
+                Log.w("UploadWorker", "Some items failed to upload, will retry via WorkManager scheduler")
+                // We return success because we've processed the items and marked failures in the DB.
+                // The periodic scanner or manual sync will pick them up again.
+                Result.success()
             }
-            
-            Log.d("UploadWorker", "Uploaded $uploadedCount items")
-            Result.success()
         } catch (e: Exception) {
             Log.e("UploadWorker", "Upload worker failed", e)
             Result.retry()

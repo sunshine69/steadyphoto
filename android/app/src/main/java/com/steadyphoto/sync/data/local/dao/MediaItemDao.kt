@@ -17,6 +17,9 @@ interface MediaItemDao {
     @Query("SELECT * FROM media_items WHERE hash = :hash LIMIT 1")
     suspend fun getByHash(hash: String): MediaItemEntity?
 
+    @Query("SELECT * FROM media_items WHERE uri = :uri LIMIT 1")
+    suspend fun getByUri(uri: String): MediaItemEntity?
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(item: MediaItemEntity): Long
 
