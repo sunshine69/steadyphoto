@@ -4,6 +4,7 @@
     <color name="primary_variant">#3700B3</color>
     <color name="secondary">#03DAC5</color>
     <color name="surface">#FFFFFF</color>
+    <color name="background">#FFFFFFFF</color>
     <color name="white">#FFFFFF</color>
     <color name="black">#000000</color>
     <color name="gray">#808080</color>

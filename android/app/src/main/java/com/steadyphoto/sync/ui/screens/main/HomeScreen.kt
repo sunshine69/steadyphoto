@@ -35,7 +35,7 @@ fun HomeScreen(
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions(),
         onResult = { permissions ->
-            // Check if all requested permissions were granted
+            // Check if all requested permissions are granted
             val allGranted = permissions.values.all { it }
             
             if (allGranted) {
@@ -156,6 +156,7 @@ fun HomeScreen(
             ) {
                 Button(
                     onClick = { viewModel.startBackgroundSync() },
+                    // Enabled if NOT currently syncing (scanning or uploading) and no error present
                     enabled = uiState.syncState is SyncUiState.Idle && 
                              uiState.errorMessage == null,
                     modifier = Modifier.weight(1f)
@@ -167,6 +168,7 @@ fun HomeScreen(
 
                 Button(
                     onClick = { viewModel.stopBackgroundSync() },
+                    // Enabled if currently scanning or uploading (background sync is active)
                     enabled = uiState.syncState is SyncUiState.Uploading || 
                              uiState.syncState is SyncUiState.Scanning,
                     colors = ButtonDefaults.buttonColors(
@@ -244,5 +246,3 @@ fun HomeScreen(
         }
     }
 }
-
-

@@ -7,11 +7,35 @@ echo "=============================================="
 echo "   SteadyPhoto Android Build Script"
 echo "=============================================="
 
+# Usage information
+usage() {
+    echo "Usage: $0 [options]"
+    echo ""
+    echo "Options:"
+    echo "  --debug     Build a debug APK (default)"
+    echo "  --release   Build a production-ready release APK"
+    echo "  --help      Display this help message"
+}
+
+# Parse arguments
+BUILD_TYPE="debug"
+
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --debug) BUILD_TYPE="debug"; shift ;;
+        --release) BUILD_TYPE="release"; shift ;;
+        --help) usage; exit 0 ;;
+        *) echo "Unknown parameter passed: $1"; usage; exit 1 ;;
+    esac
+done
+
 # Get the directory where this script is located (the android folder)
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
-# 1. Build Gomobile Bindings
+echo "Target Build Type: ${BUILD_TYPE^^}"
+
+# 1. Build Gomobile Bindings (Same for both debug and release)
 echo ""
 echo "--- Step 1: Building Go Mobile Bindings ---"
 echo "Target: gomobile-bindings -> android/app/libs/mobile-bindings.aar"
@@ -23,12 +47,9 @@ if command -v gomobile &> /dev/null; then
     echo "🔧 Setting 16KB ELF alignment flags for Gomobile..."
 
     # Include default compiler flags (-O2) alongside the 16KB alignment parameters
-    # -Wl,-z,max-page-size=16384 is the standard linker flag for 16KB alignment
     export CGO_CFLAGS="-O2"
     export CGO_LDFLAGS="-O2 -s -w -Wl,-z,max-page-size=16384"
 
-    # Explicitly specify -androidapi to force NDK toolchain alignment compliance
-    # Also passing it via -ldflags for the Go linker
     gomobile bind \
         -v \
         -target android/arm64,android/amd64 \
@@ -43,25 +64,39 @@ fi
 
 # 2. Build Android APK via Gradle
 echo ""
-echo "--- Step 2: Cleaning and Building Debug APK ---"
+echo "--- Step 2: Cleaning and Building ${BUILD_TYPE^^} APK ---"
 cd "$SCRIPT_DIR"
 
 # Clean previous builds to ensure a fresh state
 ./gradlew clean
 
-# Run the assembly task
-./gradlew assembleDebug
+# Run the assembly task (assembleDebug or assembleRelease)
+GRADLE_TASK="assemble${BUILD_TYPE^}"
+echo "Running: ./gradlew $GRADLE_TASK"
+./gradlew "$GRADLE_TASK"
 
 if [ $? -eq 0 ]; then
-    APK_PATH="$SCRIPT_DIR/app/build/outputs/apk/debug/app-debug.apk"
+    # Determine path based on build type
+    APK_PATH="$SCRIPT_DIR/app/build/outputs/apk/$BUILD_TYPE/app-$BUILD_TYPE.apk"
+    
+    # Fallback for some gradle versions if the folder structure differs slightly
+    if [ ! -f "$APK_PATH" ]; then
+        APK_PATH=$(find "$SCRIPT_DIR/app/build/outputs/apk" -name "app-*.apk" | head -n 1)
+    fi
+
     echo ""
     echo "=============================================="
     echo "✅ BUILD SUCCESSFUL!"
     echo "----------------------------------------------"
     echo "📍 APK Location: $APK_PATH"
     echo ""
-    echo "🚀 Quick Install Command:"
-    echo "   adb install \"$APK_PATH\""
+    if [ "$BUILD_TYPE" == "release" ]; then
+        echo "🚀 Note: This is a RELEASE build (minified/obfuscated)."
+        echo "   If you didn't configure signing, it may be unsigned."
+    else
+        echo "🚀 Quick Install Command:"
+        echo "   adb install \"$APK_PATH\""
+    fi
     echo "=============================================="
 else
     echo ""
