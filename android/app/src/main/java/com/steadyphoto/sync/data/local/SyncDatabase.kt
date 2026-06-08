@@ -10,7 +10,7 @@ import com.steadyphoto.sync.data.local.entity.MediaItemEntity
 @Database(
     entities = [MediaItemEntity::class],
     version = 1,
-    exportSchema = true
+    exportSchema = false
 )
 abstract class SyncDatabase : RoomDatabase() {
 

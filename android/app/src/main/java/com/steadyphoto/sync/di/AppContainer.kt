@@ -9,6 +9,7 @@ import com.steadyphoto.sync.data.remote.api.ApiClient
 import com.steadyphoto.sync.data.repository.NetworkConnectivityMonitor
 import com.steadyphoto.sync.data.repository.SyncRepository
 import com.steadyphoto.sync.data.repository.SyncRepositoryImpl
+import com.steadyphoto.sync.data.settings.SettingsRepository
 import com.steadyphoto.sync.ui.screens.auth.AuthViewModel
 import com.steadyphoto.sync.ui.screens.main.MainViewModel
 import org.koin.android.ext.koin.androidContext
@@ -46,7 +47,9 @@ class AppContainer(
     val database: SyncDatabase,
     val repository: SyncRepository,
     val permissionHelper: PermissionHelper,
-    val uploadManager: com.steadyphoto.sync.data.repository.UploadManager
+    val uploadManager: com.steadyphoto.sync.data.repository.UploadManager,
+    val settingsRepository: SettingsRepository,
+    val syncManager: com.steadyphoto.sync.worker.SyncManager
 ) {
     val mediaItemDao: MediaItemDao
         get() = database.mediaItemDao()
@@ -62,6 +65,9 @@ val appModule = module {
     single<PermissionHelper> { PermissionHelper(androidContext()) }
     single<NetworkConnectivityMonitor> { NetworkConnectivityMonitor(androidContext()) }
     
+    // Settings Repository - persistent app settings using DataStore Preferences
+    single<SettingsRepository> { SettingsRepository(androidContext()) }
+    
     // UploadManager now takes ApiClient instead of ApiService - it will call 
     // apiClient.apiService for each API request, ensuring the latest URL is always used.
     single {
@@ -69,9 +75,13 @@ val appModule = module {
             context = androidContext(),
             apiClient = get(),
             mediaItemDao = get(),
-            networkMonitor = get()
+            networkMonitor = get(),
+            settingsRepository = get()
         )
     }
+    
+    // SyncManager for WorkManager coordination
+    single { com.steadyphoto.sync.worker.SyncManager(androidContext()) }
     
     single<SyncRepository> { 
         SyncRepositoryImpl(
@@ -93,7 +103,9 @@ val appContainerModule = module {
             database = get(),
             repository = get(),
             permissionHelper = get(),
-            uploadManager = get()
+            uploadManager = get(),
+            settingsRepository = get(),
+            syncManager = get()
         )
     }
 }

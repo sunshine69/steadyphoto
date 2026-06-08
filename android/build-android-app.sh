@@ -33,7 +33,7 @@ if command -v gomobile &> /dev/null; then
         -v \
         -target android/arm64,android/amd64 \
         -androidapi 21 \
-        -ldflags="-extldflags=-Wl,-z,max-page-size=16384" \
+        -ldflags="-extldflags=-Wl,-z,max-page-size=16384 -s -w" \
         -o "$SCRIPT_DIR/app/libs/mobile-bindings.aar" ./mobile
 
     echo "✅ Gomobile bindings built successfully."

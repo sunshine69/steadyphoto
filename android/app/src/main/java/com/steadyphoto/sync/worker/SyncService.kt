@@ -20,6 +20,7 @@ import com.steadyphoto.sync.di.AppContainer
 import com.steadyphoto.sync.ui.MainActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
@@ -188,27 +189,38 @@ class SyncService : Service(), KoinComponent {
                     if (pendingAndFailed.isNotEmpty()) {
                         updateNotification("Uploading...", "${pendingAndFailed.size} items to upload")
                         
-                        // Use UploadManager for consistent upload handling with progress tracking
-                        val result = container.uploadManager.uploadMedia(pendingAndFailed)
-                        
-                        when {
-                            result.isSuccess -> {
-                                val uploadResult = result.getOrNull()
-                                updateNotification(
-                                    "Upload Complete", 
-                                    "${uploadResult?.successCount ?: 0} succeeded, ${uploadResult?.failureCount ?: pendingAndFailed.size} failed"
-                                )
-                            }
-                            else -> {
-                                val error = result.exceptionOrNull()?.message ?: "Unknown error"
-                                updateNotification("Upload Failed", error)
+                        // Check network settings before uploading - respect WiFi-only preference
+                        val networkSettings = container.settingsRepository.networkSettingsFlow.first()
+                        if (!container.uploadManager.networkMonitor.isNetworkAcceptableForUpload(networkSettings)) {
+                            val currentType = container.uploadManager.networkMonitor.getCurrentNetworkType()?.name ?: "unknown"
+                            Log.w("SyncService", "Skipping upload - network type ($currentType) doesn't meet preferences")
+                            updateNotification(
+                                "Waiting for Network", 
+                                "Uploading on $currentType not allowed in settings. Waiting..."
+                            )
+                        } else {
+                            // Use UploadManager for consistent upload handling with progress tracking
+                            val result = container.uploadManager.uploadMedia(pendingAndFailed)
+                            
+                            when {
+                                result.isSuccess -> {
+                                    val uploadResult = result.getOrNull()
+                                    updateNotification(
+                                        "Upload Complete", 
+                                        "${uploadResult?.successCount ?: 0} succeeded, ${uploadResult?.failureCount ?: pendingAndFailed.size} failed"
+                                    )
+                                }
+                                else -> {
+                                    val error = result.exceptionOrNull()?.message ?: "Unknown error"
+                                    updateNotification("Upload Failed", error)
+                                }
                             }
                         }
                     } else {
                         updateNotification("Syncing", "No items to upload")
                     }
                 }
-                
+
                 is com.steadyphoto.sync.data.repository.ScanResult.NoNewItems -> {
                     // No new items found, check for pending uploads anyway
                     val pendingAndFailed = container.mediaItemDao.getPendingAndFailedItems(

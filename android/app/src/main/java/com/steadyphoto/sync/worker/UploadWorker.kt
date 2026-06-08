@@ -6,13 +6,18 @@ import androidx.work.CoroutineWorker
 import androidx.work.Data
 import androidx.work.WorkerParameters
 import com.steadyphoto.sync.data.local.entity.UploadStatus
+import com.steadyphoto.sync.data.repository.NetworkConnectivityMonitor
 import com.steadyphoto.sync.data.repository.UploadProgressCallback
 import com.steadyphoto.sync.data.repository.UploadSessionProgress
 import com.steadyphoto.sync.di.AppContainer
-
+import kotlinx.coroutines.flow.first
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 
+/**
+ * Worker responsible for uploading pending media items.
+ * Enhanced to respect network preferences (WiFi-only, metered connection settings).
+ */
 class UploadWorker(
     context: Context,
     params: WorkerParameters
@@ -20,8 +25,42 @@ class UploadWorker(
 
     private val container: AppContainer by inject()
 
+    companion object {
+        private const val TAG = "UploadWorker"
+        
+        // Result keys for work data
+        const val RESULT_SKIPPED_NO_NETWORK = "skipped_no_network"
+        const val RESULT_SKIPPED_WRONG_TYPE = "skipped_wrong_network_type"
+    }
+
     override suspend fun doWork(): Result {
         return try {
+            // Get current network settings
+            val networkSettings = container.settingsRepository.networkSettingsFlow.first()
+            
+            Log.d(TAG, "UploadWorker started with settings: wifiOnly=${networkSettings.wifiOnlyEnabled}, metered=${networkSettings.syncOnMeteredConnection}")
+
+            // Check if we have any internet connection at all
+            if (!container.uploadManager.networkMonitor.isCurrentlyConnected()) {
+                Log.w(TAG, "No network connection available - skipping upload")
+                val data = Data.Builder()
+                    .putBoolean(RESULT_SKIPPED_NO_NETWORK, true)
+                    .build()
+                return Result.success(data)
+            }
+
+            // Check if current network meets preferences (WiFi-only, metered settings)
+            if (!container.uploadManager.networkMonitor.isNetworkAcceptableForUpload(networkSettings)) {
+                val currentType = container.uploadManager.networkMonitor.getCurrentNetworkType()?.name ?: "unknown"
+                Log.w(TAG, "Current network type ($currentType) doesn't meet preferences - skipping upload")
+                
+                val data = Data.Builder()
+                    .putBoolean(RESULT_SKIPPED_WRONG_TYPE, true)
+                    .putString("network_type", currentType)
+                    .build()
+                return Result.success(data)
+            }
+
             // Get items for upload. Include UPLOADING status in case a previous worker crashed
             // and left items in that state.
             val itemsToUpload = container.mediaItemDao.getPendingAndFailedItems(
@@ -29,11 +68,11 @@ class UploadWorker(
             )
             
             if (itemsToUpload.isEmpty()) {
-                Log.d("UploadWorker", "No items to upload")
+                Log.d(TAG, "No items to upload")
                 return Result.success()
             }
             
-            Log.d("UploadWorker", "Found ${itemsToUpload.size} items to upload")
+            Log.d(TAG, "Found ${itemsToUpload.size} items to upload on acceptable network")
 
             // Create a progress callback that updates WorkManager's progress data
             val progressCallback = object : UploadProgressCallback {
@@ -48,11 +87,11 @@ class UploadWorker(
                 }
 
                 override suspend fun onUploadComplete(successCount: Int, failureCount: Int) {
-                    Log.d("UploadWorker", "Upload session complete: $successCount succeeded, $failureCount failed")
+                    Log.d(TAG, "Upload session complete: $successCount succeeded, $failureCount failed")
                 }
 
                 override suspend fun onUploadError(error: Throwable) {
-                    Log.e("UploadWorker", "Upload session error: ${error.message}", error)
+                    Log.e(TAG, "Upload session error: ${error.message}", error)
                 }
             }
             
@@ -62,16 +101,16 @@ class UploadWorker(
             val result = container.uploadManager.uploadMedia(itemsToUpload, progressCallback)
             
             if (result.isSuccess) {
-                Log.d("UploadWorker", "All items processed successfully")
+                Log.d(TAG, "All items processed successfully")
                 Result.success()
             } else {
-                Log.w("UploadWorker", "Some items failed to upload, will retry via WorkManager scheduler")
+                Log.w(TAG, "Some items failed to upload, will retry via WorkManager scheduler")
                 // We return success because we've processed the items and marked failures in the DB.
                 // The periodic scanner or manual sync will pick them up again.
                 Result.success()
             }
         } catch (e: Exception) {
-            Log.e("UploadWorker", "Upload worker failed", e)
+            Log.e(TAG, "Upload worker failed", e)
             Result.retry()
         }
     }

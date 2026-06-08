@@ -5,9 +5,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.steadyphoto.sync.data.remote.api.ApiClient
+import org.koin.androidx.compose.getKoin
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -15,12 +18,25 @@ fun SettingsScreen(
     onNavigateUp: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var autoSyncEnabled by remember { mutableStateOf(true) }
-    var wifiOnly by remember { mutableStateOf(true) }
+    val context = LocalContext.current
+    val viewModel: SettingsViewModel = getKoin().get<SettingsViewModel>()
     
-    // Load the current API URL from ApiClient
+    // Collect settings from ViewModel - these will persist across screen recreations
+    var networkSettings by remember { mutableStateOf(com.steadyphoto.sync.data.settings.NetworkSettings.default()) }
+    var autoSyncEnabled by remember { mutableStateOf(true) }
     var apiUrl by remember { mutableStateOf(ApiClient.getBaseUrl()) }
     var isValidUrl by remember { mutableStateOf(true) }
+
+    // Load settings from DataStore when the screen is displayed
+    LaunchedEffect(Unit) {
+        viewModel.networkSettingsFlow.collect { settings ->
+            networkSettings = settings
+            apiUrl = ApiClient.getBaseUrl()
+        }
+        viewModel.syncControlFlow.collect { enabled ->
+            autoSyncEnabled = enabled
+        }
+    }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -42,7 +58,7 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // API URL setting - NEW: Added this section for configuring the API endpoint
+            // API URL setting
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("API Server", style = MaterialTheme.typography.titleMedium)
@@ -69,9 +85,7 @@ fun SettingsScreen(
                     Button(
                         onClick = {
                             if (isValidUrl) {
-                                ApiClient.updateBaseUrl(apiUrl.trim())
-                                // Note: The app may need to restart for changes to take effect
-                                // A toast or snackbar could be shown here to inform the user
+                                viewModel.updateApiUrl(apiUrl.trim())
                             }
                         },
                         enabled = isValidUrl,
@@ -82,24 +96,51 @@ fun SettingsScreen(
                 }
             }
 
-            // Auto-sync toggle
+            // Network Settings Section - NEW: Grouped related settings together
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Auto Sync", style = MaterialTheme.typography.titleMedium)
-                    Switch(
-                        checked = autoSyncEnabled,
-                        onCheckedChange = { autoSyncEnabled = it }
+                    Text("Network", style = MaterialTheme.typography.titleMedium)
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // WiFi Only toggle - persisted to DataStore
+                    SwitchPreferenceRow(
+                        title = "WiFi Only",
+                        description = "Only upload when connected to Wi-Fi",
+                        checked = networkSettings.wifiOnlyEnabled,
+                        onCheckedChange = { enabled ->
+                            viewModel.setWifiOnly(enabled)
+                        }
                     )
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Sync on Metered toggle - only shown when WiFi-only is disabled
+                    if (!networkSettings.wifiOnlyEnabled) {
+                        SwitchPreferenceRow(
+                            title = "Sync on Cellular",
+                            description = "Allow uploads over mobile data (may incur charges)",
+                            checked = networkSettings.syncOnMeteredConnection,
+                            onCheckedChange = { enabled ->
+                                viewModel.setSyncOnMeteredConnection(enabled)
+                            }
+                        )
+                    }
                 }
             }
 
-            // WiFi only toggle
+            // Auto-sync toggle - persisted to DataStore
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("WiFi Only", style = MaterialTheme.typography.titleMedium)
-                    Switch(
-                        checked = wifiOnly,
-                        onCheckedChange = { wifiOnly = it }
+                    Text("Sync Control", style = MaterialTheme.typography.titleMedium)
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    SwitchPreferenceRow(
+                        title = "Auto-sync",
+                        description = "Automatically scan and upload new media in the background",
+                        checked = autoSyncEnabled,
+                        onCheckedChange = { enabled ->
+                            viewModel.setAutoSyncEnabled(enabled)
+                        }
                     )
                 }
             }
@@ -125,5 +166,32 @@ fun SettingsScreen(
                 }
             }
         }
+    }
+}
+
+/**
+ * A reusable preference row component with a title, description, and switch.
+ */
+@Composable
+private fun SwitchPreferenceRow(
+    title: String,
+    description: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(description, style = MaterialTheme.typography.bodySmall)
+        }
+        
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange
+        )
     }
 }

@@ -5,7 +5,9 @@ import android.util.Log
 import androidx.work.WorkManager
 import com.steadyphoto.sync.data.local.dao.MediaItemDao
 import com.steadyphoto.sync.data.local.entity.UploadStatus
+import com.steadyphoto.sync.data.settings.SettingsRepository
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,7 +29,8 @@ class UploadManager(
     private val context: Context,
     private val apiClient: com.steadyphoto.sync.data.remote.api.ApiClient,
     private val mediaItemDao: MediaItemDao,
-    private val networkMonitor: NetworkConnectivityMonitor
+    val networkMonitor: NetworkConnectivityMonitor, // Public for access by workers
+    private val settingsRepository: com.steadyphoto.sync.data.settings.SettingsRepository = SettingsRepository(context)
 ) {
 
     companion object {
@@ -73,6 +76,15 @@ class UploadManager(
                 Log.w(TAG, "No network connection available")
                 callback?.onUploadError(Exception("No network connection"))
                 return Result.failure(Exception("No network connection"))
+            }
+
+            // Check current network settings against user preferences (WiFi-only, metered)
+            val settings = settingsRepository.networkSettingsFlow.first()
+            if (!networkMonitor.isNetworkAcceptableForUpload(settings)) {
+                val currentType = networkMonitor.getCurrentNetworkType()?.name ?: "unknown"
+                Log.w(TAG, "Current network ($currentType) doesn't meet preferences - skipping upload")
+                callback?.onUploadError(Exception("Network type not acceptable: $currentType"))
+                return Result.failure(Exception("Network type not acceptable for current settings"))
             }
 
             val token = apiClient.getAuthToken() ?: run {

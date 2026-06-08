@@ -261,12 +261,8 @@ class MainViewModel(
     fun stopBackgroundSync() {
         viewModelScope.launch {
             try {
-                // Cancel all periodic work for media scanning and uploading
-                WorkManager.getInstance(container.uploadManager.applicationContext)
-                    .cancelAllWorkByTag("media_scan")
-
-                WorkManager.getInstance(container.uploadManager.applicationContext)
-                    .cancelAllWorkByTag("media_upload")
+                // Use SyncManager to cancel all work consistently
+                container.syncManager.cancelAllSyncWork()
 
                 _uiState.value = _uiState.value.copy(
                     isBackgroundSyncRunning = false,
@@ -286,6 +282,7 @@ class MainViewModel(
 
     /**
      * Proceeds to upload phase after successful scanning.
+     * Now uses UploadManager for consistent, memory-safe uploads (streaming + chunked).
      */
     private suspend fun proceedToUpload(totalScanned: Int, duplicatesSkipped: Int) {
         _uiState.value = _uiState.value.copy(syncState = SyncUiState.Uploading)
@@ -298,7 +295,21 @@ class MainViewModel(
 
         if (pendingItems.isNotEmpty()) {
             try {
-                val result = container.repository.uploadMedia(pendingItems)
+                // Use UploadManager for consistent, streaming uploads (fixes OOM on large files)
+                val result = container.uploadManager.uploadMedia(pendingItems, object : com.steadyphoto.sync.data.repository.UploadProgressCallback {
+                    override suspend fun onProgressUpdated(progress: com.steadyphoto.sync.data.repository.UploadSessionProgress) {
+                        // Optional: could update UI with progress here if needed
+                    }
+
+                    override suspend fun onUploadComplete(successCount: Int, failureCount: Int) {
+                        android.util.Log.d("MainViewModel", "Upload complete via UploadManager: $successCount succeeded, $failureCount failed")
+                    }
+
+                    override suspend fun onUploadError(error: Throwable) {
+                        android.util.Log.e("MainViewModel", "Upload error via UploadManager: ${error.message}", error)
+                    }
+                })
+                
                 result.onSuccess { uploadResult ->
                     _uiState.value = _uiState.value.copy(
                         syncState = SyncUiState.Success(uploadResult.successCount),
