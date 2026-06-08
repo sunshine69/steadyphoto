@@ -132,7 +132,38 @@ func (h *MediaUploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 			continue
         }
 
+		// --- CONTENT TYPE VALIDATION START ---
+		// Use magic numbers to detect the true MIME type (prevents extension spoofing).
+		if _, err := tempFile.Seek(0, io.SeekStart); err != nil {
+			log.Printf("[ERROR] UploadHandler: Failed to seek for content-type detection: %v", err)
+			os.Remove(tempFile.Name())
+			continue
+		}
+
+		detectBuf := make([]byte, 512)
+		nRead, _ := tempFile.Read(detectBuf) // Read up to 512 bytes for sniffing content type
+		detectedMimeType := http.DetectContentType(detectBuf[:nRead])
+
+		var detectedMediaType domain.MediaType
+		if strings.HasPrefix(detectedMimeType, "image/") {
+			detectedMediaType = domain.MediaTypePhoto
+		} else if strings.HasPrefix(detectedMimeType, "video/") {
+			detectedMediaType = domain.MediaTypeVideo
+		} else {
+			log.Printf("[WARN] UploadHandler: Rejected file '%s' due to invalid/unsafe MIME type: %s", header.Filename, detectedMimeType)
+			os.Remove(tempFile.Name())
+			continue
+		}
+
+        // Reset seek pointer back to start for subsequent usage (like hashing or copying).
+        if _, err := tempFile.Seek(0, io.SeekStart); err != nil {
+            log.Printf("[ERROR] UploadHandler: Failed to reset seek after type detection: %v", err)
+            os.Remove(tempFile.Name())
+            continue
+        }
+
 		ext := filepath.Ext(header.Filename)
+// --- CONTENT TYPE VALIDATION END ---
         log.Printf("[DEBUG] UploadHandler: Extension detected as '%s'", ext)
         
 		newFilename := fmt.Sprintf("%s%s", uuid.New().String(), ext)
@@ -173,14 +204,9 @@ func (h *MediaUploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
         log.Printf("[DEBUG] UploadHandler: File saved to disk '%s'", newFilename)
         os.Remove(tempFile.Name()) 
 
-        extLower := strings.ToLower(ext)
-        var mediaType domain.MediaType = domain.MediaTypePhoto 
-        switch extLower {
-            case ".mp4", ".mov", ".avi": mediaType = domain.MediaTypeVideo
-        }
-
+        // Use the validated medium type instead of relying on file extension alone
 		meta := &domain.Media{
-			ID:          uuid.New(), UserID: userID, Filename: header.Filename, MediaType: mediaType, Path: relPathFromRoot, SizeBytes: n, Hash: hash, CapturedAt: time.Now(),
+			ID:          uuid.New(), UserID: userID, Filename: header.Filename, MediaType: detectedMediaType, Path: relPathFromRoot, SizeBytes: n, Hash: hash, CapturedAt: time.Now(),
 		}
 
         log.Printf("[DEBUG] UploadHandler: Inserting record into DB for '%s'...", meta.ID) 
