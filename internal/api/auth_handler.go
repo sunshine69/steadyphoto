@@ -107,10 +107,13 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		Name:     "access_token",
 		Value:    session.ID.String(),
 		Path:     "/",
-		HttpOnly: true,  // Prevent JS from accessing the token
-		Secure:   false, // Set to true in production with HTTPS
-		SameSite: http.SameSiteLaxMode,
+		HttpOnly: true,               // Prevent JS from accessing the token via document.cookie
+		Secure:   true,               // ALWAYS set to true to ensure cookie is only sent over HTTPS
+		SameSite: http.SameSiteLaxMode, // Protects against CSRF while allowing top-level navigation
 	})
+
+	// NOTE for developers: If testing locally on HTTP, you may need to temporarily 
+	// disable Secure or use a local development proxy with TLS (e.g., mkcert).
 
 	// 2. Also set it as a Secure/None cookie if we were on HTTPS (for strict cross-origin)
 	// For local development over HTTP, Lax is our best bet for most browsers.
