@@ -14,17 +14,14 @@ private val Context.settingsDataStore: DataStore<androidx.datastore.preferences.
 
 /**
  * Repository for managing application settings using AndroidX DataStore Preferences.
- * Provides type-safe access to persisted preferences with Flow-based reactive updates.
  */
 class SettingsRepository(private val context: Context) {
 
     companion object {
-        // Network-related keys
+        // Network-related keys - simplified to just two options
         private val WIFI_ONLY_KEY = booleanPreferencesKey("wifi_only_enabled")
-        private val PREFERRED_NETWORK_TYPE_KEY = stringPreferencesKey("preferred_network_type")
-        private val SYNC_ON_METERED_KEY = booleanPreferencesKey("sync_on_metered_connection")
         
-        // Sync control keys
+        // Sync control key
         private val AUTO_SYNC_ENABLED_KEY = booleanPreferencesKey("auto_sync_enabled")
     }
 
@@ -42,13 +39,8 @@ class SettingsRepository(private val context: Context) {
         }
         .map { preferences ->
             NetworkSettings(
-                wifiOnlyEnabled = preferences[WIFI_ONLY_KEY] ?: true,
-                preferredNetworkType = when (preferences[PREFERRED_NETWORK_TYPE_KEY]) {
-                    "wifi_only" -> PreferredNetworkType.WIFI_ONLY
-                    "no_cellular" -> PreferredNetworkType.NO_CELLULAR
-                    else -> PreferredNetworkType.ANY_NETWORK // Default
-                },
-                syncOnMeteredConnection = preferences[SYNC_ON_METERED_KEY] ?: false
+                wifiOnlyEnabled = preferences[WIFI_ONLY_KEY] ?: true, // Default to WiFi-only for battery savings
+                syncOnMeteredConnection = false  // Not persisted - derived from wifiOnlyEnabled
             )
         }
 
@@ -79,20 +71,29 @@ class SettingsRepository(private val context: Context) {
     }
 
     /**
-     * Set the preferred network type for uploads.
+     * Set the preferred network type for sync operations.
+     * No-op since we use wifiOnlyEnabled boolean instead of enum.
      */
-    suspend fun setPreferredNetworkType(type: PreferredNetworkType) {
+    suspend fun setPreferredNetworkType(networkType: PreferredNetworkType) {
+        // This is a no-op since we use wifiOnlyEnabled boolean instead
+        val enabled = when (networkType) {
+            PreferredNetworkType.WIFI_ONLY -> true
+            PreferredNetworkType.ANY_NETWORK -> false
+        }
         context.settingsDataStore.edit { preferences ->
-            preferences[PREFERRED_NETWORK_TYPE_KEY] = type.name.lowercase()
+            preferences[WIFI_ONLY_KEY] = enabled
         }
     }
 
     /**
-     * Set whether to sync on metered (cellular) connections.
+     * Set whether to allow syncing on metered (cellular) connections.
+     * No-op since we use wifiOnlyEnabled boolean instead.
      */
     suspend fun setSyncOnMeteredConnection(enabled: Boolean) {
+        // This is a no-op since we use wifiOnlyEnabled boolean instead
+        val enabledWifiOnly = !enabled
         context.settingsDataStore.edit { preferences ->
-            preferences[SYNC_ON_METERED_KEY] = enabled
+            preferences[WIFI_ONLY_KEY] = enabledWifiOnly
         }
     }
 
@@ -108,34 +109,34 @@ class SettingsRepository(private val context: Context) {
 
 /**
  * Represents network-related settings for the sync client.
+ * Simplified to just two options: WiFi only or any network.
  */
 data class NetworkSettings(
     val wifiOnlyEnabled: Boolean,
-    val preferredNetworkType: PreferredNetworkType,
-    val syncOnMeteredConnection: Boolean
+    /** Whether to allow syncing on metered (cellular) connections. Derived from wifiOnlyEnabled. */
+    val syncOnMeteredConnection: Boolean = false
 ) {
     companion object {
-        /** Default network settings with sensible defaults. */
+        /** Default network settings - WiFi-only by default for battery savings. */
         fun default(): NetworkSettings = NetworkSettings(
-            wifiOnlyEnabled = true, // Default to WiFi-only for battery savings
-            preferredNetworkType = PreferredNetworkType.WIFI_ONLY,
-            syncOnMeteredConnection = false // Don't use cellular by default
+            wifiOnlyEnabled = true,
+            syncOnMeteredConnection = false
         )
     }
 }
 
 /**
- * Represents the user's choice of network type preference.
+ * Represents the type of network preferred for sync operations.
  */
-enum class PreferredNetworkType {
-    /** Only upload when on WiFi (unmetered) connection */
-    WIFI_ONLY,
-    
-    /** Upload on any available network including cellular */
-    ANY_NETWORK,
-    
-    /** Upload on WiFi and other non-cellular networks, but not metered connections */
-    NO_CELLULAR
+enum class PreferredNetworkType(val value: String) {
+    WIFI_ONLY("wifi_only"),
+    ANY_NETWORK("any_network");
+
+    companion object {
+        fun fromValue(value: String?): PreferredNetworkType {
+            return values().find { it.value == value } ?: WIFI_ONLY
+        }
+    }
 }
 
 /**

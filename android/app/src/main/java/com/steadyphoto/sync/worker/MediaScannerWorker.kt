@@ -20,13 +20,14 @@ class MediaScannerWorker(
 ) : CoroutineWorker(context, params), KoinComponent {
 
     private val container: AppContainer by inject()
+    // Inject SyncManager via Koin since we are a KoinComponent
+    private val syncManager: SyncManager by inject()
 
     override suspend fun doWork(): Result {
         return try {
             Log.d("MediaScannerWorker", "Background media scan started")
 
             // 1. Force a MediaStore scan of the common camera directories.
-            // This ensures files added via ADB or other apps are indexed before we query.
             scanCameraDirectories()
 
             // 2. Perform the database scan
@@ -46,7 +47,7 @@ class MediaScannerWorker(
             
             if (pendingItems.isNotEmpty()) {
                 Log.d("MediaScannerWorker", "Found ${pendingItems.size} items to sync, triggering uploader")
-                SyncManager.getInstance(applicationContext).triggerUpload()
+                syncManager.triggerUpload()
             }
 
             Result.success()
@@ -56,9 +57,6 @@ class MediaScannerWorker(
         }
     }
 
-    /**
-     * Forces MediaStore to index the camera and pictures directories.
-     */
     private suspend fun scanCameraDirectories() {
         val paths = listOf(
             File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM), "Camera"),
@@ -73,9 +71,7 @@ class MediaScannerWorker(
         suspendCoroutine { continuation ->
             MediaScannerConnection.scanFile(applicationContext, paths, null) { path, uri ->
                 Log.v("MediaScannerWorker", "Scanned $path -> $uri")
-                // We don't wait for every individual file, just triggering the scan is usually enough
             }
-            // Give it a small head start
             continuation.resume(Unit)
         }
     }

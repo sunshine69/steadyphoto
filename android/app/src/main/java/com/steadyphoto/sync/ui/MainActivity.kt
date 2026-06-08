@@ -12,6 +12,7 @@ import com.steadyphoto.sync.data.remote.api.ApiClient
 import com.steadyphoto.sync.data.remote.api.onAuthFailure
 import com.steadyphoto.sync.ui.screens.auth.LoginScreen
 import com.steadyphoto.sync.ui.screens.main.HomeScreen
+import com.steadyphoto.sync.ui.screens.settings.SettingsScreen
 import com.steadyphoto.sync.ui.screens.setup.SetupScreen
 import com.steadyphoto.sync.ui.theme.SteadyPhotoTheme
 
@@ -47,6 +48,9 @@ class MainActivity : ComponentActivity() {
                     // Track whether we should show the setup screen.
                     // Default to true so first-time users always see it.
                     var showSetupScreen by remember { mutableStateOf(true) }
+
+                    // Navigation state: "home" or "settings"
+                    var currentRoute by remember { mutableStateOf("home") }
 
                     LaunchedEffect(Unit) {
                         val isSetupDone = ApiClient.isSetupComplete()
@@ -85,14 +89,20 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                         isLoggedIn -> {
-                            HomeScreen(
-                                onNavigateToSettings = { /* TODO: Navigate to settings */ },
-                                onLogout = { 
-                                    ApiClient.clearAuthTokenAndRefresh()
-                                    isLoggedIn = false
-                                },
-                                modifier = Modifier.fillMaxSize()
-                            )
+                            when (currentRoute) {
+                                "settings" -> SettingsScreen(
+                                    onNavigateUp = { currentRoute = "home" },
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                                else -> HomeScreen(
+                                    onNavigateToSettings = { currentRoute = "settings" },
+                                    onLogout = { 
+                                        ApiClient.clearAuthTokenAndRefresh()
+                                        isLoggedIn = false
+                                    },
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
                         }
                         else -> {
                             LoginScreen(

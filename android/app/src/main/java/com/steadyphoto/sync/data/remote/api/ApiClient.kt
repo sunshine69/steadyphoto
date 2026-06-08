@@ -53,8 +53,9 @@ object ApiClient {
         prefs.edit().putString(KEY_BASE_URL, url).apply()
     }
 
+    // Changed from Level.BODY to Level.HEADERS to prevent binary data being logged in Logcat during uploads/downloads
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
-        level = HttpLoggingInterceptor.Level.BODY // Always log in debug builds
+        level = HttpLoggingInterceptor.Level.HEADERS 
     }
 
     /**

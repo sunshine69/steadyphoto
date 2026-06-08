@@ -12,8 +12,6 @@ import com.steadyphoto.sync.data.settings.NetworkSettings
 
 /**
  * Monitors network connectivity status and provides real-time updates.
- * Enhanced to track granular network type information (WiFi, Cellular, etc.)
- * and check if the current network matches user preferences.
  */
 class NetworkConnectivityMonitor(private val context: Context) {
     
@@ -22,7 +20,6 @@ class NetworkConnectivityMonitor(private val context: Context) {
     
     /**
      * Returns a Flow that emits the current detailed network state.
-     * Includes both availability and network type information.
      */
     fun observeDetailedNetworkState(): Flow<DetailedNetworkState> = callbackFlow {
         val callback = object : ConnectivityManager.NetworkCallback() {
@@ -39,9 +36,7 @@ class NetworkConnectivityMonitor(private val context: Context) {
                 trySend(DetailedNetworkState.Unavailable).isSuccess
             }
             
-            override fun onLosing(network: Network, maxMsToLive: Int) {
-                // Network is about to be lost - could emit a "losing" state if needed
-            }
+            override fun onLosing(network: Network, maxMsToLive: Int) {}
             
             override fun onCapabilitiesChanged(
                 network: Network,
@@ -69,15 +64,12 @@ class NetworkConnectivityMonitor(private val context: Context) {
         awaitClose {
             try {
                 connectivityManager.unregisterNetworkCallback(callback)
-            } catch (e: IllegalArgumentException) {
-                // Callback may already be unregistered
-            }
+            } catch (e: IllegalArgumentException) {}
         }
     }
     
     /**
      * Returns a Flow that emits the current network availability status.
-     * Kept for backward compatibility with existing code.
      */
     fun observeNetworkStatus(): Flow<NetworkAvailability> = callbackFlow {
         val callback = object : ConnectivityManager.NetworkCallback() {
@@ -89,9 +81,7 @@ class NetworkConnectivityMonitor(private val context: Context) {
                 trySend(NetworkAvailability.Unavailable).isSuccess
             }
             
-            override fun onLosing(network: Network, maxMsToLive: Int) {
-                // Network is about to be lost
-            }
+            override fun onLosing(network: Network, maxMsToLive: Int) {}
             
             override fun onCapabilitiesChanged(
                 network: Network,
@@ -113,9 +103,7 @@ class NetworkConnectivityMonitor(private val context: Context) {
         awaitClose {
             try {
                 connectivityManager.unregisterNetworkCallback(callback)
-            } catch (e: IllegalArgumentException) {
-                // Callback may already be unregistered
-            }
+            } catch (e: IllegalArgumentException) {}
         }
     }
     
@@ -132,7 +120,6 @@ class NetworkConnectivityMonitor(private val context: Context) {
     
     /**
      * Gets the type of the currently active network.
-     * Returns null if no network is connected or type cannot be determined.
      */
     fun getCurrentNetworkType(): NetworkType? {
         val activeNetwork = connectivityManager.activeNetwork ?: return null
@@ -142,7 +129,6 @@ class NetworkConnectivityMonitor(private val context: Context) {
             capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> NetworkType.WIFI
             capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> NetworkType.CELLULAR
             capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> NetworkType.ETHERNET
-            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_BLUETOOTH) -> NetworkType.BLUETOOTH
             else -> null
         }
     }
@@ -150,8 +136,9 @@ class NetworkConnectivityMonitor(private val context: Context) {
     /**
      * Checks if the current network meets the user's preferences.
      * Returns true if:
-     * - No settings are configured (default behavior)
-     * - Network is available AND matches the preferred type
+     * - No internet connection at all = false (can't upload without any connection)
+     * - WiFi-only enabled + on WiFi/Ethernet = true
+     * - WiFi-only disabled + on any network = true
      */
     fun isNetworkAcceptableForUpload(settings: NetworkSettings): Boolean {
         // First check if we have any internet connection at all
@@ -161,16 +148,14 @@ class NetworkConnectivityMonitor(private val context: Context) {
         
         val currentType = getCurrentNetworkType() ?: return false
         
+        // If WiFi-only is enabled, only accept WiFi or Ethernet (unmetered networks)
+        // If WiFi-only is disabled, accept any network including cellular
         return when {
-            // If WiFi-only is enabled, only accept WiFi or Ethernet (unmetered)
             settings.wifiOnlyEnabled -> {
                 currentType == NetworkType.WIFI || currentType == NetworkType.ETHERNET
             }
             
-            // If sync on metered is disabled, reject cellular
-            !settings.syncOnMeteredConnection && currentType == NetworkType.CELLULAR -> false
-            
-            else -> true
+            else -> true  // Any network is acceptable when wifiOnly is disabled
         }
     }
     
@@ -206,7 +191,6 @@ enum class NetworkType {
     WIFI,
     CELLULAR,
     ETHERNET,
-    BLUETOOTH,
     UNKNOWN
 }
 
@@ -219,15 +203,11 @@ sealed class DetailedNetworkState {
     
     val isConnected: Boolean = this is Available
     
-    /**
-     * Checks if the current network meets basic upload requirements (any connection).
-     */
     fun canUpload(): Boolean = isConnected
 }
 
 /**
  * Represents the current network availability status.
- * Kept for backward compatibility with existing code.
  */
 sealed class NetworkAvailability {
     object Available : NetworkAvailability()

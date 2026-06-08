@@ -12,6 +12,8 @@ import com.steadyphoto.sync.data.repository.SyncRepositoryImpl
 import com.steadyphoto.sync.data.settings.SettingsRepository
 import com.steadyphoto.sync.ui.screens.auth.AuthViewModel
 import com.steadyphoto.sync.ui.screens.main.MainViewModel
+import com.steadyphoto.sync.ui.screens.settings.SettingsViewModel
+import com.steadyphoto.sync.worker.SyncManager
 import org.koin.android.ext.koin.androidContext
 import org.koin.dsl.module
 
@@ -49,28 +51,31 @@ class AppContainer(
     val permissionHelper: PermissionHelper,
     val uploadManager: com.steadyphoto.sync.data.repository.UploadManager,
     val settingsRepository: SettingsRepository,
-    val syncManager: com.steadyphoto.sync.worker.SyncManager
+    val syncManager: SyncManager
 ) {
     val mediaItemDao: MediaItemDao
         get() = database.mediaItemDao()
 }
 
+// We provide a single module that contains everything to avoid "unresolved reference" errors 
+// in the Application class when trying to split modules incorrectly.
 val appModule = module {
-    // ApiClient is now the single point of API access - components use apiClient.apiService 
-    // directly, which ensures they always get a fresh instance when base URL changes.
+    // API Client singleton (it's an object, so we use it directly)
     single<ApiClient> { com.steadyphoto.sync.data.remote.api.ApiClient }
     
+    // Database & DAOs
     single<SyncDatabase> { SyncDatabase.getDatabase(androidContext()) }
     single<MediaItemDao> { get<SyncDatabase>().mediaItemDao() }
+    
+    // Utilities
     single<PermissionHelper> { PermissionHelper(androidContext()) }
     single<NetworkConnectivityMonitor> { NetworkConnectivityMonitor(androidContext()) }
     
-    // Settings Repository - persistent app settings using DataStore Preferences
+    // Repositories & Managers
     single<SettingsRepository> { SettingsRepository(androidContext()) }
+    single<SyncManager> { SyncManager(androidContext()) }
     
-    // UploadManager now takes ApiClient instead of ApiService - it will call 
-    // apiClient.apiService for each API request, ensuring the latest URL is always used.
-    single {
+    single<com.steadyphoto.sync.data.repository.UploadManager> {
         com.steadyphoto.sync.data.repository.UploadManager(
             context = androidContext(),
             apiClient = get(),
@@ -80,9 +85,6 @@ val appModule = module {
         )
     }
     
-    // SyncManager for WorkManager coordination
-    single { com.steadyphoto.sync.worker.SyncManager(androidContext()) }
-    
     single<SyncRepository> { 
         SyncRepositoryImpl(
             context = androidContext(),
@@ -90,13 +92,8 @@ val appModule = module {
             mediaItemDao = get()
         )
     }
-    
-    // ViewModel declarations for Koin - AuthViewModel no longer takes ApiService as a parameter
-    factory { AuthViewModel() }
-    factory { MainViewModel(get<AppContainer>()) }
-}
 
-val appContainerModule = module {
+    // App Container - Providing the container itself as a singleton so ViewModels can inject it.
     single<AppContainer> {
         AppContainer(
             apiClient = get(),
@@ -108,4 +105,9 @@ val appContainerModule = module {
             syncManager = get()
         )
     }
+
+    // ViewModels - using factory to provide new instances per screen request.
+    factory { AuthViewModel() }
+    factory { MainViewModel(get<AppContainer>()) }
+    factory { SettingsViewModel(get(), get()) }
 }
