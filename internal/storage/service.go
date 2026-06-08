@@ -39,27 +39,16 @@ func (s *StorageService) ResolveUserFile(userID uuid.UUID, dbRelPath string) (st
 
 // GetAbsolutePath returns the absolute path for a given relative path without checking if it exists.
 func (s *StorageService) GetAbsolutePath(relativePath string) string {
-	// 1. Clean the input
-	relativePath = filepath.Clean(relativePath)
+	// To prevent path traversal and absolute path escapes, we treat all paths as 
+	// being relative to the baseDir by cleaning them against a virtual root ("/")
+	// before joining with our actual storage root.
+	rel := filepath.Clean("/" + relativePath)
 
-	// 2. If the path is already absolute, just return it
-	if filepath.IsAbs(relativePath) {
-		return relativePath
-	}
+	// Remove the leading slash so that filepath.Join treats it as a relative path
+	// rather than an absolute one (which would otherwise escape s.baseDir).
+	safeRel := strings.TrimPrefix(rel, string(os.PathSeparator))
 
-	// 3. Normalize the relative path for comparison
-	normalizedRel := strings.TrimLeft(relativePath, "/\\.")
-
-	// 4. Handle the "Duplicate BaseDir" edge case.
-	baseName := filepath.Base(s.baseDir)
-	if strings.HasPrefix(normalizedRel, baseName+string(os.PathSeparator)) || normalizedRel == baseName {
-		normalizedRel = strings.TrimPrefix(normalizedRel, baseName)
-		normalizedRel = strings.TrimLeft(normalizedRel, string(os.PathSeparator))
-		relativePath = filepath.Clean(normalizedRel)
-	}
-
-	// 5. Join the cleaned relative path with the base directory
-	return filepath.Join(s.baseDir, relativePath)
+	return filepath.Join(s.baseDir, safeRel)
 }
 
 // ResolvePath takes a path (either relative to baseDir or absolute) 

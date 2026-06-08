@@ -29,11 +29,7 @@ If `errorMessage` contains malicious script content from the server, it will exe
 ### 1.3 API Key Exposure in Frontend
 - **Severity:** CRITICAL
 - **Finding:** The Go backend has hardcoded API keys:
-```go
-const (
-    apiKey = "sk-steadyphoto-prod-a8b4c6d2e5f7g9h0"
-)
-```
+
 These keys are visible in the compiled JavaScript and can be extracted by anyone viewing the source.
 - **Recommendation:** Never expose API keys on the client side. Move all sensitive operations to backend-only endpoints or use OAuth-based authentication flows that don't require exposing secrets.
 
