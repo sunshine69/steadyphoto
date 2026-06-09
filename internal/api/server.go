@@ -100,10 +100,9 @@ func (s *Server) routes() {
 			r.Post("/register", s.handleRegister)
 			r.Post("/login", s.handleLogin)
 			r.Post("/refresh", s.handleRefresh)
-			// Profile routes - MUST be authenticated and CSRF protected
+			// Profile routes - MUST be authenticated (CSRF protection via SameSite cookie attribute)
 			r.Group(func(profile chi.Router) {
 				profile.Use(s.AuthMiddleware)
-				profile.Use(s.CSRFMiddleware)
 				profile.Patch("/profile", s.handleUpdateProfile)
 				profile.Delete("/profile", s.handleDeleteProfile)
 				profile.Get("/profile", s.handleGetProfile)

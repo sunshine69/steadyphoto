@@ -75,23 +75,7 @@ func LimitBodySizeMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// CSRFMiddleware validates XSRF-TOKEN for state-changing requests using Double Submit Cookie pattern.
-func (s *Server) CSRFMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Only validate for methods that change state
-		if r.Method == "POST" || r.Method == "PUT" || r.Method == "PATCH" || r.Method == "DELETE" {
-			cookieToken, err := r.Cookie("XSRF-TOKEN")
-			headerToken := r.Header.Get("X-XSRF-Token")
 
-			if err != nil || headerToken == "" || cookieToken.Value != headerToken {
-				fmt.Fprintf(os.Stderr, "[SECURITY] CSRF validation failed: Cookie=%v, Header=%s\n", err, headerToken)
-				http.Error(w, "Forbidden: CSRF token mismatch or missing", http.StatusForbidden)
-				return
-			}
-		}
-		next.ServeHTTP(w, r)
-	})
-}
 
 // AuthMiddleware validates authentication for protected routes.
 // It expects a Bearer token in the Authorization header, which we currently treat as the Session ID.
