@@ -293,9 +293,7 @@ func (h *MediaUploadHandlerSingle) HandleSingleFileUpload(w http.ResponseWriter,
 
 	log.Printf("[DEBUG] UploadHandlerSingle: Starting single file upload for user %s...", userID.String())
 
-	// Limit in-memory storage for the multipart form to prevent OOM (Out of Memory). 
-	// Large files will be automatically spilled to disk by Go's ParseMultipartForm implementation.
-	err := r.ParseMultipartForm(32 << 20) // 32MB memory limit
+	err := r.ParseMultipartForm(1 << 30) // 1GB memory limit - allows large single-file uploads without chunking
 	if err != nil {
 		log.Printf("[ERROR] UploadHandlerSingle: Failed to parse form: %v", err)
 		http.Error(w, "Invalid form data.", http.StatusBadRequest)
@@ -532,24 +530,16 @@ func (h *MediaUploadHandlerSingle) HandleChunkUpload(w http.ResponseWriter, r *h
 
 	tempPath := filepath.Join(sessionManager.GetUploadTempDir(), uploadIDStr+fmt.Sprintf("_%d.tmp", chunkIndex))
 
-	// Use io.Copy to stream the chunk directly to disk instead of reading it all into memory (prevents OOM).
-	out, err := os.OpenFile(tempPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-	if err != nil {
-		log.Printf("[ERROR] UploadHandlerChunk: Failed to create chunk temp file %s: %v", tempPath, err)
-		chunkFile.Close()
-		http.Error(w, "Failed to process uploaded chunk.", http.StatusInternalServerError)
-		return
-	}
-
-	_, err = io.Copy(out, chunkFile)
-	out.Close() // Close the file immediately after writing
+	chunkData, err := io.ReadAll(chunkFile)
 	chunkFile.Close()
 
 	if err != nil {
-		log.Printf("[ERROR] UploadHandlerChunk: Failed to write chunk %d (stream copy failed): %v", chunkIndex, err)
+		log.Printf("[ERROR] UploadHandlerChunk: Failed to read chunk %d: %v", chunkIndex, err)
 		http.Error(w, "Failed to process uploaded chunk.", http.StatusInternalServerError)
 		return
 	}
+
+	err = os.WriteFile(tempPath, chunkData, 0644)
 	if err != nil {
 		log.Printf("[ERROR] UploadHandlerChunk: Failed to write chunk %d to temp file: %v", chunkIndex, err)
 		http.Error(w, "Failed to save uploaded chunk.", http.StatusInternalServerError)
