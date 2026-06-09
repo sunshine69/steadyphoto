@@ -541,7 +541,7 @@ func (h *MediaUploadHandlerSingle) HandleChunkUpload(w http.ResponseWriter, r *h
 		return
 	}
 
-	nReceived, err := io.Copy(out, chunkFile)
+	_, err = io.Copy(out, chunkFile)
 	out.Close() // Close the file immediately after writing
 	chunkFile.Close()
 
@@ -550,12 +550,17 @@ func (h *MediaUploadHandlerSingle) HandleChunkUpload(w http.ResponseWriter, r *h
 		http.Error(w, "Failed to process uploaded chunk.", http.StatusInternalServerError)
 		return
 	}
+	if err != nil {
+		log.Printf("[ERROR] UploadHandlerChunk: Failed to write chunk %d to temp file: %v", chunkIndex, err)
+		http.Error(w, "Failed to save uploaded chunk.", http.StatusInternalServerError)
+		return
+	}
 
 	sessionManager.AddChunk(uploadIDStr, chunkIndex)
 	// Persist the updated session to disk for recovery after server restart
 	sessionManager.saveSessions()
 
-	bytesReceived := int64(nReceived)
+	bytesReceived := int64(len(chunkData))
 
 	isComplete := sessionManager.IsComplete(uploadIDStr)
 

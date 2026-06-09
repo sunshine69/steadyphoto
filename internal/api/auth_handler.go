@@ -57,16 +57,25 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 2. Verify password (we check status after verifying the password to prevent enumeration via different error codes)
-	if !security.CheckPasswordHash(req.Password, user.PasswordHash) {
-		http.Error(w, "Invalid email or password", http.StatusUnauthorized)
+	// Check if user is pending approval, rejected, or disabled
+	if user.Status == domain.UserStatusPending {
+		http.Error(w, "Account pending admin approval", http.StatusForbidden)
 		return
 	}
 
-	// 3. Check if account is active/enabled
-	if user.Status != domain.UserStatusActive {
-		// We return a generic error to prevent attackers from confirming an existing but disabled/pending account.
-		http.Error(w, "Invalid email or password", http.StatusUnauthorized)
+	if user.Status == domain.UserStatusRejected {
+		http.Error(w, "Registration rejected by admin", http.StatusForbidden)
+		return
+	}
+
+	if user.Status == domain.UserStatusDisabled {
+		http.Error(w, "Account is disabled", http.StatusForbidden)
+		return
+	}
+
+	// 2. Verify password
+	if !security.CheckPasswordHash(req.Password, user.PasswordHash) {
+		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 		return
 	}
 
@@ -207,21 +216,15 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 
 	// Check if user already exists
 	existingUser, err := s.userRepo.GetByEmail(r.Context(), req.Email)
-	if !errors.Is(err, sql.ErrNoRows) { 
+	// If the error is NOT "no rows found", it's a real database error
+	if !errors.Is(err, sql.ErrNoRows) { // ErrNoRows means user doesn't exist (not an actual DB error)
 		log.Printf("[ERROR] handleRegister: failed to check existing email (%s): %v", req.Email, err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
 	if existingUser != nil {
-		// Return the same generic success/pending message as if it were a new registration 
-		// to prevent an attacker from enumerating which emails are already in our system.
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{
-			"status":   "pending_approval", // or a generic message like "If this email is not registered, an account has been created."
-			"user_id":  "",                 // Don't reveal the ID of existing users
-			"message":  "Registration request received. Please check your email for status updates.", 
-		})
+		http.Error(w, "Email already registered", http.StatusConflict)
 		return
 	}
 
