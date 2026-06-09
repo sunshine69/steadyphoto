@@ -5,46 +5,53 @@ import { AuthService } from '../services/auth.service';
 
 /**
  * AuthInterceptor automatically:
- * 1. Adds `withCredentials: true` to every outgoing request so HttpOnly cookies are sent and received.
- *    (Removed the redundant Authorization Bearer header logic).
- * 2. Listens for 401 Unauthorized errors, attempts a silent token refresh via /api/auth/refresh using secure cookies.
+ * 1. Adds `withCredentials: true` to every outgoing request so HttpOnly cookies are sent.
+ * 2. Listens for 401 Unauthorized errors, attempts a silent token refresh via /api/auth/refresh.
  *    If successful, it retries the original failed request once.
  */
 export const authInterceptor: HttpInterceptorFn = (req: HttpRequest<unknown>, next: HttpHandlerFn): Observable<HttpEvent<unknown>> => {
   const authService = inject(AuthService);
 
-  // SECURITY FIX: Removed manual Authorization header attachment from localStorage. 
-  // We now rely strictly on Secure, HttpOnly cookies sent via withCredentials.
-
-  // Ensure credentials (cookies) are sent for every request to allow the backend session check.
+  // 1. Inject Authorization header and credentials
+  const token = localStorage.getItem('access_token');
   let authReq = req;
+
+  if (token) {
+    authReq = req.clone({
+      setHeaders: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+  }
+
+  // Also ensure credentials are sent for HttpOnly cookies/refresh logic
   if (!authReq.withCredentials) {
     authReq = authReq.clone({ withCredentials: true });
   }
 
   return next(authReq).pipe(
     catchError((error: HttpErrorResponse) => {
-      // 2. Detect Unauthorized (401) error from the server session check.
+      // 2. Detect Unauthorized (401) error
       if (error.status === 401) {
-        console.warn('AuthInterceptor: Detected 401, attempting silent refresh via secure cookies...');
+        console.warn('AuthInterceptor: Detected 401, attempting silent refresh...');
 
-        // 3. Attempt to use the Refresh Token mechanism via our AuthService (which uses HttpOnly Cookies).
+        // 3. Attempt to use the Refresh Token via our AuthService
         return authService.refreshToken().pipe(
           switchMap(() => {
-            console.log('AuthInterceptor: Silent refresh successful! Retrying original request with new access cookie.');
-            // 4. Retry the original failed request, which will now include the updated session cookies.
+            console.log('AuthInterceptor: Refresh successful! Retrying original request.');
+            // 4. Retry the original failed request (which is now authorized with new access cookie)
             return next(authReq);
           }),
           catchError((refreshErr) => {
-            console.error('AuthInterceptor: Refresh failed or session expired. User must re-authenticate.', refreshErr);
-            // If refresh fails too, we are truly unauthorized (session has ended). 
-            // The app state will be cleared by the AuthService catch block in refreshToken().
+            console.error('AuthInterceptor: Refresh failed, user must log in again.', refreshErr);
+            // If refresh fails too, we are truly unauthorized (session expired/revoked)
+            // In a real app, you'd redirect to /login here using the Router
             return throwError(() => refreshErr);
           })
         );
       }
 
-      // For any other error code (403 Forbidden, 500 Server Error, etc.), just pass it through.
+      // For any other error code (403, 500, etc.), just pass it through
       return throwError(() => error);
     })
   );

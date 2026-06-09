@@ -205,8 +205,8 @@ export class LoginComponent {
       next: () => {
         console.log('Login successful');
         this.isLoading = false;
-        // User state is managed by AuthService via backend profile fetch or successful login response to ensure consistency and security.
-this.authService.getProfile().subscribe();
+        this.authService.setCurrentUser({ email: this.email });
+        localStorage.setItem('email', this.email);
         this.router.navigate(['/']); // Redirect to home (photo list) after login
       },
       error: (err) => {
