@@ -16,6 +16,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
 	"github.com/google/uuid"
 )
 
@@ -56,6 +57,13 @@ func NewServer(
 
 func (s *Server) routes() {
 	// Standard middleware
+	s.router.Use(cors.Handler(cors.Options{
+		AllowedOrigins:   AllowedCORSOrigins, // Dynamic from env var CORS_ALLOWED_ORIGINS or defaults in middleware.go
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token", "Range"},
+		ExposedHeaders:   []string{"Content-Length", "Content-Type", "Accept-Ranges", "Content-Range"},
+		AllowCredentials: true,
+	}))
 	s.router.Use(middleware.RequestID)
 	s.router.Use(middleware.RealIP)
 	s.router.Use(middleware.Logger)
@@ -67,33 +75,6 @@ func (s *Server) routes() {
 
 	// API Versioning
 	s.router.Route("/api/v1", func(r chi.Router) {
-		// CORS Middleware - properly handles credentials mode for Angular withCredentials: true
-		r.Use(func(next http.Handler) http.Handler {
-			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				origin := r.Header.Get("Origin")
-
-				// Validate and set the origin (only allow specific origins in production)
-				if origin != "" && isValidCORSOrigin(origin) {
-					w.Header().Set("Access-Control-Allow-Origin", origin)
-				} else if origin == "" {
-					// Allow requests with no origin (e.g., same-origin or mobile apps)
-					w.Header().Set("Access-Control-Allow-Origin", "*")
-				}
-
-				w.Header().Set("Access-Control-Allow-Credentials", "true")
-				w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS, PUT, PATCH, DELETE, POST")
-				w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, Range")
-				w.Header().Set("Access-Control-Expose-Headers", "Content-Length, Content-Type, Accept-Ranges, Content-Range")
-
-				if r.Method == "OPTIONS" {
-					w.WriteHeader(http.StatusOK)
-					return
-				}
-
-				next.ServeHTTP(w, r)
-			})
-		})
-
 		// Authentication endpoints
 		r.Route("/auth", func(r chi.Router) {
 			// Public sub-routes (No middleware applied here)
@@ -116,13 +97,13 @@ func (s *Server) routes() {
 			r.Group(func(adminRoutes chi.Router) {
 				adminRoutes.Use(s.AuthMiddleware)
 				adminRoutes.Use(s.AdminMiddleware)
-				
+
 				// User management
 				adminRoutes.Get("/users", s.handleAdminListUsers)
 				adminRoutes.Get("/users/{id}", s.handleAdminGetUser)
 				adminRoutes.Patch("/users/{id}", s.handleAdminUpdateUser)
 				adminRoutes.Delete("/users/{id}", s.handleAdminDeleteUser)
-				
+
 				// Bulk operations
 				adminRoutes.Post("/users/bulk-approve", s.handleBulkApproveUsers)
 				adminRoutes.Post("/users/bulk-disable", s.handleBulkDisableUsers)
@@ -176,7 +157,7 @@ func (s *Server) routes() {
 			// Media Upload endpoint (Web & Mobile clients)
 			uploadHandler := NewMediaUploadHandler(s.mediaRepo, s.storageService)
 			protected.Route("/media/upload", func(r chi.Router) {
-				// LimitBodySizeMiddleware removed - chunked uploads use small chunks (5MB), 
+				// LimitBodySizeMiddleware removed - chunked uploads use small chunks (5MB),
 				// and ParseMultipartForm handles per-part limits. The middleware's Content-Length check
 				// was blocking large file uploads that Android sends as multipart forms with proper boundaries.
 
@@ -264,8 +245,8 @@ func (s *Server) routes() {
 
 				w.Header().Set("Content-Type", "application/json")
 				json.NewEncoder(w).Encode(map[string]interface{}{
-					"status":        "success",
-					"deleted_count": deletedCount,
+					"status":          "success",
+					"deleted_count":   deletedCount,
 					"total_requested": len(req.MediaIDs),
 				})
 			})

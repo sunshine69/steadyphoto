@@ -46,7 +46,7 @@ storage/
   - Access tokens: Session IDs stored as opaque UUIDs in DB, returned as HttpOnly cookies AND for Bearer token usage
   - Refresh tokens: Opaque tokens hashed and stored in `user_sessions` table, used one-time (rotation after refresh)
   - Sessions expire after 7 days with revocation support
-- ⚠️ **Security Layers**: CORS middleware is implemented but has a **potential vulnerability** — when no Origin header is present, it sets `Access-Control-Allow-Origin: *` combined with `Access-Control-Allow-Credentials: true`, which could allow CSRF from any domain. Additionally, no Content Security Policy (CSP) headers are set anywhere in the application.
+- ✅ **Security Layers**: CORS middleware is properly implemented — only specific origins listed in `AllowedCORSOrigins` (configurable via `CORS_ALLOWED_ORIGINS` env var) are allowed to make cross-origin requests. When no Origin header is present, CORS headers are omitted entirely (same-origin or mobile app requests). Additionally, when an origin is not in the allowed list, a 403 Forbidden error is returned. **⚠️ Content Security Policy (CSP) headers are not set anywhere in the application.**
 
 ### Frontend Integration
 The Angular application provides a responsive dashboard featuring:
@@ -352,7 +352,7 @@ Client-side search and filtering across the media grid with three scope options:
 | Feature | Status | Notes |
 |---------|--------|-------|
 | **Core Features** (Scanning & Deduplication) | ✅ Completed | SHA256 hashing prevents redundant storage, verified in upload_handler.go |
-| **Authentication & IAM** | ✅ Completed | JWT/Session-based auth with HttpOnly cookies + Bearer token support. Argon2id password hashing. Session expiration and revocation. **⚠️ CORS wildcard+credentials issue present.** |
+| **Authentication & IAM** | ✅ Completed | JWT/Session-based auth with HttpOnly cookies + Bearer token support. Argon2id password hashing. Session expiration and revocation. CORS properly configured using chi/cors middleware — only allows explicitly whitelisted origins (configurable via `CORS_ALLOWED_ORIGINS` env var). |
 | **Data Isolation** | ✅ Completed | Physical filesystem isolation (`{user_id}/YYYY/MM/DD/`) + API-level checks enforced at DB level via `WHERE user_id = $2` in every repository method |
 | **Streaming & Playback** | ✅ Completed | HTTP Range requests for seekable video playback without full downloads, verified in handleGetOriginal and handleGetPhotoFile |
 | **Album Feature** | ✅ Completed | Full-stack: DB schema (with position field), CRUD APIs with ownership validation, Angular UI (sidebar, detail view, bulk actions). Note: junction table renamed from `album_media` to `album_photos`. |
@@ -387,13 +387,14 @@ Client-side search and filtering across the media grid with three scope options:
 5. Ownership enforced at both API and database levels via `WHERE user_id = $2`
 6. Path traversal protection: storage service uses `filepath.Clean()` + strips leading `/` before joining paths
 7. File deduplication prevents storing duplicate content
+8. CORS properly configured using chi/cors middleware — only allows explicitly whitelisted origins (configurable via `CORS_ALLOWED_ORIGINS` env var), with credentials support for authenticated cross-origin requests
 
 ### ⚠️ Security Concerns Requiring Attention
-1. **CORS Misconfiguration**: When no Origin header is present, the server sets `Access-Control-Allow-Origin: *` with `Allow-Credentials: true`, which could allow CSRF attacks from any domain. Only specific origins should be allowed when credentials are enabled.
-2. **Tokens in localStorage**: The Angular auth service stores both access_token and refresh_token in localStorage alongside HttpOnly cookies, defeating the security benefit of HttpOnly cookies for XSS protection.
-3. **No HTTPS enforcement on server**: `cmd/server/main.go` uses plain HTTP (`http.ListenAndServe`) with no TLS configuration.
-4. **No rate limiting** on authentication endpoints — brute-force attacks possible against login/register.
-5. **File type validation is extension-only**, not MIME-type based — a malicious user could upload executable content disguised as an image by changing the file extension.
+1. **Tokens in localStorage**: The Angular auth service stores both access_token and refresh_token in localStorage alongside HttpOnly cookies, defeating the security benefit of HttpOnly cookies for XSS protection.
+2. **No HTTPS enforcement on server**: `cmd/server/main.go` uses plain HTTP (`http.ListenAndServe`) with no TLS configuration.
+3. **No rate limiting** on authentication endpoints — brute-force attacks possible against login/register.
+4. **File type validation is extension-only**, not MIME-type based — a malicious user could upload executable content disguised as an image by changing the file extension.
+5. **Content Security Policy (CSP) headers are not set anywhere in the application.**
 
 ---
 

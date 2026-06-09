@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+# set -e
 
 export DATABASE_URL="postgres://steadyphoto:password@localhost:5432/steadyphoto?sslmode=disable"
 # Storage directory for photos (absolute path - must exist)

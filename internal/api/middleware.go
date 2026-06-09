@@ -27,7 +27,7 @@ var MaxUploadSizeBytes int64 = 512 << 20 // Default: 512MB (supports large singl
 // AllowedCORSOrigins defines which origins are permitted to make cross-origin requests.
 // This can be overridden via the CORS_ALLOWED_ORIGINS environment variable (comma-separated list).
 var AllowedCORSOrigins []string = []string{
-	"http://localhost:4200", // Angular dev server
+	"http://localhost:4200",     // Angular dev server
 	"http://192.168.20.23:4200", // Your specific IP for Angular dev server
 }
 
@@ -74,8 +74,6 @@ func LimitBodySizeMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
-
-
 
 // AuthMiddleware validates authentication for protected routes.
 // It expects a Bearer token in the Authorization header, which we currently treat as the Session ID.
