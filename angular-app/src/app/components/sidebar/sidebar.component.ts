@@ -349,7 +349,7 @@ export class SidebarComponent implements OnInit, OnDestroy {
       if (isAuth) {
         // User is logged in - get fresh values from localStorage
         this.emailInitial = this.authService.getUsername();
-        this.emailUsername = this.authService.getEmailUsername();
+        this.emailUsername = this.authService.getUsername()
       } else {
         // User is logged out - reset to defaults
         this.emailInitial = 'U';

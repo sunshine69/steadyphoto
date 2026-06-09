@@ -1,12 +1,12 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { BehaviorSubject, Observable, throwError } from 'rxjs';
-import { catchError, tap } from 'rxjs/operators';
+import { BehaviorSubject, Observable, throwError, of } from 'rxjs';
+import { catchError, tap, map } from 'rxjs/operators';
 import { environment } from '../../environments/environment';
 
 export interface AuthResponse {
-  access_token: string;
-  refresh_token: string;
+  access_token: string; // Included for backward compatibility if needed by legacy code, but not stored locally.
+  refresh_token: string; 
   user_id: string;
   role: string;
   status: string;
@@ -17,8 +17,10 @@ export interface CurrentUser {
   email: string;
   role: string;
   status: string;
+  username?: string;
 }
 
+// Simplified User type for general UI usage
 export interface User {
   email: string;
   username?: string;
@@ -31,27 +33,43 @@ export class AuthService {
   private http = inject(HttpClient);
   private API_BASE_URL = environment.apiBaseUrl;
 
-  /**
-   * Gets the current user's profile information.
+  /** 
+   * Authentication state tracking using in-memory subjects only.
+   * This prevents XSS attacks from accessing sensitive identity or session data stored in localStorage.
    */
-  getProfile(): Observable<any> {
-    return this.http.get(`${this.API_BASE_URL}/auth/profile`, { withCredentials: true })
+  private _isAuthenticatedSubject = new BehaviorSubject<boolean>(false);
+  isAuthenticated$ = this._isAuthenticatedSubject.asObservable();
+
+  private _currentUser = new BehaviorSubject<CurrentUser | null>(null);
+  currentUser$ = this._currentUser.asObservable();
+
+  /**
+   * Fetches the current user's profile from the server using secure HttpOnly cookies.
+   * This should be called on application initialization to restore session state in memory.
+   */
+  getProfile(): Observable<CurrentUser> {
+    return this.http.get<CurrentUser>(`${this.API_BASE_URL}/auth/profile`, { withCredentials: true })
       .pipe(
-        tap((res) => console.log('AuthService: Profile fetched', res)),
+        tap((user) => {
+          console.log('AuthService: Profile fetched', user);
+          this._currentUser.next(user);
+          this._isAuthenticatedSubject.next(true);
+        }),
         catchError(err => {
-          console.error('AuthService: Failed to fetch profile', err);
+          console.error('AuthService: Failed to fetch profile, session may be invalid.', err);
+          this.clearUser(); // Reset state if the server rejects our credentials
           return throwError(() => err);
         })
       );
   }
 
   /**
-   * Updates the user's email address.
+   * Updates the user's email address via secure API call.
    */
   updateEmail(newEmail: string): Observable<any> {
     return this.http.patch(`${this.API_BASE_URL}/auth/profile/email`, { new_email: newEmail }, { withCredentials: true })
       .pipe(
-        tap((res) => console.log('AuthService: Email updated', res)),
+        tap(() => console.log('AuthService: Email updated')),
         catchError(err => {
           console.error('AuthService: Failed to update email', err);
           return throwError(() => err);
@@ -60,7 +78,7 @@ export class AuthService {
   }
 
   /**
-   * Changes the user's password.
+   * Changes the user's password via secure API call.
    */
   changePassword(currentPassword: string, newPassword: string): Observable<any> {
     return this.http.patch(`${this.API_BASE_URL}/auth/profile/password`, { 
@@ -68,7 +86,7 @@ export class AuthService {
       new_password: newPassword
     }, { withCredentials: true })
       .pipe(
-        tap((res) => console.log('AuthService: Password changed', res)),
+        tap(() => console.log('AuthService: Password changed')),
         catchError(err => {
           console.error('AuthService: Failed to change password', err);
           return throwError(() => err);
@@ -77,160 +95,122 @@ export class AuthService {
   }
 
   /**
-   * Logs in a user and sets session cookies via backend response.
+   * Logs in a user and relies on the backend setting secure HttpOnly cookies for authentication.
    */
   login(email: string, password: string): Observable<AuthResponse> {
     return this.http.post<AuthResponse>(`${this.API_BASE_URL}/auth/login`, { email, password }, { withCredentials: true })
       .pipe(
         tap((res) => {
-          console.log('AuthService: Login successful', res);
-          localStorage.setItem('access_token', res.access_token);
-          localStorage.setItem('refresh_token', res.refresh_token);
-          localStorage.setItem('email', email);
-          
-          // Store current user with role info for admin checks
-          const currentUser: CurrentUser = {
+          console.log('AuthService: Login successful');
+          // SECURITY FIX: We NO LONGER store access_token or refresh_token in localStorage. 
+          // The browser handles the HttpOnly cookies automatically from this response.
+
+          const newUser: CurrentUser = {
             id: res.user_id,
             email: email,
             role: res.role,
             status: res.status
           };
-          localStorage.setItem('currentUser', JSON.stringify(currentUser));
-          
-          this.setAuthenticated(true);
+
+          this._currentUser.next(newUser);
+          this._isAuthenticatedSubject.next(true);
         }),
         catchError(err => {
           console.error('AuthService: Login failed', err);
-          this.setAuthenticated(false);
+          this.clearUser();
           return throwError(() => err);
         })
       );
   }
 
   /**
-   * Registers a new user.
+   * Registers a new user via secure API call.
    */
   register(email: string, password: string): Observable<any> {
     return this.http.post(`${this.API_BASE_URL}/auth/register`, { email, password }, { withCredentials: true })
       .pipe(
         catchError(err => {
           console.error('AuthService: Registration failed', err);
-          // Ensure we don't trigger token refresh for registration errors
           return throwError(() => err);
         }),
-        tap(() => {
-          console.log('AuthService: Registration request completed');
-        })
+        tap(() => console.log('AuthService: Registration request completed'))
       );
   }
 
   /**
-   * Logs out the user and clears session on backend.
+   * Logs out the user by notifying the backend and clearing local in-memory state.
    */
   logout(): Observable<any> {
     return this.http.post(`${this.API_BASE_URL}/auth/logout`, {}, { withCredentials: true })
       .pipe(
-        tap(() => {
-          console.log('AuthService: Logout successful');
-          this.setAuthenticated(false);
-          this.clearUser(); // Ensure all local storage data is wiped on logout
+        tap(() => console.log('AuthService: Logout successful')),
+        catchError((err) => {
+          console.error('AuthService: Logout error (server might have already invalidated session)', err);
+          // We proceed to clear local state even if the network call fails for safety/UX
+          return of(null); 
         }),
-        catchError(err => {
-          console.error('AuthService: Logout failed', err);
-          // Even if server fails, we should clear local state on client side for security/UX
-          this.setAuthenticated(false); 
-          this.clearUser(); // Clear local storage even if logout request fails
-          return throwError(() => err);
-        })
+        tap(() => this.clearUser()) // Clear memory after successful or failed logout attempt
       );
   }
 
   /**
-   * Attempts to refresh the access token using the stored refresh cookie.
+   * Attempts a silent token refresh using only secure HttpOnly cookies.
    */
   refreshToken(): Observable<any> {
-    // This endpoint is specifically designed for silent renewal via HttpOnly cookies
     return this.http.post(`${this.API_BASE_URL}/auth/refresh`, {}, { withCredentials: true })
       .pipe(
         tap(() => console.log('AuthService: Token refreshed')),
         catchError(err => {
           console.error('AuthService: Refresh failed', err);
-          // If refresh fails, we must assume the user is truly logged out
-          this.setAuthenticated(false);
+          this.clearUser();
           return throwError(() => err);
         })
       );
   }
 
   /**
-   * An observable stream representing the user's current authentication state.
-   */
-  private _isAuthenticatedSubject = new BehaviorSubject<boolean>(false);
-  isAuthenticated$ = this._isAuthenticatedSubject.asObservable();
-
-  /**
-   * Returns the synchronous value of the auth state. 
-   * Note: In a production app, you might call /api/auth/me to verify server-side state first.
+   * Returns the current authentication status synchronously. 
    */
   isAuthenticated(): boolean {
     return this._isAuthenticatedSubject.value;
   }
 
-  /**
-   * Internal method used by login/logout handlers to update the auth state stream.
-   */
-  setAuthenticated(status: boolean): void {
+  // Internal state update methods (not for public use)
+  private setAuthenticated(status: boolean): void {
     this._isAuthenticatedSubject.next(status);
   }
 
-  private _currentUser = new BehaviorSubject<User | null>(null);
-  currentUser$ = this._currentUser.asObservable();
-
-  setCurrentUser(user: User): void {
-    localStorage.setItem('username', user.username || '');
+  /** 
+   * Updates current user in-memory only. Use this when profile changes or after login/refresh.
+   */
+  setCurrentUser(user: CurrentUser): void {
     this._currentUser.next(user);
   }
 
-  getCurrentUser(): User | null {
+  getCurrentUser(): CurrentUser | null {
     return this._currentUser.value;
   }
 
+  /** 
+   * Retrieves the username from in-memory state, falling back to email part if needed for UI display only.
+   */
   getUsername(): string {
-    // First try to get username from current user object
     const user = this.getCurrentUser();
     if (user?.username) return user.username;
-    
-    // Then try stored username
-    const storedUsername = localStorage.getItem('username');
-    if (storedUsername && storedUsername.trim()) return storedUsername;
-    
-    // Fallback to first letter of email
-    const email = localStorage.getItem('email') || '';
-    if (email) {
-      return email.charAt(0).toUpperCase();
+    if (user?.email) {
+      // Fallback: show the prefix of their email as a username in the UI header
+      return user.email.split('@')[0] || 'User';
     }
-    
-    // Ultimate fallback - just 'U' for User
-    return 'U';
+    return 'Guest';
   }
 
-  getEmailUsername(): string {
-    // Extract the username part from email (before @ symbol)
-    const email = localStorage.getItem('email') || '';
-    if (!email) return 'User';
-    
-    const parts = email.split('@');
-    return parts[0] || 'User';
-  }
-
+  /** 
+   * Clears all sensitive identity and session data from application memory.
+   */
   clearUser(): void {
+    console.log('AuthService: Clearing in-memory authentication state.');
     this._currentUser.next(null);
-    // Clear ALL local storage items to prevent data contamination between users
-    localStorage.removeItem('username');
-    localStorage.removeItem('email');
-    localStorage.removeItem('currentUser');
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('refresh_token');
+    this._isAuthenticatedSubject.next(false);
   }
 
 }
