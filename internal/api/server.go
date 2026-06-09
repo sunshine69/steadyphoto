@@ -155,7 +155,7 @@ func (s *Server) routes() {
 			protected.Patch("/media/{id}/restore", s.handleRestoreMedia)
 
 			// Media Upload endpoint (Web & Mobile clients)
-			uploadHandler := NewMediaUploadHandler(s.mediaRepo, s.storageService)
+			uploadHandler := NewMediaUploadHandler(s.mediaRepo, s.albumRepo, s.storageService)
 			protected.Route("/media/upload", func(r chi.Router) {
 				// LimitBodySizeMiddleware removed - chunked uploads use small chunks (5MB),
 				// and ParseMultipartForm handles per-part limits. The middleware's Content-Length check
