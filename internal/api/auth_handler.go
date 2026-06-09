@@ -112,8 +112,22 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteLaxMode,
 	})
 
-	// 2. Also set it as a Secure/None cookie if we were on HTTPS (for strict cross-origin)
-	// For local development over HTTP, Lax is our best bet for most browsers.
+	// 2. Issue CSRF Token for Double Submit Cookie pattern (not HttpOnly so JS can read it)
+	csrfToken, err := security.GenerateRandomToken(32)
+	if err != nil {
+		log.Printf("[ERROR] handleLogin: failed to generate CSRF token: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "XSRF-TOKEN",
+		Value:    csrfToken,
+		Path:     "/",
+		HttpOnly: false, // MUST be accessible by JS to read and put into header
+		Secure:   false, // Set to true in production with HTTPS
+		SameSite: http.SameSiteLaxMode,
+	})
 
 	resp := AuthResponse{
 		AccessToken:  session.ID.String(), // Still return it for AJAX/Bearer usage
@@ -190,6 +204,23 @@ func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 7. Return the new access token (the client already knows who they are)
+    // We also issue a fresh CSRF cookie on refresh to keep it in sync with session rotation
+	csrfToken, err := security.GenerateRandomToken(32)
+	if err != nil {
+		log.Printf("[ERROR] handleRefresh: failed to generate CSRF token: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "XSRF-TOKEN",
+		Value:    csrfToken,
+		Path:     "/",
+		HttpOnly: false, // MUST be accessible by JS to read and put into header
+		Secure:   false, // Set to true in production with HTTPS
+		SameSite: http.SameSiteLaxMode,
+	})
+
 	resp := map[string]string{
 		"access_token": newSession.ID.String(),
 	}
