@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"steadyphoto/internal/domain"
@@ -39,6 +40,17 @@ type RegisterRequest struct {
 // RefreshRequest represents the request body for token refresh.
 type RefreshRequest struct {
 	RefreshToken string `json:"refresh_token"`
+}
+
+// CookieSecureMode determines whether to set HttpOnly cookies as Secure (HTTPS-only).
+// Set via SECURE_COOKIES environment variable: "true" or "false". Defaults to false for local dev.
+var CookieSecureMode bool = false
+
+func init() {
+	if val := os.Getenv("SECURE_COOKIES"); val != "" && (val == "true" || val == "1") {
+		CookieSecureMode = true
+	}
+	log.Printf("[CONFIG] Secure cookie mode: %v", CookieSecureMode)
 }
 
 // HandleLogin handles POST /api/v1/auth/login
@@ -108,7 +120,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		Value:    session.ID.String(),
 		Path:     "/",
 		HttpOnly: true,  // Prevent JS from accessing the token
-		Secure:   false, // Set to true in production with HTTPS
+		Secure:   CookieSecureMode, // Set to true in production with HTTPS (or behind reverse proxy)
 		SameSite: http.SameSiteLaxMode,
 	})
 

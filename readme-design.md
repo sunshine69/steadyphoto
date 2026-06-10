@@ -213,13 +213,14 @@ Admin users can manage other user accounts through a modal interface accessible 
 | `PATCH` | `/api/v1/auth/profile/password` | Change password (requires current + new password) | Yes |
 | `DELETE` | `/api/v1/auth/profile` | Delete user account — revokes all sessions, sets status to disabled | Yes |
 
-### Frontend Implementation (Angular) ⚠️ **Needs Verification**
+### Frontend Implementation (Angular) ✅ Updated — Security Fix Applied
 - The Angular auth service (`auth.service.ts`) confirms the following features exist:
   - ✅ Login with email/password → returns `access_token`, `refresh_token`, `user_id`, `role`, `status`
   - ✅ Registration creates pending user account (requires admin approval)
   - ✅ Logout clears local storage and calls backend logout endpoint
   - ✅ Token refresh via `/auth/refresh` using HttpOnly cookie
-  - ⚠️ **Security Concern**: Tokens are stored in `localStorage` alongside the HttpOnly cookies — this defeats the security benefit of HttpOnly cookies. The access token is also returned as Bearer in login response for AJAX usage, which means it's available to JavaScript and vulnerable to XSS attacks.
+  - ✅ **Security Fix**: access_token is now stored in `sessionStorage` instead of `localStorage`. This means the token is cleared when the browser tab is closed, reducing XSS risk. The HttpOnly cookie remains the primary authentication mechanism for normal browser requests (sent automatically via `withCredentials`).
+  - ✅ **Security Fix**: refresh_token is NOT stored on the client at all — it's managed by server-side session rotation and HttpOnly cookies only.
 
 ---
 
@@ -349,10 +350,7 @@ Client-side search and filtering across the media grid with three scope options:
 
 ## Current Status
 
-| Feature | Status | Notes |
-|---------|--------|-------|
-| **Core Features** (Scanning & Deduplication) | ✅ Completed | SHA256 hashing prevents redundant storage, verified in upload_handler.go |
-| **Authentication & IAM** | ✅ Completed | JWT/Session-based auth with HttpOnly cookies + Bearer token support. Argon2id password hashing. Session expiration and revocation. CORS properly configured using chi/cors middleware — only allows explicitly whitelisted origins (configurable via `CORS_ALLOWED_ORIGINS` env var). |
+| **Authentication & IAM** | ✅ Completed | JWT/Session-based auth with HttpOnly cookies + Bearer token support. Argon2id password hashing. Session expiration and revocation. CORS properly configured using chi/cors middleware — only allows explicitly whitelisted origins (configurable via `CORS_ALLOWED_ORIGINS` env var). Secure cookie mode configurable via `SECURE_COOKIES=true`. |
 | **Data Isolation** | ✅ Completed | Physical filesystem isolation (`{user_id}/YYYY/MM/DD/`) + API-level checks enforced at DB level via `WHERE user_id = $2` in every repository method |
 | **Streaming & Playback** | ✅ Completed | HTTP Range requests for seekable video playback without full downloads, verified in handleGetOriginal and handleGetPhotoFile |
 | **Album Feature** | ✅ Completed | Full-stack: DB schema (with position field), CRUD APIs with ownership validation, Angular UI (sidebar, detail view, bulk actions). Note: junction table renamed from `album_media` to `album_photos`. |
@@ -360,7 +358,7 @@ Client-side search and filtering across the media grid with three scope options:
 | **Bulk Actions (Multi-Select)** | ✅ Completed | Delete, Add to Album, Remove from Album, Bulk Tag Assignment via toolbar in photo list view |
 | **Media Deletion** | ✅ Enhanced — Trash/Restore Flow | Three-stage deletion: soft delete → trash → permanent delete. Permanent delete removes both DB records AND physical files (including thumbnails and face detection data). |
 | **Admin User Management** | ✅ Backend API Completed | Full CRUD + bulk operations for admin users with status validation, session revocation on delete/disable. Frontend UI needs verification against Angular codebase. |
-| **Media Upload (Backend)** | ✅ Completed with Multiple Modes | Multi-file upload, single file upload, chunked resumable uploads for mobile clients. SHA256 deduplication verified. ⚠️ File type validation is extension-only, not MIME-type based. |
+| **Media Upload (Backend)** | ✅ Completed with Multiple Modes | Multi-file upload, single file upload, chunked resumable uploads for mobile clients. SHA256 deduplication verified. MIME-type detection via `http.DetectContentType()` + extension whitelist enforced at upload time. |
 | **Metadata Extraction** | 🚧 Stubbed | Defaults to `time.Now()` for capture timestamp. EXIF/video parsing planned for future phase. |
 | **Upload Frontend UI** | 🚧 Remaining | Drag & drop zone with overlay feedback, progress bars, preview grid — minor visual polish needed on mobile devices (not high priority). Note: album auto-association not yet implemented despite design document mentioning it. |
 
@@ -374,6 +372,7 @@ Client-side search and filtering across the media grid with three scope options:
 - [ ] **Search by datetime range** and other advanced search filters.
 - [ ] **Upload Frontend Polish**: Drag & drop zone with overlay feedback, progress bars, batch queue concurrency control.
 - [ ] **Auto-add uploaded media to album** — feature mentioned in original design but not yet implemented in upload handler.
+- [ ] **CSP (Content Security Policy) headers** — not set anywhere in the application.
 
 ---
 
@@ -389,12 +388,15 @@ Client-side search and filtering across the media grid with three scope options:
 7. File deduplication prevents storing duplicate content
 8. CORS properly configured using chi/cors middleware — only allows explicitly whitelisted origins (configurable via `CORS_ALLOWED_ORIGINS` env var), with credentials support for authenticated cross-origin requests
 9. File type validation enforced at upload time: MIME-type detection via `http.DetectContentType()` (reads first 512 bytes) + extension whitelist in `upload_handler.go`. Rejects uploads where detected content type doesn't match expected media format for the given file extension.
+10. **HTTPS/TLS support**: Server can start with TLS if `-tls-cert`/`-tls-key` CLI flags or `$TLS_CERT`/$TLS_KEY$ env vars are set (via `http.ListenAndServeTLS`). Falls back to plain HTTP otherwise — designed for reverse proxy setups where TLS termination happens at nginx/caddy level.
+11. **Rate limiting**: Auth endpoints limited to 5 requests/minute by IP + path (brute-force protection). All protected routes have a safety net of 100 requests/minute by IP only. Custom JSON error responses on rate limit exceeded (HTTP 429). Implemented via `github.com/go-chi/httprate`.
+12. **Secure cookie mode**: HttpOnly cookies can be set as Secure (HTTPS-only) when `$SECURE_COOKIES=true` env var is set, preventing token leakage over unencrypted connections.
+13. **Token storage security fix**: Access token is now stored in `sessionStorage` instead of `localStorage`, reducing XSS risk (token cleared on tab close). Refresh token is NOT stored on the client — managed by HttpOnly cookies and server-side session rotation only.
 
 ### ⚠️ Security Concerns Requiring Attention
-1. **Tokens in localStorage**: The Angular auth service stores both access_token and refresh_token in localStorage alongside HttpOnly cookies, defeating the security benefit of HttpOnly cookies for XSS protection.
-2. **No HTTPS enforcement on server**: `cmd/server/main.go` uses plain HTTP (`http.ListenAndServe`) with no TLS configuration.
-3. **No rate limiting** on authentication endpoints — brute-force attacks possible against login/register.
-4. **Content Security Policy (CSP) headers are not set anywhere in the application.**
+1. **No Content Security Policy (CSP) headers** — CSP not set anywhere in the application, leaving it vulnerable to XSS attacks if a vulnerability exists.
+2. **No HTTPS enforcement on server when running behind a reverse proxy**: While TLS termination at nginx/caddy is the intended pattern, if a reverse proxy isn't configured and no `-tls-cert`/`-tls-key` flags or `$TLS_CERT`/$TLS_KEY$ env vars are provided, the server will serve over plain HTTP without any warning or redirect to HTTPS.
+3. **No HSTS (HTTP Strict Transport Security) headers** — clients connecting over plain HTTP won't be redirected to HTTPS even if a reverse proxy terminates TLS.
 
 ---
 

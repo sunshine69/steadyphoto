@@ -1,12 +1,12 @@
-import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { BehaviorSubject, Observable, throwError } from 'rxjs';
-import { catchError, tap } from 'rxjs/operators';
+import { HttpClient } from '@angular/common/http';
+import { BehaviorSubject, Observable, Subject, throwError, of } from 'rxjs';
+import { catchError, tap, switchMap, finalize } from 'rxjs/operators';
 import { environment } from '../../environments/environment';
 
 export interface AuthResponse {
   access_token: string;
-  refresh_token: string;
+  refresh_token: string; // kept for backward compatibility (Android scanner), but NOT stored in localStorage
   user_id: string;
   role: string;
   status: string;
@@ -31,9 +31,18 @@ export class AuthService {
   private http = inject(HttpClient);
   private API_BASE_URL = environment.apiBaseUrl;
 
-  /**
-   * Gets the current user's profile information.
-   */
+  /** Flag indicating logout is in progress — prevents refresh attempts during logout */
+  private _isLoggingOutSubject = new BehaviorSubject<boolean>(false);
+  isLoggingOut$ = this._isLoggingOutSubject.asObservable();
+
+  /** Subject for deduplicating concurrent 401 requests (only one refresh happens) */
+  private _refreshInFlightSubject = new Subject<void>();
+  
+  /** Observable for auth state changes */
+  private _isAuthenticatedSubject = new BehaviorSubject<boolean>(false);
+  isAuthenticated$ = this._isAuthenticatedSubject.asObservable();
+
+  /** Gets the current user's profile information. */
   getProfile(): Observable<any> {
     return this.http.get(`${this.API_BASE_URL}/auth/profile`, { withCredentials: true })
       .pipe(
@@ -45,9 +54,7 @@ export class AuthService {
       );
   }
 
-  /**
-   * Updates the user's email address.
-   */
+  /** Updates the user's email address. */
   updateEmail(newEmail: string): Observable<any> {
     return this.http.patch(`${this.API_BASE_URL}/auth/profile/email`, { new_email: newEmail }, { withCredentials: true })
       .pipe(
@@ -59,9 +66,7 @@ export class AuthService {
       );
   }
 
-  /**
-   * Changes the user's password.
-   */
+  /** Changes the user's password. */
   changePassword(currentPassword: string, newPassword: string): Observable<any> {
     return this.http.patch(`${this.API_BASE_URL}/auth/profile/password`, { 
       current_password: currentPassword,
@@ -76,19 +81,20 @@ export class AuthService {
       );
   }
 
-  /**
-   * Logs in a user and sets session cookies via backend response.
-   */
+  /** Logs in a user and sets session cookies via backend response. */
   login(email: string, password: string): Observable<AuthResponse> {
     return this.http.post<AuthResponse>(`${this.API_BASE_URL}/auth/login`, { email, password }, { withCredentials: true })
       .pipe(
         tap((res) => {
           console.log('AuthService: Login successful', res);
-          localStorage.setItem('access_token', res.access_token);
-          localStorage.setItem('refresh_token', res.refresh_token);
+          
+          // Store access_token in sessionStorage (cleared on tab close) for Bearer token usage.
+          if (res.access_token) {
+            sessionStorage.setItem('access_token', res.access_token);
+          }
+          
           localStorage.setItem('email', email);
           
-          // Store current user with role info for admin checks
           const currentUser: CurrentUser = {
             id: res.user_id,
             email: email,
@@ -101,15 +107,13 @@ export class AuthService {
         }),
         catchError(err => {
           console.error('AuthService: Login failed', err);
-          this.setAuthenticated(false);
+          // Don't clear user on login failure — the user might retry with correct credentials
           return throwError(() => err);
         })
       );
   }
 
-  /**
-   * Registers a new user.
-   */
+  /** Registers a new user. */
   register(email: string, password: string): Observable<any> {
     return this.http.post(`${this.API_BASE_URL}/auth/register`, { email, password }, { withCredentials: true })
       .pipe(
@@ -124,32 +128,30 @@ export class AuthService {
       );
   }
 
-  /**
-   * Logs out the user and clears session on backend.
-   */
+  /** Logs out the user and clears session on backend. */
   logout(): Observable<any> {
+    // IMPORTANT: Set flag FIRST before any concurrent requests can fire — prevents avalanche
+    this._isLoggingOutSubject.next(true);
+    
     return this.http.post(`${this.API_BASE_URL}/auth/logout`, {}, { withCredentials: true })
       .pipe(
         tap(() => {
           console.log('AuthService: Logout successful');
-          this.setAuthenticated(false);
-          this.clearUser(); // Ensure all local storage data is wiped on logout
         }),
         catchError(err => {
           console.error('AuthService: Logout failed', err);
           // Even if server fails, we should clear local state on client side for security/UX
-          this.setAuthenticated(false); 
-          this.clearUser(); // Clear local storage even if logout request fails
           return throwError(() => err);
+        }),
+        finalize(() => {
+          // Reset the flag after logout completes (success or error) — allows future 401s to refresh again
+          this._isLoggingOutSubject.next(false);
         })
       );
   }
 
-  /**
-   * Attempts to refresh the access token using the stored refresh cookie.
-   */
+  /** Attempts to refresh the access token using the stored refresh cookie. */
   refreshToken(): Observable<any> {
-    // This endpoint is specifically designed for silent renewal via HttpOnly cookies
     return this.http.post(`${this.API_BASE_URL}/auth/refresh`, {}, { withCredentials: true })
       .pipe(
         tap(() => console.log('AuthService: Token refreshed')),
@@ -162,23 +164,66 @@ export class AuthService {
       );
   }
 
-  /**
-   * An observable stream representing the user's current authentication state.
+  /** 
+   * Handles a 401 error — either triggers a fresh refresh or waits for an in-flight one.
+   * Returns true if waiting (another request is already refreshing), false if we triggered it ourselves.
    */
-  private _isAuthenticatedSubject = new BehaviorSubject<boolean>(false);
-  isAuthenticated$ = this._isAuthenticatedSubject.asObservable();
+  handle401(): Observable<boolean> {
+    // If logout is in progress, don't try to refresh at all — just fail with 401 immediately
+    if (this._isLoggingOutSubject.value) {
+      console.warn('AuthService: Skipping refresh during logout');
+      return throwError(() => new Error('Logout in progress'));
+    }
 
-  /**
-   * Returns the synchronous value of the auth state. 
-   * Note: In a production app, you might call /api/auth/me to verify server-side state first.
-   */
+    // If a refresh is already in flight, wait for it and then emit to signal completion
+    if (!this._refreshInFlightSubject.observed && this._isRefreshing) {
+      console.log('AuthService: Refresh already in progress, waiting...');
+      return throwError(() => new Error('Refresh in progress'));
+    }
+
+    // Mark refresh as in-flight (only the first caller does this)
+    if (!this._refreshInFlightSubject.observed && !this._isRefreshing) {
+      this._isRefreshing = true;
+      
+      console.log('AuthService: Starting token refresh due to 401');
+      
+      return this.refreshToken().pipe(
+        switchMap(() => {
+          // Refresh succeeded — emit and signal completion
+          this._refreshInFlightSubject.next();
+          // Return of(true) so interceptor's switchMap executes for retry
+          return of(true);
+        }),
+        catchError((err) => {
+          console.error('AuthService: Token refresh failed', err);
+          this.setAuthenticated(false);
+          
+          // Emit to wake up any waiting requests (they'll fail with 401)
+          this._refreshInFlightSubject.next();
+          return throwError(() => err);
+        }),
+        finalize(() => {
+          // Reset the in-flight flag when done
+          this._isRefreshing = false;
+        })
+      );
+    }
+
+    // A refresh is already in progress — wait for it to complete, then fail with 401
+    return throwError(() => new Error('Refresh in progress'));
+  }
+
+  /** Returns true if logout is currently in progress. */
+  isLoggingOut(): boolean {
+    return this._isLoggingOutSubject.value;
+  }
+
+  /** Returns the synchronous value of the auth state. */
   isAuthenticated(): boolean {
     return this._isAuthenticatedSubject.value;
   }
 
-  /**
-   * Internal method used by login/logout handlers to update the auth state stream.
-   */
+  /** Internal method used by login/logout handlers to update the auth state stream. */
   setAuthenticated(status: boolean): void {
     this._isAuthenticatedSubject.next(status);
   }
@@ -196,26 +241,21 @@ export class AuthService {
   }
 
   getUsername(): string {
-    // First try to get username from current user object
     const user = this.getCurrentUser();
     if (user?.username) return user.username;
     
-    // Then try stored username
     const storedUsername = localStorage.getItem('username');
     if (storedUsername && storedUsername.trim()) return storedUsername;
     
-    // Fallback to first letter of email
     const email = localStorage.getItem('email') || '';
     if (email) {
       return email.charAt(0).toUpperCase();
     }
     
-    // Ultimate fallback - just 'U' for User
     return 'U';
   }
 
   getEmailUsername(): string {
-    // Extract the username part from email (before @ symbol)
     const email = localStorage.getItem('email') || '';
     if (!email) return 'User';
     
@@ -229,8 +269,10 @@ export class AuthService {
     localStorage.removeItem('username');
     localStorage.removeItem('email');
     localStorage.removeItem('currentUser');
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('refresh_token');
+    // access_token is in sessionStorage, not localStorage — clear it separately
+    sessionStorage.removeItem('access_token');
   }
+
+  private _isRefreshing = false;
 
 }
