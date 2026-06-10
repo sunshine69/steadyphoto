@@ -75,8 +75,10 @@ func (s *Server) routes() {
 
 	// API Versioning
 	s.router.Route("/api/v1", func(r chi.Router) {
-		// Authentication endpoints
+		// Authentication endpoints - strict rate limiting to prevent brute-force attacks
 		r.Route("/auth", func(r chi.Router) {
+			r.Use(RateLimitAuth) // 5 requests per minute by IP + endpoint
+
 			// Public sub-routes (No middleware applied here)
 			r.Post("/register", s.handleRegister)
 			r.Post("/login", s.handleLogin)
@@ -111,8 +113,9 @@ func (s *Server) routes() {
 			})
 		})
 
-		// PROTECTED ROUTES group (for non-auth resources like media)
+		// PROTECTED ROUTES group (for non-auth resources like media) - general rate limiting as safety net
 		r.Group(func(protected chi.Router) {
+			protected.Use(RateLimitGeneral) // 100 requests per minute by IP only
 			protected.Use(s.AuthMiddleware)
 
 			// Photo-specific endpoints (backward compatible, but now authenticated)
