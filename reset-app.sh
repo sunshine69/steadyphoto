@@ -22,7 +22,7 @@ go run cmd/migrate/main.go up
 
 go build -o scanner.exe cmd/scanner/main.go
 
-rm -rf storage/* ;  ./scanner.exe -u admin@steadyphoto.com -p 1qa2ws -source /mnt/doc/The\ Spit\ Lake\ Somerset -email admin@steadyphoto.com
+rm -rf storage/* ;  ./scanner.exe -u admin@steadyphoto.com -p 1qa2ws -source /mnt/doc/tmp/testimg   -email admin@steadyphoto.com
 
 # ./scanner.exe -source /mnt/doc/Videos/AI-Video -storage storage -email admin@steadyphoto.com
 #./scanner.exe -source /mnt/doc/Diana\ Place\ 5/ -storage storage
