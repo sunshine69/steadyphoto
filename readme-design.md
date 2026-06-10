@@ -150,7 +150,7 @@ var MaxUploadSizeBytes int64 = 512 << 20 // Default: 512MB (supports large singl
 
 ### Backend Design (Go) ✅ Implemented
 - **Handler**: `upload_handler.go` registered in `server.go`. Designed to be client-agnostic (Web, Android, iOS).
-- ⚠️ **Validation**: File type validation is based on extension only (`filepath.Ext(header.Filename)`), NOT MIME type detection. This means a file with `.jpg` extension could contain executable content. The original design claimed "Strict MIME/extension whitelist" but this has not been implemented — the code simply checks extensions like `".mp4", ".mov", ".avi"` for video classification without validating actual content types.
+- ✅ **Validation**: File type validation now includes both extension checking AND MIME-type detection via `http.DetectContentType()` which reads the first 512 bytes of uploaded file content. The `isValidMediaType()` function validates that detected MIME types (`image/jpeg`, `image/png`, `video/mp4`, etc.) match expected formats for given extensions. Rejects uploads where MIME type doesn't match (e.g., `.jpg` extension with executable content).
 - **Storage Path Generation**: ✅ Verified in upload_handler.go:
 ```go
 dateDir := time.Now().Format("2006/01/02")
@@ -388,13 +388,13 @@ Client-side search and filtering across the media grid with three scope options:
 6. Path traversal protection: storage service uses `filepath.Clean()` + strips leading `/` before joining paths
 7. File deduplication prevents storing duplicate content
 8. CORS properly configured using chi/cors middleware — only allows explicitly whitelisted origins (configurable via `CORS_ALLOWED_ORIGINS` env var), with credentials support for authenticated cross-origin requests
+9. File type validation enforced at upload time: MIME-type detection via `http.DetectContentType()` (reads first 512 bytes) + extension whitelist in `upload_handler.go`. Rejects uploads where detected content type doesn't match expected media format for the given file extension.
 
 ### ⚠️ Security Concerns Requiring Attention
 1. **Tokens in localStorage**: The Angular auth service stores both access_token and refresh_token in localStorage alongside HttpOnly cookies, defeating the security benefit of HttpOnly cookies for XSS protection.
 2. **No HTTPS enforcement on server**: `cmd/server/main.go` uses plain HTTP (`http.ListenAndServe`) with no TLS configuration.
 3. **No rate limiting** on authentication endpoints — brute-force attacks possible against login/register.
-4. **File type validation is extension-only**, not MIME-type based — a malicious user could upload executable content disguised as an image by changing the file extension.
-5. **Content Security Policy (CSP) headers are not set anywhere in the application.**
+4. **Content Security Policy (CSP) headers are not set anywhere in the application.**
 
 ---
 

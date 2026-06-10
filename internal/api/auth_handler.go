@@ -22,11 +22,11 @@ type LoginRequest struct {
 
 // AuthResponse represents the response after successful authentication.
 type AuthResponse struct {
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
+	AccessToken  string    `json:"access_token"`
+	RefreshToken string    `json:"refresh_token"`
 	UserID       uuid.UUID `json:"user_id"`
-	Role         string   `json:"role"`
-	Status       string   `json:"status"`
+	Role         string    `json:"role"`
+	Status       string    `json:"status"`
 }
 
 // RegisterRequest represents the request body for user registration.
@@ -113,7 +113,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	})
 
 	resp := AuthResponse{
-		AccessToken:  session.ID.String(), // Still return it for AJAX/Bearer usage
+		AccessToken:  session.ID.String(), // Return access token for API authentication (e.g., Android scanner)
 		RefreshToken: refreshToken,
 		UserID:       user.ID,
 		Role:         user.Role,

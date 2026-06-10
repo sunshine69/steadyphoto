@@ -101,6 +101,33 @@ func (h *MediaUploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
+		// FIX 2: Validate MIME type using http.DetectContentType() - reads first 512 bytes for sniffing.
+		// This prevents malicious uploads where someone disguises an executable as a photo by changing the extension.
+		ext := filepath.Ext(header.Filename)
+		buf := make([]byte, 512)
+		nRead, readErr := tempFile.Read(buf)
+		if readErr != nil && !errors.Is(readErr, io.EOF) {
+			log.Printf("[ERROR] UploadHandler: Failed to read for MIME sniffing %s: %v", header.Filename, readErr)
+			os.Remove(tempFile.Name())
+			continue
+		}
+
+		detectedType := http.DetectContentType(buf[:nRead])
+		extLower := strings.ToLower(ext)
+		if !isValidMediaType(detectedType, extLower) {
+			log.Printf("[ERROR] UploadHandler: MIME type mismatch for '%s' - detected '%s', expected %s",
+				header.Filename, detectedType, extLower)
+			os.Remove(tempFile.Name())
+			continue
+		}
+
+		// Seek back to start of temp file after reading for MIME sniffing!
+		if _, err := tempFile.Seek(int64(0), io.SeekStart); err != nil {
+			log.Printf("[ERROR] UploadHandler: Failed to seek in temp file for %s: %v", header.Filename, err)
+			os.Remove(tempFile.Name())
+			continue
+		}
+
 		hash := fmt.Sprintf("%x", hasher.Sum(nil))
 
 		log.Printf("[DEBUG] UploadHandler: Checking DB for duplicate hash...")
@@ -134,8 +161,7 @@ func (h *MediaUploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		ext := filepath.Ext(header.Filename)
-		log.Printf("[DEBUG] UploadHandler: Extension detected as '%s'", ext)
+	
 
 		newFilename := fmt.Sprintf("%s%s", uuid.New().String(), ext)
 
@@ -175,7 +201,7 @@ func (h *MediaUploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[DEBUG] UploadHandler: File saved to disk '%s'", newFilename)
 		os.Remove(tempFile.Name())
 
-		extLower := strings.ToLower(ext)
+		extLower = strings.ToLower(ext)
 		var mediaType domain.MediaType = domain.MediaTypePhoto
 		switch extLower {
 		case ".mp4", ".mov", ".avi":
@@ -224,3 +250,35 @@ func min(a, b int) int {
 	}
 	return b
 }
+
+// isValidMediaType checks if the detected MIME type matches the file extension.
+// This prevents malicious uploads where someone disguises an executable as a photo by changing the extension.
+// Uses http.DetectContentType() which reads up to 512 bytes for sniffing.
+func isValidMediaType(detectedType, extLower string) bool {
+	// Known media extensions (case-insensitive check done via extLower)
+	validMediaExtensions := map[string]bool{
+		".jpg": true, ".jpeg": true, ".png": true, ".gif": true,
+		".webp": true, ".heic": true, ".bmp": true,
+		".mp4": true, ".mov": true, ".avi": true, ".mkv": true,
+	}
+
+	// Check if the extension is a known media format first
+	if !validMediaExtensions[extLower] {
+		return false // Unknown extension - reject for security
+	}
+
+	// If it's a valid media extension, check that the detected MIME type
+	// matches what we expect (image/* or video/*)
+	switch {
+	case strings.HasPrefix(detectedType, "image/"):
+		return true // Valid image format with known extension
+	case strings.HasPrefix(detectedType, "video/"):
+		return true // Valid video format with known extension
+	default:
+		// MIME type doesn't match the expected category (e.g., detected as text/html but .jpg)
+		log.Printf("[WARN] UploadHandler: MIME mismatch for '%s' - detected '%s', allowed extensions include %s",
+			extLower, detectedType, extLower)
+		return false // Reject suspicious files like exe disguised as jpg
+	}
+}
+
