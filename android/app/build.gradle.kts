@@ -10,7 +10,7 @@ android {
 
     defaultConfig {
         applicationId = "com.steadyphoto.sync"
-        minSdk = 26 // Android 8.0 (Oreo) - good balance of compatibility and features
+        minSdk = 26
         targetSdk = 34
         versionCode = 1
         versionName = "0.1.0-alpha"
@@ -19,11 +19,26 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+
+        val abiFilter = project.findProperty("abiFilter") as String? ?: "arm64-v8a"
+        ndk {
+            abiFilters.addAll(abiFilter.split(","))
+        }
+    }
+
+    signingConfigs {
+        create("release") {
+            storeFile = file("../release.keystore")
+            storePassword = "mypassword123"
+            keyAlias = "release-key"
+            keyPassword = "mypassword123"
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = true
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -54,7 +69,7 @@ android {
         kotlinCompilerExtensionVersion = "1.5.8"
     }
 
-    ndkVersion = "27.0.12077973" // NDK r27 - enables 16KB ELF alignment by default (required for Android 15+ compatibility)
+    ndkVersion = "27.0.12077973"
     
     externalNativeBuild {
         cmake {
@@ -68,76 +83,66 @@ android {
         }
         
         jniLibs {
-            // Set to false to allow libraries to be memory-mapped directly from the APK.
-            // This requires 16KB alignment (which we've added to the gomobile build script)
-            // and is required for full Android 15+ compatibility.
             useLegacyPackaging = false
+        }
+    }
+
+    // Rename APK output files: app-release.apk -> steadyphoto-release.apk, etc.
+    applicationVariants.all {
+        outputs.map { output ->
+            val variantName = name.lowercase()
+            if (output is com.android.build.gradle.internal.api.BaseVariantOutputImpl) {
+                output.outputFileName = "steadyphoto-$variantName.apk"
+            }
         }
     }
 
 } // End of android block
 
 dependencies {
-    // Core Android
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
     implementation("androidx.activity:activity-compose:1.8.2")
 
-    // Compose BOM
     platform("androidx.compose:compose-bom:2024.01.00")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3:1.2.0")
 
-    // Compose Icons (using Material3 built-in icons instead of horus)
-    // No additional icon library needed - using androidx.compose.material.icons
-
-    // Lifecycle & ViewModel
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.7.0")
 
-    // Room Database (Local Storage)
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
     ksp("androidx.room:room-compiler:2.6.1")
 
-    // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
 
-    // WorkManager (Background Scanning & Uploads)
     implementation("androidx.work:work-runtime-ktx:2.9.0")
 
-    // Networking - Ktor Client
     implementation("io.ktor:ktor-client-android:2.3.7")
     implementation("io.ktor:ktor-client-content-negotiation:2.3.7")
     implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.7")
 
-    // Networking - Retrofit (for API calls)
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
 
-    // Serialization
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
 
-    // Image Loading (for thumbnails in settings)
     implementation("io.coil-kt:coil-compose:2.5.0")
 
-    // Dependency Injection - Koin
     implementation("io.insert-koin:koin-android:3.5.3")
     implementation("io.insert-koin:koin-androidx-workmanager:3.5.3")
     implementation("io.insert-koin:koin-androidx-compose:3.5.3")
 
-    // Material Icons Extended
     implementation("androidx.compose.material:material-icons-extended:1.6.0")
 
-    // Preferences DataStore (Settings storage)
     implementation("androidx.datastore:datastore-preferences:1.0.0")
 
-    // Testing
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
@@ -146,6 +151,5 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 
-    // Gomobile Bindings (Local AAR)
     implementation(files("libs/mobile-bindings.aar"))
 }

@@ -14,26 +14,39 @@ usage() {
     echo "Options:"
     echo "  --debug     Build a debug APK (default)"
     echo "  --release   Build a production-ready release APK"
+    echo "  --arm64     Target arm64-v8a only (Android phones/tablets)"
+    echo "  --x86_64    Target x86_64 only (Intel/AMD Android emulators)"
     echo "  --help      Display this help message"
 }
 
 # Parse arguments
 BUILD_TYPE="debug"
+ABI_FILTER=""
 
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --debug) BUILD_TYPE="debug"; shift ;;
         --release) BUILD_TYPE="release"; shift ;;
+        --arm64) ABI_FILTER="arm64-v8a"; shift ;;
+        --x86_64) ABI_FILTER="x86_64"; shift ;;
         --help) usage; exit 0 ;;
         *) echo "Unknown parameter passed: $1"; usage; exit 1 ;;
     esac
 done
+
+# Set default ABI filter if not specified (arm64 for mobile, both for desktop)
+if [ -z "$ABI_FILTER" ]; then
+    # For mobile-focused builds, default to arm64
+    # If you want both ABIs, call with: --debug or --release without --arm64/--x86_64
+    ABI_FILTER="arm64-v8a,x86_64"
+fi
 
 # Get the directory where this script is located (the android folder)
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
 echo "Target Build Type: ${BUILD_TYPE^^}"
+echo "Target Platform(s): $ABI_FILTER"
 
 # 1. Build Gomobile Bindings (Same for both debug and release)
 echo ""
@@ -72,16 +85,16 @@ cd "$SCRIPT_DIR"
 
 # Run the assembly task (assembleDebug or assembleRelease)
 GRADLE_TASK="assemble${BUILD_TYPE^}"
-echo "Running: ./gradlew $GRADLE_TASK"
-./gradlew "$GRADLE_TASK"
+echo "Running: ./gradlew $GRADLE_TASK -PabiFilter=$ABI_FILTER"
+./gradlew "$GRADLE_TASK" -PabiFilter="$ABI_FILTER"
 
 if [ $? -eq 0 ]; then
-    # Determine path based on build type
-    APK_PATH="$SCRIPT_DIR/app/build/outputs/apk/$BUILD_TYPE/app-$BUILD_TYPE.apk"
-    
-    # Fallback for some gradle versions if the folder structure differs slightly
+    # Determine path based on build type — APKs are now named steadyphoto-<variant>.apk
+    APK_PATH="$SCRIPT_DIR/app/build/outputs/apk/$BUILD_TYPE/steadyphoto-$BUILD_TYPE.apk"
+
+    # Fallback: find any apk in the output directory
     if [ ! -f "$APK_PATH" ]; then
-        APK_PATH=$(find "$SCRIPT_DIR/app/build/outputs/apk" -name "app-*.apk" | head -n 1)
+        APK_PATH=$(find "$SCRIPT_DIR/app/build/outputs/apk" -name "steadyphoto-*.apk" | head -n 1)
     fi
 
     echo ""
@@ -91,8 +104,7 @@ if [ $? -eq 0 ]; then
     echo "📍 APK Location: $APK_PATH"
     echo ""
     if [ "$BUILD_TYPE" == "release" ]; then
-        echo "🚀 Note: This is a RELEASE build (minified/obfuscated)."
-        echo "   If you didn't configure signing, it may be unsigned."
+        echo "🚀 Note: This is a RELEASE build (minified/obfuscated) and signed with the release keystore."
     else
         echo "🚀 Quick Install Command:"
         echo "   adb install \"$APK_PATH\""
@@ -103,3 +115,4 @@ else
     echo "❌ BUILD FAILED!"
     exit 1
 fi
+
