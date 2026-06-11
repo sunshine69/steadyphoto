@@ -14,28 +14,28 @@ The Android Kotlin + Go (gomobile) sync client is **substantially implemented** 
 | Component | Status | Notes |
 |-----------|--------|-------|
 | LoginScreen.kt | ✅ Complete | Has loading/error/success states, proper error handling |
-| HomeScreen.kt | ✅ Complete | Stats cards, status indicator, Start/Stop buttons, permission rationale UI |
+| HomeScreen.kt | ✅ Complete | Stats cards, status indicator, Start/Stop buttons, permission rationale UI. Now uses `UploadManager.uploadMedia()` directly for consistent streaming uploads. |
 | SetupScreen.kt | ✅ Complete | API URL configuration with validation and example URLs |
-| SettingsScreen.kt | ⚠️ Partially implemented | API URL config works, but auto-sync/WiFi-only toggles are **not persisted** — they reset on every screen recreation. Logout button is a stub. Storage info is placeholder text only. |
+| SettingsScreen.kt | ⚠️ Partially implemented | **FIXED**: Auto-sync/WiFi-only toggles are now persisted via DataStore-backed `SettingsRepository`. Logout button is a stub. Storage info is placeholder text only. |
 
-#### Login/Auth
+#### Login/Auth — ✅ Complete (Previously marked as missing)
 - ✅ `AuthViewModel` with proper loading/error/success states
 - ✅ JWT token storage via `ApiClient.storeAuthToken()` / `storeRefreshToken()`
-- ⚠️ **Missing**: Token refresh flow — while the API endpoint exists (`refreshSync`), there's no implementation of automatic token refresh when access tokens expire. The interceptor is a placeholder.
-- ⚠️ **Missing**: Persistent session across app restarts — unclear if `ApiClient.getAuthToken()` persists to disk
+- ✅ **FIXED**: Token refresh flow implemented in `authInterceptor` — when a 401 is received and a refresh token exists, it calls `/api/v1/auth/refresh`, stores the new access token, and retries the original request. If refresh fails or there's no refresh token, it clears auth state and dispatches an `onAuthFailure` callback to show the login screen.
+- ✅ **FIXED**: Persistent session across app restarts — `getAuthToken()` reads from SharedPreferences which persists across app lifecycle
 
 #### MediaStore Queries
 | Scanner | Status | Notes |
 |---------|--------|-------|
 | `MediaScanner.kt` | ✅ Complete | Three-tier scan: type-specific (Images/Video) → broad Files provider fallback. Hash dedup via SHA-256. |
 | `MediaContentObserver.kt` | ✅ Complete | Debounced ContentObserver on Images + Video URIs with notifyForDescendants=true |
-| `DirectoryFileObserver.kt` | ⚠️ Partially implemented | FileObserver for real-time filesystem detection, but only watches 3 hardcoded directories. Needs dynamic directory support from setup screen (user selects which folders to monitor). |
+| `DirectoryFileObserver.kt` | ⚠️ Partially implemented | FileObserver for real-time filesystem detection, but only watches 3 hardcoded directories. Needs dynamic directory support from setup screen (user selects which folders to monitor). **FIXED**: Duplicate const val declarations across FileObserver files causing compilation errors — consolidated into shared `FileObserverConstants.kt` object with `val` instead of `private const val`. |
 
-#### Permissions
+#### Permissions — ✅ Complete (Previously marked as missing)
 - ✅ `PermissionHelper` utility class exists with proper Android permission checking
 - ✅ Runtime permission request via ActivityResultLauncher in HomeScreen
 - ✅ Permission rationale UI shown when denied
-- ⚠️ **Missing**: Handling of Android 13+ granular media permissions (READ_MEDIA_IMAGES, READ_MEDIA_VIDEO) — the code uses `READ_EXTERNAL_STORAGE` which is deprecated on API 33+. Need to check for permission version and request appropriate ones.
+- ✅ **FIXED**: Handles Android 13+ granular media permissions (`READ_MEDIA_IMAGES`, `READ_MEDIA_VIDEO`) — uses version-conditional logic via `Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU`
 
 #### Foreground Service (`SyncService.kt`)
 - ✅ Proper foreground notification with channel creation
@@ -43,17 +43,16 @@ The Android Kotlin + Go (gomobile) sync client is **substantially implemented** 
 - ✅ Periodic fallback sync every 5 minutes as safety net
 - ⚠️ **Missing**: Doze mode / battery optimization handling — WorkManager handles this but the service itself doesn't account for it
 
-#### WorkManager Scheduling (`SyncManager.kt`)
+#### WorkManager Scheduling (`SyncManager.kt`) — ✅ Complete (Previously marked as missing)
 - ✅ `UploadWorker` — one-time upload work request
-- ✅ `MediaScannerWorker` — periodic media scan (5 min interval)
-- ⚠️ **Missing**: Network constraint on workers — no `requireNetwork()` or `setRequiredNetworkType(TRANSPORT_ANY)` configured. Workers will run even when offline, wasting battery and failing uploads.
+- ✅ **FIXED**: Network constraints implemented via `getNetworkConstraintsFromSettings()` — sets `UNMETERED` when WiFi-only is enabled or sync on metered connection is disabled, otherwise uses `CONNECTED`. Applied to both scan and upload workers.
+- ✅ **FIXED**: WiFi-only enforcement wired through SettingsViewModel → settingsRepository → SyncManager → WorkManager constraints
 
-#### Battery/Network Constraints
+#### Battery/Network Constraints — ✅ Complete (Previously marked as missing)
 - ✅ `NetworkConnectivityMonitor` with Flow-based network status observation
-- ⚠️ **Missing**: WiFi-only enforcement — SettingsScreen has a toggle but it's not wired to WorkManager constraints or the UploadWorker
-- ⚠️ **Missing**: Doze mode / background execution limits handling
+- ✅ **FIXED**: WiFi-only toggle now affects WorkManager constraints via `getNetworkConstraintsFromSettings()` and triggers `syncManager.rescheduleWithCurrentSettings()` when changed
 
-### ✅ Go Sync Engine (gomobile) — Partially Implemented
+### ⚠️ Go Sync Engine (gomobile) — Partially Implemented
 
 | Component | Status | Notes |
 |-----------|--------|-------|
@@ -69,14 +68,13 @@ The Android Kotlin + Go (gomobile) sync client is **substantially implemented** 
 ### Room Database (`MediaItemEntity`)
 - ✅ Proper entity with hash-based deduplication (unique index on `hash` field)
 - ✅ Upload status enum with all states: PENDING, UPLOADING, UPLOADED, FAILED, SKIPPED_DUPLICATE, CANCELLED, DELETED
-- ✅ Capture time, camera model, GPS fields present but **never populated** — EXIF parsing is missing from both the Go and Kotlin layers
+- ⚠️ **Still missing**: Capture time, camera model, GPS fields present but **never populated** — EXIF parsing is missing from both the Go and Kotlin layers
 
 ### Repository Layer
 | Component | Status | Notes |
 |-----------|--------|-------|
-| `SyncRepositoryImpl` | ⚠️ Partially implemented | Uses Retrofit for uploads (not gomobile). No retry logic in this path. Uploads entire file into memory via `it.readBytes()` — problematic for large files (>100MB) that could cause OOM on Android. |
-| `UploadManager` | ✅ Well implemented | Has chunked upload with streaming, batch uploads, progress tracking, network monitoring, retry logic |
-| ⚠️ **Inconsistency**: Two upload paths exist — SyncRepositoryImpl (single-threaded, no chunking, loads whole file into memory) and UploadManager (chunked, streaming). MainViewModel uses `container.repository.uploadMedia()` which calls the weaker path. The UploadManager is used by UploadWorker but NOT by HomeScreen's direct sync. |
+| `SyncRepositoryImpl` | ✅ Fixed (Previously marked as problematic) | Upload path now delegates to `UploadManager.uploadMedia()` internally. Marked as deprecated with clear warning about OOM crashes — should not be used for new code. MainViewModel and UploadWorker already migrated to use UploadManager directly via AppContainer. |
+| `UploadManager` | ✅ Well implemented | Has chunked upload with streaming, batch uploads, progress tracking, network monitoring, retry logic. Now the primary upload path used by both HomeScreen (via MainViewModel) and UploadWorker. |
 
 ### DTOs
 - ✅ All required DTOs present: LoginRequest/Response, RefreshRequest/Response, UploadResponse, SyncStatusResponse, ChunkUploadResponse, etc.
@@ -88,47 +86,37 @@ The Android Kotlin + Go (gomobile) sync client is **substantially implemented** 
 
 ### 🔴 High Priority
 
-1. **Token Refresh Flow Missing**
-   - The API endpoint exists but is never used. When the access token expires, all subsequent requests will fail silently. Need interceptor implementation that calls `/api/v1/auth/refresh` and retries the original request with a new token.
-
-2. **Android 13+ Permission Handling**
-   - Uses `READ_EXTERNAL_STORAGE` which requires manifest permission on API 30 but is unnecessary on API 33+. Need version-conditional permission requests using `READ_MEDIA_IMAGES` / `READ_MEDIA_VIDEO`.
-
-3. **Two Upload Paths — Inconsistent Behavior**
-   - HomeScreen → MainViewModel → SyncRepositoryImpl (loads file into memory, no chunking)
-   - UploadWorker → UploadManager (chunked upload, streaming, retry logic)
-   - Fix: Have MainViewModel use the same `UploadManager` that UploadWorker uses for consistency.
-
-4. **EXIF Metadata Not Populated**
+1. **EXIF Metadata Not Populated**
    - The entity has fields for captureTime, cameraModel, gpsLatitude, gpsLongitude — but no code populates them. Need Go EXIF parsing (e.g., via `github.com/xor-gate/go-exifdecode`) or Kotlin-based extraction.
+
+2. **FileObserver Directory Configuration**
+   - Monitors hardcoded directories only in `MultiDirectoryFileObserver.OBSERVED_DIRS`. Should read configured directories from settings so users can choose which folders to sync. Consider adding a SettingsRepository entry for custom watch directories and updating the FileObserver files accordingly.
+
+3. **No Download/Deletion Sync Support**
+   - `deleteMedia` in the repository just deletes local records — doesn't call the server endpoint to actually delete from cloud. No download sync exists at all.
 
 ### 🟡 Medium Priority
 
-5. **WorkManager Network Constraints Missing**
-   - Workers should have `setRequiredNetworkType(TRANSPORT_ANY)` at minimum, and ideally `requireNetwork()` to prevent offline uploads.
+4. **Settings Screen Features Not Wired Up**
+   - Logout button is a stub (`/* TODO: Logout */`). Storage info shows static placeholder text ("Local storage: 0 MB used", "Synced items: 0") instead of querying the database for actual counts.
 
-6. **Settings Persistence Broken**
-   - AutoSyncEnabled, WiFiOnly toggles in SettingsScreen are not persisted (SharedPreferences/DataStore). They reset on every screen recreation.
+5. **gomobile Chunk Upload Dead Code**
+   - The Go chunk upload functions are never called from Kotlin. Either integrate them or remove them to reduce confusion.
 
-7. **FileObserver Directory Configuration**
-   - Monitors hardcoded directories only. Should read configured directories from setup/preferences so users can choose which folders to sync.
+6. **Deprecation Warnings — FileObserver(String) Constructor**
+   - All three FileObserver files now show deprecation warnings for the `FileObserver(String)` constructor (deprecated in Android API 26+). The `@Suppress("DEPRECATION")` annotations have been removed per user request to see these warnings. No good alternative exists: ContentObserver doesn't provide real-time filesystem events, and periodic scanning defeats the purpose of immediate detection. Consider migrating to a more modern approach when Android provides one.
 
-8. **ApiClient Token Persistence**
-   - Unclear if `getAuthToken()` persists across app restarts. If not, user must log in every time the app is opened.
+7. **Unused Variables in ForceMediaIndexer.kt**
+   - `uri` variable (line 74), `path` parameter (lines 79, 146), `scannedUri` parameter (line 146) — all unused but kept for API compatibility with callbacks that may be filled in later.
 
-9. **SyncRepositoryImpl Memory Issue**
-   - `it.readBytes()` loads entire file into memory for upload — crashes on large videos. Should use streaming approach like UploadManager does.
+8. **Unused Variables in UploadManager.kt**
+   - Several parameters (`token`, `callback`) and variables (`lastError`) are declared but never used, likely from incomplete refactoring or future use placeholders.
 
 ### 🟢 Low Priority / Nice-to-Have
 
-10. **Settings Screen Features Not Wired Up**
-    - Logout button is a stub, storage info is static text, auto-sync/WiFi-only toggles don't affect behavior.
+9. **No structured error response parsing** — No `ErrorResponse` DTO for API errors with code/message fields.
 
-11. **gomobile Chunk Upload Dead Code**
-    - The Go chunk upload functions are never called from Kotlin. Either integrate them or remove them to reduce confusion.
-
-12. **No Download/Deletion Sync Support**
-    - `deleteMedia` in the repository just deletes local records — doesn't call the server endpoint to actually delete from cloud. No download sync exists at all.
+10. **Doze mode handling in foreground service** — WorkManager handles this but the SyncService itself doesn't account for battery optimization limits.
 
 ---
 
@@ -136,14 +124,14 @@ The Android Kotlin + Go (gomobile) sync client is **substantially implemented** 
 
 | Design Requirement | Implementation Status | Gap |
 |-------------------|----------------------|-----|
-| UI layer (Compose) | ✅ Implemented | Settings not fully wired up |
-| Login/Auth | ⚠️ Partially implemented | Token refresh missing |
-| MediaStore queries | ✅ Implemented | Three-tier scan working well |
-| Permissions | ⚠️ Partially implemented | Android 13+ permissions not handled |
-| Foreground service | ✅ Implemented | Doze mode handling missing |
-| WorkManager scheduling | ⚠️ Partially implemented | No network constraints configured |
-| Battery/network constraints | ⚠️ Partially implemented | WiFi-only toggle not wired, no doze handling |
-| Go file scanning | ❌ Not implemented | Gomobile has hash/metadata but no scan function exposed to Android — relies entirely on Kotlin MediaScanner |
+| UI layer (Compose) | ✅ Implemented | Logout button stub, storage info placeholder |
+| Login/Auth | ✅ Implemented | Token refresh now implemented and working |
+| MediaStore queries | ✅ Implemented | Three-tier scan working well; FileObserver dirs hardcoded |
+| Permissions | ✅ Implemented | Android 13+ granular permissions handled |
+| Foreground service | ✅ Implemented | Doze mode handling missing in service itself |
+| WorkManager scheduling | ✅ Implemented | Network constraints now properly configured |
+| Battery/network constraints | ✅ Implemented | WiFi-only toggle wired to WorkManager constraints |
+| Go file scanning | ❌ Not implemented | Gomobile has hash/metadata but no scan function exposed — relies entirely on Kotlin MediaScanner |
 | Go hashing | ✅ Implemented | SHA256 works via gomobile |
 | Go metadata extraction | ⚠️ Partially implemented | MIME type only, EXIF missing |
 | Go upload (single file) | ✅ Implemented | Multipart with retry |
@@ -155,20 +143,16 @@ The Android Kotlin + Go (gomobile) sync client is **substantially implemented** 
 ## 5. Recommendations for Next Steps
 
 ### Phase 1: Critical Fixes (Pre-Release)
-1. Implement token refresh interceptor in `ApiClient`
-2. Fix Android 13+ permission handling with version-conditional requests
-3. Consolidate upload path — have MainViewModel use `UploadManager.uploadMedia()` instead of `SyncRepositoryImpl.uploadMedia()`
-4. Add WorkManager network constraints to workers
+1. Implement EXIF parsing in Go for capture time, camera model, GPS coordinates
+2. Add dynamic FileObserver directory configuration from user preferences
+3. Implement actual server-side delete in `deleteMedia` — call the API endpoint before deleting local records
 
 ### Phase 2: Feature Completeness
-5. Implement EXIF parsing in Go for capture time, camera model, GPS coordinates
-6. Wire up Settings screen (persist toggles via DataStore/SharedPreferences)
-7. Implement actual token persistence across app restarts
-8. Fix SyncRepositoryImpl memory issue — use streaming upload
+4. Wire up Settings screen logout button to clear auth tokens and navigate back to login
+5. Replace placeholder storage info with real database counts (pending, uploaded items)
+6. Clean up unused variables in ForceMediaIndexer.kt and UploadManager.kt — either remove or use them
 
 ### Phase 3: Polish
-9. Clean up dead gomobile chunk upload code or integrate it properly
-10. Add download sync support (server → device)
-11. Implement actual server-side delete in `deleteMedia`
-12. Add dynamic FileObserver directory configuration from user preferences
-
+7. Remove dead gomobile chunk upload code or integrate it properly as a fallback
+8. Add structured error response parsing (`ErrorResponse` DTO with code/message)
+9. Consider doze mode handling in the foreground service for battery optimization compatibility

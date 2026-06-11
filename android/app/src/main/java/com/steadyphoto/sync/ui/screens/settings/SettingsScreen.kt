@@ -15,6 +15,7 @@ import com.steadyphoto.sync.data.remote.api.ApiClient
 @Composable
 fun SettingsScreen(
     onNavigateUp: () -> Unit,
+    onLogout: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val viewModel: SettingsViewModel = koinViewModel()
@@ -143,7 +144,7 @@ fun SettingsScreen(
                 }
             }
 
-            // Storage info (placeholder)
+            // Storage info - placeholder, can be enhanced with real database counts later
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Storage", style = MaterialTheme.typography.titleMedium)
@@ -153,12 +154,15 @@ fun SettingsScreen(
                 }
             }
 
-            // Account section (placeholder)
+            // Account section with logout button
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Account", style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.height(8.dp))
-                    Button(onClick = { /* TODO: Logout */ }) {
+                    Button(
+                        onClick = onLogout,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
                         Text("Logout")
                     }
                 }
@@ -193,5 +197,3 @@ private fun SwitchPreferenceRow(
         )
     }
 }
-
-
