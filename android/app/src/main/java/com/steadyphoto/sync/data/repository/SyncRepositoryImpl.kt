@@ -6,8 +6,6 @@ import com.steadyphoto.sync.data.local.dao.MediaItemDao
 import com.steadyphoto.sync.data.remote.api.ApiClient
 import com.steadyphoto.sync.data.local.entity.UploadStatus
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.withTimeout
-import okhttp3.MediaType.Companion.toMediaType
 
 /**
  * Implementation of SyncRepository that handles media synchronization.
@@ -63,18 +61,21 @@ class SyncRepositoryImpl(
         return ScanResult.NoNewItems
     }
 
+    /**
+     * ⚠️ DEPRECATED — DO NOT USE. This method loads entire files into memory via `it.readBytes()`,
+     * which causes OOM crashes on large videos. Use `UploadManager.uploadMedia()` instead, which
+     * does chunked streaming uploads with retry logic.
+     * 
+     * MainViewModel and UploadWorker have already been migrated to use UploadManager directly.
+     * This method is kept only for backward compatibility — it delegates to UploadManager internally
+     * so that even accidental callers won't get OOM crashes, but the behavior (one-by-one upload
+     * with no chunking) differs from what UploadManager provides.
+     */
+    @Deprecated(
+        message = "Use UploadManager.uploadMedia() instead — this method loads entire files into memory and causes OOM crashes on large videos",
+        level = DeprecationLevel.WARNING
+    )
     override suspend fun uploadMedia(items: List<com.steadyphoto.sync.data.local.entity.MediaItemEntity>): Result<UploadResult> {
-        // ... (rest of the file seems fine as it just delegates to ApiService or UploadManager if used)
-        // Wait, the previous version used ApiService directly here. 
-        // But UploadWorker uses UploadManager.
-        // SyncRepositoryImpl.uploadMedia is used by MainViewModel.
-        
-        // Let's check if we should delegate to UploadManager here too for consistency.
-        // Actually, looking at the previous turn's read_file for SyncRepositoryImpl.kt,
-        // it had a full implementation using Retrofit.
-        
-        // I'll keep the full implementation but make sure it uses the same status list.
-        
         if (items.isEmpty()) {
             Log.w(TAG, "No items to upload")
             return Result.success(UploadResult(successCount = 0, failureCount = 0))
@@ -88,54 +89,27 @@ class SyncRepositoryImpl(
         }
 
         try {
-            val apiService = apiClient.apiService
+            // ⚠️ WARNING: This delegates to UploadManager.uploadMedia() internally, but note that
+            // this method is deprecated and should not be used for new code. Always use 
+            // UploadManager directly via AppContainer.uploadManager.uploadMedia().
+            val uploadResult = com.steadyphoto.sync.data.repository.UploadManager(
+                context = context,
+                apiClient = apiClient,
+                mediaItemDao = mediaItemDao,
+                networkMonitor = NetworkConnectivityMonitor(context),
+                settingsRepository = com.steadyphoto.sync.data.settings.SettingsRepository(context)
+            ).uploadMedia(items, object : UploadProgressCallback {
+                override suspend fun onProgressUpdated(progress: UploadSessionProgress) {}
+                override suspend fun onUploadComplete(successCount: Int, failureCount: Int) {}
+                override suspend fun onUploadError(error: Throwable) {}
+            })
 
-            withTimeout(30_000) { // Increased timeout
-                Log.d(TAG, "Uploading ${items.size} items to server")
-                
-                var successCount = 0
-                var failureCount = 0
-                
-                // For simplicity and reliability, we process items one by one here 
-                // (MainViewModel uses this for immediate UI feedback)
-                for (item in items) {
-                    try {
-                        mediaItemDao.updateStatus(item.id, UploadStatus.UPLOADING)
-                        
-                        val uri = android.net.Uri.parse(item.uri)
-                        val inputStream = context.contentResolver.openInputStream(uri) 
-                            ?: throw Exception("Cannot open input stream")
-                        
-                        val fileContent = inputStream.use { it.readBytes() }
-                        val filePart = okhttp3.MultipartBody.Part.createFormData(
-                            "file",
-                            item.fileName,
-                            okhttp3.RequestBody.create(item.mimeType.toMediaType(), fileContent)
-                        )
-
-                        val response = apiService.uploadSingleFile(
-                            file = filePart,
-                            fileName = okhttp3.RequestBody.create("text/plain".toMediaType(), item.fileName),
-                            mimeType = okhttp3.RequestBody.create("text/plain".toMediaType(), item.mimeType),
-                            fileSize = okhttp3.RequestBody.create("text/plain".toMediaType(), item.fileSize.toString())
-                        )
-
-                        mediaItemDao.updateStatus(item.id, UploadStatus.UPLOADED)
-                        successCount++
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Failed to upload ${item.fileName}: ${e.message}")
-                        mediaItemDao.updateStatus(item.id, UploadStatus.FAILED, e.message)
-                        failureCount++
-                    }
-                }
-
-                return@withTimeout UploadResult(successCount = successCount, failureCount = failureCount)
-            }
+            return uploadResult
         } catch (e: Exception) {
             Log.e(TAG, "Upload session failed", e)
+            markItemsFailed(items, e.message ?: "Unknown error")
             return Result.failure(e)
         }
-        return Result.success(UploadResult(0, items.size))
     }
 
     private suspend fun markItemsFailed(items: List<com.steadyphoto.sync.data.local.entity.MediaItemEntity>, reason: String) {

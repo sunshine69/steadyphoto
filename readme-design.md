@@ -6,8 +6,10 @@ SteadyPhoto is a comprehensive photo and video management system with AI-powered
 
 ---
 
-**Last Updated:** December 2024  
+**Last Updated:** July 2025  
 **Version:** Pre-release (v1.0 preparation)
+
+---
 
 ---
 
@@ -363,7 +365,7 @@ Client-side search and filtering across the media grid with three scope options:
 | **Upload Frontend UI** | 🚧 Remaining | Drag & drop zone with overlay feedback, progress bars, preview grid — minor visual polish needed on mobile devices (not high priority). Note: album auto-association not yet implemented despite design document mentioning it. |
 | **Android App Authentication** | ✅ Completed | Token refresh flow is fully implemented in OkHttp interceptor (`ApiClient.kt`). On 401 Unauthorized, the app automatically calls `/api/v1/auth/refresh`, stores the new access token via `storeAuthToken()`, and retries the original request transparently to the user. If refresh fails or no refresh token exists, it clears auth state and triggers `onAuthFailure` callback for UI navigation back to login screen. |
 | **Android App Media Scanning** | ✅ Completed | Three-tier scan: type-specific (Images/Video) → broad Files provider fallback. Hash dedup via SHA-256 using Go gomobile bindings (`MediaProcessor.MediaHasher`). ContentObserver with debounced notifications on Images + Video URIs. FileObserver for real-time filesystem detection (though only watches 3 hardcoded directories currently). |
-| **Android App Upload** | ⚠️ Partially implemented — Two inconsistent upload paths exist: HomeScreen → MainViewModel → SyncRepositoryImpl (loads entire file into memory via `it.readBytes()`, no chunking, crashes on large videos) vs. UploadWorker → UploadManager (chunked streaming with retry logic). Fix needed: Have MainViewModel use the same `UploadManager.uploadMedia()` that UploadWorker uses for consistency and to prevent OOM crashes on large files. |
+| **Android App Upload** | ✅ Completed — OOM fix applied. MainViewModel and SyncService both use `UploadManager.uploadMedia()` for chunked streaming uploads with retry logic (fixes OOM crashes on large videos). UploadWorker also uses the same path via AppContainer. The old inconsistent upload path in `SyncRepositoryImpl.uploadMedia()` (which loaded entire file into memory via `it.readBytes()`) is now dead code — MainViewModel no longer calls it. However, that method still exists as a risk: future developers adding new upload paths through SyncRepository could accidentally reintroduce the OOM issue. Recommendation: delete `SyncRepositoryImpl.uploadMedia()` entirely or mark it as deprecated with a clear warning comment. **⚠️ Okio deprecation fixes applied**: Replaced deprecated `Okio.buffer(Sink)` static method calls in ProgressRequestBody.kt and StreamingUploadHelper with extension function patterns (`sink.buffer()`, `countingSink.buffer()`). **⚠️ OkHttp deprecation fix applied**: Replaced deprecated `RequestBody.create(mediaType, content)` calls in UploadManager.kt with the extension function pattern `content.toRequestBody(mediaType)`. Both were compilation errors — the old APIs no longer compile. |
 | **Android App Permissions** | ⚠️ Partially implemented — Uses deprecated `READ_EXTERNAL_STORAGE` which requires manifest permission on API 30 but is unnecessary on API 33+. Need version-conditional permission requests using `READ_MEDIA_IMAGES` / `READ_MEDIA_VIDEO`. Permission rationale UI shown when denied. |
 | **Android App Foreground Service** | ✅ Completed | Proper foreground notification with channel creation, FileObserver + ContentObserver dual detection (real-time primary, content observer secondary), periodic fallback sync every 5 minutes as safety net. Missing: Doze mode / battery optimization handling. |
 | **Android App WorkManager Scheduling** | ⚠️ Partially implemented — `UploadWorker` (one-time upload) and `MediaScannerWorker` (periodic scan, 5 min interval). Missing network constraints on workers (`setRequiredNetworkType(TRANSPORT_ANY)`), so they run even when offline. WiFi-only toggle exists in SettingsScreen but is not wired to WorkManager constraints or UploadWorker. |
@@ -377,6 +379,7 @@ Client-side search and filtering across the media grid with three scope options:
 - [ ] **Upload Frontend Polish (Web)**: Drag & drop zone with overlay feedback, progress bars, batch queue concurrency control.
 - [ ] **Auto-add uploaded media to album** — feature mentioned in original design but not yet implemented in upload handler.
 - [ ] **CSP (Content Security Policy) headers** — not set anywhere in the application.
+- [ ] **Clean up dead code**: `SyncRepositoryImpl.uploadMedia()` is dead code (MainViewModel uses UploadManager directly), but it still exists and loads entire file into memory via `it.readBytes()`. Should be deleted or deprecated with a clear warning to prevent future developers from reintroducing OOM crashes on large files. |
 
 ---
 ## Security Summary *(Based on codebase review)*

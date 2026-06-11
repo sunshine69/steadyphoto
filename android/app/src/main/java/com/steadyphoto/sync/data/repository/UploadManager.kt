@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import okio.BufferedSink
 
 /**
@@ -253,9 +254,9 @@ class UploadManager(
                 
                 apiService.uploadSingleFile(
                     file = filePart,
-                    fileName = okhttp3.RequestBody.create("text/plain".toMediaType(), item.fileName),
-                    mimeType = okhttp3.RequestBody.create("text/plain".toMediaType(), item.mimeType),
-                    fileSize = okhttp3.RequestBody.create("text/plain".toMediaType(), item.fileSize.toString())
+                    fileName = item.fileName.toRequestBody("text/plain".toMediaType()),
+                    mimeType = item.mimeType.toRequestBody("text/plain".toMediaType()),
+                    fileSize = item.fileSize.toString().toRequestBody("text/plain".toMediaType())
                 )
 
                 _uploadProgress.update { current ->
@@ -374,15 +375,15 @@ class UploadManager(
                     }
                 } ?: throw Exception("Could not open input stream")
 
-                val chunkBody = okhttp3.RequestBody.create("application/octet-stream".toMediaType(), chunkData)
+                val chunkBody = chunkData.toRequestBody("application/octet-stream".toMediaType())
                 val apiService = apiClient.apiService
                 
                 val response = apiService.uploadChunk(
                     chunk = okhttp3.MultipartBody.Part.createFormData("chunk", "chunk_$chunkIndex", chunkBody),
-                    uploadId = okhttp3.RequestBody.create("text/plain".toMediaType(), uploadId),
-                    chunkIndex = okhttp3.RequestBody.create("text/plain".toMediaType(), chunkIndex.toString()),
-                    totalChunks = okhttp3.RequestBody.create("text/plain".toMediaType(), totalChunks.toString()),
-                    fileName = okhttp3.RequestBody.create("text/plain".toMediaType(), item.fileName)
+                    uploadId = uploadId.toRequestBody("text/plain".toMediaType()),
+                    chunkIndex = chunkIndex.toString().toRequestBody("text/plain".toMediaType()),
+                    totalChunks = totalChunks.toString().toRequestBody("text/plain".toMediaType()),
+                    fileName = item.fileName.toRequestBody("text/plain".toMediaType())
                 )
 
                 if (response.success) return true
