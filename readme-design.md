@@ -361,21 +361,24 @@ Client-side search and filtering across the media grid with three scope options:
 | **Media Upload (Backend)** | ✅ Completed with Multiple Modes | Multi-file upload, single file upload, chunked resumable uploads for mobile clients. SHA256 deduplication verified. MIME-type detection via `http.DetectContentType()` + extension whitelist enforced at upload time. |
 | **Metadata Extraction** | 🚧 Stubbed | Defaults to `time.Now()` for capture timestamp. EXIF/video parsing planned for future phase. |
 | **Upload Frontend UI** | 🚧 Remaining | Drag & drop zone with overlay feedback, progress bars, preview grid — minor visual polish needed on mobile devices (not high priority). Note: album auto-association not yet implemented despite design document mentioning it. |
+| **Android App Authentication** | ✅ Completed | Token refresh flow is fully implemented in OkHttp interceptor (`ApiClient.kt`). On 401 Unauthorized, the app automatically calls `/api/v1/auth/refresh`, stores the new access token via `storeAuthToken()`, and retries the original request transparently to the user. If refresh fails or no refresh token exists, it clears auth state and triggers `onAuthFailure` callback for UI navigation back to login screen. |
+| **Android App Media Scanning** | ✅ Completed | Three-tier scan: type-specific (Images/Video) → broad Files provider fallback. Hash dedup via SHA-256 using Go gomobile bindings (`MediaProcessor.MediaHasher`). ContentObserver with debounced notifications on Images + Video URIs. FileObserver for real-time filesystem detection (though only watches 3 hardcoded directories currently). |
+| **Android App Upload** | ⚠️ Partially implemented — Two inconsistent upload paths exist: HomeScreen → MainViewModel → SyncRepositoryImpl (loads entire file into memory via `it.readBytes()`, no chunking, crashes on large videos) vs. UploadWorker → UploadManager (chunked streaming with retry logic). Fix needed: Have MainViewModel use the same `UploadManager.uploadMedia()` that UploadWorker uses for consistency and to prevent OOM crashes on large files. |
+| **Android App Permissions** | ⚠️ Partially implemented — Uses deprecated `READ_EXTERNAL_STORAGE` which requires manifest permission on API 30 but is unnecessary on API 33+. Need version-conditional permission requests using `READ_MEDIA_IMAGES` / `READ_MEDIA_VIDEO`. Permission rationale UI shown when denied. |
+| **Android App Foreground Service** | ✅ Completed | Proper foreground notification with channel creation, FileObserver + ContentObserver dual detection (real-time primary, content observer secondary), periodic fallback sync every 5 minutes as safety net. Missing: Doze mode / battery optimization handling. |
+| **Android App WorkManager Scheduling** | ⚠️ Partially implemented — `UploadWorker` (one-time upload) and `MediaScannerWorker` (periodic scan, 5 min interval). Missing network constraints on workers (`setRequiredNetworkType(TRANSPORT_ANY)`), so they run even when offline. WiFi-only toggle exists in SettingsScreen but is not wired to WorkManager constraints or UploadWorker. |
+| **Android App Go Sync Engine** | ⚠️ Partially implemented — `MediaProcessor.MediaHasher` (SHA256 hashing) and `UploadSingleFile` (multipart upload with retry logic) are complete. Chunked upload endpoints exist in Go but are never called from Kotlin — Android uses OkHttp for chunked uploads instead. `GetFileMetadata` only handles basic MIME type from extension; EXIF parsing is missing. |
+| **Android App Settings Persistence** | ⚠️ Partially implemented — API URL config works, but auto-sync/WiFi-only toggles are not persisted (SharedPreferences/DataStore) and reset on every screen recreation. Logout button is a stub. Storage info is placeholder text only. |
 
 ### Outstanding / Future Work
-- [ ] **Packaging - prepare release 1.0** ✅ Partially Complete
-  - ✅ Dockerfile created for multi-stage build (Angular + Go)
-  - ✅ Docker image, docker-compose deployment tested.
-  - ✅ Server configured to serve Angular static files at `/ui` and API at `/api/v1` — done 
-- [ ] **Android app** to upload media from android phone ⚠️ Partially implemented — network_security_config.xml allows cleartext traffic for local dev IPs, but no certificate pinning is configured.
-- [ ] **EXIF/Video Metadata Extraction**: Parse actual capture times, camera info, video duration/resolution during upload.
+
+- [ ] **EXIF/Video Metadata Extraction**: Parse actual capture times, camera info, video duration/resolution during upload — missing from both Go (`GetFileMetadata` returns basic MIME type only) and Kotlin layers.
 - [ ] **Search by datetime range** and other advanced search filters.
-- [ ] **Upload Frontend Polish**: Drag & drop zone with overlay feedback, progress bars, batch queue concurrency control.
+- [ ] **Upload Frontend Polish (Web)**: Drag & drop zone with overlay feedback, progress bars, batch queue concurrency control.
 - [ ] **Auto-add uploaded media to album** — feature mentioned in original design but not yet implemented in upload handler.
 - [ ] **CSP (Content Security Policy) headers** — not set anywhere in the application.
 
 ---
-
 ## Security Summary *(Based on codebase review)*
 
 ### ✅ Implemented Safeguards
