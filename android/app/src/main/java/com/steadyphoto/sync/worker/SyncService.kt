@@ -104,7 +104,7 @@ class SyncService : Service(), KoinComponent {
     private fun registerContentObserver() {
         val contentResolver = applicationContext.contentResolver
         
-        mediaContentObserver = MediaContentObserver(Handler(), serviceScope) {
+        mediaContentObserver = MediaContentObserver(Handler(android.os.Looper.getMainLooper()), serviceScope) {
             performSync()
         }
         

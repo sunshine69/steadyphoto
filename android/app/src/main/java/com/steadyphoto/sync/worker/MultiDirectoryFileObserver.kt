@@ -8,29 +8,12 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import java.io.File
 
-// Alias FileObserver constants to avoid fully qualified names in Kotlin
-private const val CREATE = JavaFileObserver.CREATE
-private const val MODIFY = JavaFileObserver.MODIFY  // Android uses MODIFY, not MODIFIED
-private const val CLOSE_WRITE = JavaFileObserver.CLOSE_WRITE
-
-/**
- * FileObserver that monitors multiple directories for new files.
- * 
- * Unlike ContentObserver (which only fires when MediaStore indexes a file),
- * FileObserver watches the actual filesystem and detects new files immediately,
- * regardless of whether they're indexed by MediaStore yet. This is critical
- * for catching downloaded files from browsers, email apps, etc. that may not
- * be properly registered in MediaStore.
- */
 class MultiDirectoryFileObserver(
-    private val onNewFile: (String) -> Unit
-) {
+    private val onNewFile: (file: String) -> Unit = {}
+) : CoroutineScope by CoroutineScope(SupervisorJob() + Dispatchers.IO) {
 
     companion object {
         private const val TAG = "MultiDirFileObserver"
-        
-        // Events we care about - only create and modify events for files
-        private val EVENTS_MASK = CREATE or MODIFY
         
         // Directories to watch - common places where media files appear
         val OBSERVED_DIRS = listOf(
@@ -72,10 +55,10 @@ class MultiDirectoryFileObserver(
                         if (path == null) return
                         
                         // Only process create and modify events
-                        if ((event and EVENTS_MASK) != 0 && event != CLOSE_WRITE) {
+                        if ((event and FileObserverConstants.EVENTS_MASK) != 0 && event != FileObserverConstants.CLOSE_WRITE) {
                             val eventType = when (event and 0xFF) {
-                                CREATE -> "CREATE"
-                                MODIFY -> "MODIFY"  // Changed from MODIFIED to MODIFY
+                                FileObserverConstants.CREATE -> "CREATE"
+                                FileObserverConstants.MODIFY -> "MODIFY"  // Changed from MODIFIED to MODIFY
                                 else -> "UNKNOWN($event)"
                             }
                             

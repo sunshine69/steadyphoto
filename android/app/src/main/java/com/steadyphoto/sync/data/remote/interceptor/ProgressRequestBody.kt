@@ -23,28 +23,21 @@ class ProgressRequestBody(
         val totalBytes = file.length()
         val bytesWritten = AtomicLong(0L)
         
-        // Use a forwarding sink to intercept writes and report progress
-        val countingSink = object : ForwardingSink(sink) {
-            @Throws(java.io.IOException::class)
-            override fun write(source: Buffer, byteCount: Long) {
-                super.write(source, byteCount)
-                val currentBytes = bytesWritten.addAndGet(byteCount)
-                
-                // Report progress (avoid too frequent callbacks)
-                if (currentBytes % (1024L * 100L) == 0L || currentBytes >= totalBytes) {
-                    listener.onProgress(currentBytes, totalBytes)
-                }
-            }
-        }
-
+        // Write directly to the sink and track progress
         file.inputStream().use { inputStream ->
-            countingSink.buffer().use { bufferedSink ->
-                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                var bytesRead: Int
-                while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-                    bufferedSink.write(buffer, 0, bytesRead)
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            var bytesRead: Int
+            while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                if (bytesRead > 0) {
+                    sink.write(buffer, 0, bytesRead)
+                    bytesWritten.addAndGet(bytesRead.toLong())
+                    
+                    // Report progress (avoid too frequent callbacks)
+                    val currentBytes = bytesWritten.get()
+                    if (currentBytes % (1024L * 100L) == 0L || currentBytes >= totalBytes) {
+                        listener.onProgress(currentBytes, totalBytes)
+                    }
                 }
-                // bufferedSink is closed by 'use', which handles flushing/closing
             }
         }
     }
@@ -117,33 +110,25 @@ class StreamingUploadHelper {
             override fun writeTo(sink: BufferedSink) {
                 val buffer = ByteArray(ProgressRequestBody.DEFAULT_BUFFER_SIZE)
                 
-                // If listener is provided, wrap the sink in a counting sink
-                val targetSink: BufferedSink = if (listener != null) {
-                    object : ForwardingSink(sink) {
-                        @Throws(java.io.IOException::class)
-                        override fun write(source: Buffer, byteCount: Long) {
-                            super.write(source, byteCount)
-                            val currentBytes = bytesWrittenInChunk.addAndGet(byteCount)
-                            listener.onProgress(currentBytes, chunkInfo.size)
-                        }
-                    }.buffer()
-                } else {
-                    sink.buffer()
-                }
-
+                // Write directly to the sink and track progress if listener is provided
                 chunkInfo.file.inputStream().use { inputStream ->
                     inputStream.skip(chunkInfo.offset)
-                    targetSink.use { bufferedTargetSink ->
-                        var totalWritten = 0L
-                        while (totalWritten < chunkInfo.size) {
-                            val remaining = chunkInfo.size - totalWritten
-                            // Read at most 'remaining' or buffer size
-                            val toRead = if (remaining < buffer.size) remaining.toInt() else buffer.size
-                            val bytesRead = inputStream.read(buffer, 0, toRead)
-                            if (bytesRead == -1) break
-                            
-                            bufferedTargetSink.write(buffer, 0, bytesRead)
-                            totalWritten += bytesRead
+                    var totalWritten = 0L
+                    while (totalWritten < chunkInfo.size) {
+                        val remaining = chunkInfo.size - totalWritten
+                        // Read at most 'remaining' or buffer size
+                        val toRead = if (remaining < buffer.size) remaining.toInt() else buffer.size
+                        val bytesRead = inputStream.read(buffer, 0, toRead)
+                        if (bytesRead == -1) break
+                        
+                        sink.write(buffer, 0, bytesRead)
+                        totalWritten += bytesRead.toLong()
+                        
+                        // Report progress if listener is provided
+                        if (listener != null) {
+                            bytesWrittenInChunk.addAndGet(bytesRead.toLong())
+                            val currentBytes = bytesWrittenInChunk.get()
+                            listener.onProgress(currentBytes, chunkInfo.size)
                         }
                     }
                 }
