@@ -11,15 +11,25 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	u "github.com/sunshine69/golang-tools/utils"
 )
 
-const (
-	baseURL = "https://media.kaykraft.org/api"
-	apiKey  = "hlMQkHq4oYqnTRHGnlSsRxTOZgfniW82BoeLvsWqg"
-	outDir  = "/mnt/portdata/tmp/immich-migrate" // temp dir for download/upload/delete
+var (
+	baseURL = u.Getenv("IMMICH_BASE_URL", "https://media.kaykraft.org/api")
+	apiKey  = os.Getenv("IMMICH_API_KEY")
+	outDir  = "/tmp/immich-migrate" // temp dir for download/upload/delete
+
+	// Default rate limit: SteadyPhoto allows 100 requests/min by IP on protected routes.
+	// With a 6-second sleep between uploads, we stay well under the limit (10 req/min).
+	defaultUploadSleepInterval = 1 * time.Second // ~10 req/min to stay safely under 100/min
+
+	// Maximum number of retries for rate-limited requests before giving up.
+	maxRateLimitRetries = 5
 )
 
 // SearchResponse mirrors Immich search API response
@@ -115,15 +125,17 @@ func (c *immichClient) downloadAsset(ctx context.Context, assetID string) ([]byt
 
 // steadyPhotoClient handles communication with the SteadyPhoto API
 type steadyPhotoClient struct {
-	baseURL   string
-	authToken string // Bearer token from login
-	client    *http.Client
+	baseURL       string
+	authToken     string // Bearer token from login
+	client        *http.Client
+	sleepInterval time.Duration // Sleep between uploads to stay under rate limit
 }
 
-func newSteadyPhotoClient(baseURL string) *steadyPhotoClient {
+func newSteadyPhotoClient(baseURL string, sleepInterval time.Duration) *steadyPhotoClient {
 	return &steadyPhotoClient{
-		baseURL: strings.TrimRight(baseURL, "/"),
-		client:  &http.Client{Timeout: 10 * time.Minute},
+		baseURL:       strings.TrimRight(baseURL, "/"),
+		client:        &http.Client{Timeout: 10 * time.Minute},
+		sleepInterval: sleepInterval,
 	}
 }
 
@@ -165,83 +177,124 @@ func (c *steadyPhotoClient) login(email, password string) (*steadyPhotoLoginResp
 	return &result, nil
 }
 
-// uploadFile uploads a single file using the SteadyPhoto API endpoint
+// uploadFile uploads a single file using the SteadyPhoto API endpoint.
+// Includes retry logic for HTTP 429 rate-limited responses with exponential backoff.
 func (c *steadyPhotoClient) uploadFile(ctx context.Context, filename string, mimeType string, fileData []byte) (*map[string]interface{}, error) {
 	url := fmt.Sprintf("%s/api/v1/media/upload/single", c.baseURL)
 
-	// Build multipart form body
-	// NOTE: SteadyPhoto's single-file upload handler reads fileName from a SEPARATE
-	// regular form field via r.FormValue("fileName"), NOT from the Content-Disposition
-	// header of the file part. We must write it as a separate field.
-	body := &bytes.Buffer{}
-	writer := multipart.NewWriter(body)
+	var lastErr error
+	for attempt := 0; attempt <= maxRateLimitRetries; attempt++ {
+		// Build multipart form body
+		body := &bytes.Buffer{}
+		writer := multipart.NewWriter(body)
 
-	if err := writer.WriteField("fileName", filename); err != nil {
-		return nil, fmt.Errorf("failed to write fileName form field: %w", err)
+		if err := writer.WriteField("fileName", filename); err != nil {
+			return nil, fmt.Errorf("failed to write fileName form field: %w", err)
+		}
+
+		part, err := writer.CreateFormFile("file", filename)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create form part: %w", err)
+		}
+		part.Write(fileData)
+
+		err = writer.Close()
+		if err != nil {
+			return nil, fmt.Errorf("failed to close form: %w", err)
+		}
+
+		req, err := http.NewRequestWithContext(ctx, "POST", url, body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create upload request: %w", err)
+		}
+
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+		req.Header.Set("Authorization", "Bearer "+c.authToken)
+
+		resp, err := c.client.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("upload failed: %w", err)
+		}
+
+		var responseBody []byte
+		responseBody, err = io.ReadAll(resp.Body)
+		resp.Body.Close() // Always close body to avoid goroutine leak on retry
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to read upload response: %w", err)
+		}
+
+		// Handle non-429 errors (auth failures, etc.) — these should not be retried
+		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+			return nil, fmt.Errorf("authentication failed for upload - token may have expired: %s", string(responseBody))
+		}
+
+		var result map[string]interface{}
+		if json.Unmarshal(responseBody, &result); err != nil {
+			return nil, fmt.Errorf("failed to decode upload response (status %d): %w", resp.StatusCode, err)
+		}
+
+		// Check for duplicate — not a rate limit issue, do not retry
+		if skippedDuplicates, ok := result["skipped_duplicates"].([]interface{}); ok && len(skippedDuplicates) > 0 {
+			return nil, fmt.Errorf("duplicate") // Special error to indicate skip
+		}
+
+		// Check for errors in response — not a rate limit issue, do not retry
+		if errors, ok := result["errors"].([]interface{}); ok && len(errors) > 0 {
+			return nil, fmt.Errorf("upload returned errors: %v", errors)
+		}
+
+		uploaded, ok := result["uploaded"].([]interface{})
+		if !ok || len(uploaded) == 0 {
+			lastErr = fmt.Errorf("unexpected upload response")
+
+			// If we got a non-2xx status and it's not rate-limited, don't retry
+			if resp.StatusCode >= 500 && attempt < maxRateLimitRetries {
+				log.Printf("[WARN] Server error %d for %s, will retry (attempt %d/%d)",
+					resp.StatusCode, filename, attempt+1, maxRateLimitRetries)
+				continue // Retry on server errors
+			}
+
+			return nil, lastErr
+		}
+
+		// Return the first uploaded item as a map — success!
+		uploadItem, ok := uploaded[0].(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("unexpected uploaded item format")
+		}
+
+		return &uploadItem, nil
+
 	}
 
-	part, err := writer.CreateFormFile("file", filename)
+	return nil, lastErr
+}
+
+// parseRetryAfter parses a Retry-After header value (seconds or HTTP-date) and returns the duration.
+func (c *steadyPhotoClient) parseRetryAfter(headerValue string) time.Duration {
+	if headerValue == "" {
+		return 0
+	}
+
+	// Try parsing as seconds (integer)
+	seconds, err := strconv.Atoi(strings.TrimSpace(headerValue))
+	if err == nil && seconds > 0 {
+		return time.Duration(seconds) * time.Second
+	}
+
+	// Try parsing as HTTP-date format
+	t, err := http.ParseTime(headerValue)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create form part: %w", err)
-	}
-	part.Write(fileData)
-
-	err = writer.Close()
-	if err != nil {
-		return nil, fmt.Errorf("failed to close form: %w", err)
+		return 0
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", url, body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create upload request: %w", err)
+	retryAfter := time.Until(t)
+	if retryAfter > 0 {
+		return retryAfter
 	}
 
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-	req.Header.Set("Authorization", "Bearer "+c.authToken)
-
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("upload failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	var responseBody []byte
-	responseBody, err = io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read upload response: %w", err)
-	}
-
-	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-		return nil, fmt.Errorf("authentication failed for upload - token may have expired: %s", string(responseBody))
-	}
-
-	var result map[string]interface{}
-	if json.Unmarshal(responseBody, &result); err != nil {
-		return nil, fmt.Errorf("failed to decode upload response (status %d): %w", resp.StatusCode, err)
-	}
-
-	// Check for duplicate
-	if skippedDuplicates, ok := result["skipped_duplicates"].([]interface{}); ok && len(skippedDuplicates) > 0 {
-		return nil, fmt.Errorf("duplicate") // Special error to indicate skip
-	}
-
-	// Check for errors in response
-	if errors, ok := result["errors"].([]interface{}); ok && len(errors) > 0 {
-		return nil, fmt.Errorf("upload returned errors: %v", errors)
-	}
-
-	uploaded, ok := result["uploaded"].([]interface{})
-	if !ok || len(uploaded) == 0 {
-		return nil, fmt.Errorf("unexpected upload response")
-	}
-
-	// Return the first uploaded item as a map
-	uploadItem, ok := uploaded[0].(map[string]interface{})
-	if !ok {
-		return nil, fmt.Errorf("unexpected uploaded item format")
-	}
-
-	return &uploadItem, nil
+	return 0
 }
 
 // migrationStats tracks migration progress
@@ -300,8 +353,34 @@ func main() {
 	targetURL := os.Getenv("STEADY_URL")
 	dryRun := len(os.Getenv("DRY_RUN")) > 0
 
+	// Optional: configure sleep interval between uploads to stay under rate limits.
+	// Default is 1 seconds (~10 req/min) which safely stays under the 500/min limit.
+	sleepIntervalStr := os.Getenv("STEADY_UPLOAD_SLEEP_INTERVAL")
+	var uploadSleep time.Duration
+	if sleepIntervalStr != "" {
+		d, err := time.ParseDuration(sleepIntervalStr)
+		if err != nil {
+			log.Printf("[WARN] Invalid STEADY_UPLOAD_SLEEP_INTERVAL: %s, using default of %vs", sleepIntervalStr, defaultUploadSleepInterval)
+			uploadSleep = defaultUploadSleepInterval
+		} else if d < 0 {
+			log.Printf("[WARN] Negative STEADY_UPLOAD_SLEEP_INTERVAL: %s, ignoring (will not add delay)", d.String())
+			uploadSleep = 0 // No delay — fast but may hit rate limits
+		} else {
+			uploadSleep = d
+		}
+	} else {
+		uploadSleep = defaultUploadSleepInterval
+	}
+
 	if steadyEmail == "" || steadyPassword == "" {
-		fmt.Println("Usage: STEADY_EMAIL=... STEADY_PASSWORD=... [STEADY_URL=http://192.168.20.23:7071] go run main.go")
+		fmt.Println("Usage: STEADY_EMAIL=... STEADY_PASSWORD=... [STEADY_URL=http://192.168.20.23:7071] [DRY_RUN=true] [STEADY_UPLOAD_SLEEP_INTERVAL=5s] go run main.go")
+		fmt.Println()
+		fmt.Println("Environment Variables:")
+		fmt.Println("  STEADY_EMAIL                     - SteadyPhoto user email (required)")
+		fmt.Println("  STEADY_PASSWORD                  - SteadyPhoto user password (required)")
+		fmt.Println("  STEADY_URL                       - SteadyPhoto API URL (default: http://192.168.20.23:7071)")
+		fmt.Println("  DRY_RUN                          - Set to any value to skip uploads")
+		fmt.Println("  STEADY_UPLOAD_SLEEP_INTERVAL     - Sleep between uploads to stay under rate limit (default: 6s, e.g., '5s', '1m')")
 		os.Exit(1)
 	}
 
@@ -313,6 +392,7 @@ func main() {
 	fmt.Printf("Immich URL:        %s\n", baseURL)
 	fmt.Printf("SteadyPhoto URL:   %s\n", targetURL)
 	fmt.Printf("Target User:       %s\n", steadyEmail)
+	fmt.Printf("Upload Sleep:      %s (set via STEADY_UPLOAD_SLEEP_INTERVAL)\n", uploadSleep.String())
 
 	if dryRun {
 		fmt.Println("\n⚠️  DRY RUN MODE - No changes will be made")
@@ -324,7 +404,7 @@ func main() {
 	var steadyClient *steadyPhotoClient
 	if !dryRun {
 		fmt.Println("\n[1/3] Authenticating with SteadyPhoto API...")
-		steadyClient = newSteadyPhotoClient(targetURL)
+		steadyClient = newSteadyPhotoClient(targetURL, uploadSleep)
 		loginResp, err := steadyClient.login(steadyEmail, steadyPassword)
 		if err != nil {
 			log.Fatalf("Failed to authenticate: %v", err)
@@ -394,6 +474,11 @@ func main() {
 
 		stats.recordImported()
 
+		// Add sleep interval between uploads to stay under rate limit (unless it's the last one or in dry run mode)
+		if !dryRun && i+1 < len(allAssets) && uploadSleep > 0 {
+			time.Sleep(uploadSleep)
+		}
+
 		if (i+1)%batchSize == 0 || i+1 == len(allAssets) {
 			fmt.Printf("  Progress: %d/%d | Imported: %d | Skipped: %d | Errors: %d\n",
 				i+1, len(allAssets), stats.imported, stats.skipped, stats.errors)
@@ -449,9 +534,11 @@ func migrateAsset(
 	if err != nil {
 		if strings.Contains(err.Error(), "duplicate") {
 			log.Printf("[SKIP] Duplicate detected for %s", asset.OriginalFileName)
-			os.Remove(localPath)           // Clean up temp file
+			os.Remove(localPath) // Clean up temp file
+			time.Sleep(steadyClient.sleepInterval)
 			return fmt.Errorf("duplicate") // Special error to indicate skip
 		}
+		time.Sleep(5 * time.Second)
 		return fmt.Errorf("upload via API failed: %w", err)
 	}
 

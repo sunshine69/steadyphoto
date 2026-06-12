@@ -3,23 +3,35 @@ package api
 import (
 	"fmt"
 	"net/http"
+	"os"
+	"strconv"
 	"time"
 
 	"github.com/go-chi/httprate"
 )
 
 // RateLimitAuth is a rate limiter for authentication endpoints to prevent brute-force attacks.
-// Limits to 5 requests per minute by IP address + URL path.
+// Limits to 5 requests per minute by IP address + URL path (configurable via RATE_LIMIT_AUTH_REQUESTS env var).
 var RateLimitAuth func(http.Handler) http.Handler
 
 // RateLimitGeneral is a general rate limiter for protected routes as a safety net.
-// Limits to 100 requests per minute by IP address only.
+// Limits to 100 requests per minute by IP address only (configurable via RATE_LIMIT_GENERAL_REQUESTS env var).
 var RateLimitGeneral func(http.Handler) http.Handler
 
 func init() {
-	// Strict rate limiting for auth endpoints: 5 requests per minute by IP + endpoint path.
+	// Parse auth rate limit from environment variable, default to 5 req/min
+	authRequests := 5
+	if val := os.Getenv("RATE_LIMIT_AUTH_REQUESTS"); val != "" {
+		if n, err := strconv.Atoi(val); err == nil && n > 0 {
+			authRequests = n
+		} else {
+			fmt.Printf("[WARN] Invalid RATE_LIMIT_AUTH_REQUESTS value: %q — using default of 5\n", val)
+		}
+	}
+
+	// Strict rate limiting for auth endpoints to prevent brute-force attacks.
 	RateLimitAuth = httprate.Limit(
-		5,
+		int(authRequests),
 		time.Minute,
 		httprate.WithKeyFuncs(httprate.KeyByIP, httprate.KeyByEndpoint),
 		httprate.WithLimitHandler(func(w http.ResponseWriter, r *http.Request) {
@@ -29,9 +41,19 @@ func init() {
 		}),
 	)
 
-	// General rate limiting for protected routes: 100 requests per minute by IP only.
+	// Parse general rate limit from environment variable, default to 100 req/min
+	generalRequests := 100
+	if val := os.Getenv("RATE_LIMIT_GENERAL_REQUESTS"); val != "" {
+		if n, err := strconv.Atoi(val); err == nil && n > 0 {
+			generalRequests = n
+		} else {
+			fmt.Printf("[WARN] Invalid RATE_LIMIT_GENERAL_REQUESTS value: %q — using default of 100\n", val)
+		}
+	}
+
+	// General rate limiting for protected routes as a safety net.
 	RateLimitGeneral = httprate.Limit(
-		100,
+		generalRequests,
 		time.Minute,
 		httprate.WithKeyFuncs(httprate.KeyByIP),
 		httprate.WithLimitHandler(func(w http.ResponseWriter, r *http.Request) {
@@ -41,5 +63,5 @@ func init() {
 		}),
 	)
 
-	fmt.Println("[CONFIG] Rate limiting initialized: Auth=5/min, General=100/min by IP")
+	fmt.Printf("[CONFIG] Rate limiting initialized: Auth=%d/min by IP+path, General=%d/min by IP\n", authRequests, generalRequests)
 }
