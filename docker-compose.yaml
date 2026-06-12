@@ -9,26 +9,26 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data_dev:/var/lib/postgresql/data
 
   app:
     build: .
     image: steadyphoto:latest
-    container_name: steadyphoto-app
+    container_name: steadyphoto-app-dev
     env_file: .env
     ports:
-      - "${API_PORT}:8080" # Host ${API_PORT} -> Container 8080 (Serves both UI (/ui) and API (/api/v1))
+      - "${API_PORT}:${API_PORT}" # Host ${API_PORT} -> Container 8080 (Serves both UI (/ui) and API (/api/v1))
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?sslmode=disable
       STORAGE_DIR: /app/storage
-      API_PORT: 8080
+      API_PORT: ${API_PORT}
       ADMIN_EMAIL: ${ADMIN_EMAIL}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
     volumes:
-      - app_storage:/app/storage # Persistent storage for media files
+      - app_storage_dev:/app/storage # Persistent storage for media files
     depends_on:
       - db
 
 volumes:
-  postgres_data:
-  app_storage:
+  postgres_data_dev:
+  app_storage_dev:
