@@ -71,12 +71,10 @@ RUN addgroup -S appgroup && \
 USER appuser
 
 # Expose port 8080 (now serves both UI (/ui) and API (/api/v1))
-EXPOSE 8080
-
-# Environment variables with defaults
+# Environment variables with defaults (override via .env or docker-compose)
 ENV DATABASE_URL=postgres://steadyphoto:password@db:5432/steadyphoto?sslmode=disable
 ENV STORAGE_DIR=/app/storage
-ENV API_PORT=:8080
+ENV API_PORT=8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \

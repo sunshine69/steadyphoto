@@ -1,3 +1,8 @@
+# =====================================================
+# SteadyPhoto Production Docker Compose Configuration
+# Uses pre-built image from Docker Hub with .env configuration
+# =====================================================
+
 services:
   db:
     image: ankane/pgvector:latest # Using a pre-built image with pgvector support
@@ -7,13 +12,15 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     ports:
-      - "5432:5432"
+      - "5432:5432" # Only expose if you need direct DB access (e.g., for migrations)
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - steadyphoto_network
+    restart: unless-stopped
 
   app:
-    build: .
-    image: steadyphoto:latest
+    image: ${DOCKER_IMAGE:-steadyphoto}:${DOCKER_TAG:-latest} # Pull from Docker Hub
     container_name: steadyphoto-app
     env_file: .env
     ports:
@@ -28,7 +35,14 @@ services:
       - app_storage:/app/storage # Persistent storage for media files
     depends_on:
       - db
+    networks:
+      - steadyphoto_network
+    restart: unless-stopped
 
 volumes:
   postgres_data:
   app_storage:
+
+networks:
+  steadyphoto_network:
+    driver: bridge
