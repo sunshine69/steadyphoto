@@ -261,3 +261,4 @@ issue.txt
 # Go / Gomobile
 gomobile-bindings/bin/
 gomobile-bindings/pkg/
+backup-files/**

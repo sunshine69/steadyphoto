@@ -3,10 +3,11 @@ version: '3.8'
 services:
   db:
     image: ankane/pgvector:latest # Using a pre-built image with pgvector support
+    env_file: .env
     environment:
-      POSTGRES_USER: steadyphoto
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: steadyphoto
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
       - "5432:5432"
     volumes:

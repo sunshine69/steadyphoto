@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -10,6 +11,7 @@ import (
 	"steadyphoto/internal/api"
 	"steadyphoto/internal/database"
 	"steadyphoto/internal/storage"
+	"steadyphoto/internal/utils"
 
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
@@ -94,6 +96,12 @@ func main() {
 	userRepo := database.NewPostgresUserRepository(db)
 	sessionRepo := database.NewPostgresSessionRepository(db)
 
+	// Seed the initial admin user (idempotent - updates if email already exists, creates if not)
+	ctx := context.Background()
+	if err := utils.CreateAdminUser(ctx, userRepo); err != nil {
+		log.Fatalf("Failed to create seed admin user: %v", err)
+	}
+
 	// Set up storage service (single parameter: baseDir)
 	storageService := storage.NewStorageService(storageRoot)
 
@@ -120,8 +128,7 @@ func main() {
 }
 
 func printHelp() {
-	fmt.Println(`
-SteadyPhoto API Server - Configuration Help
+	fmt.Println(`SteadyPhoto API Server - Configuration Help
 =============================================
 
 Environment Variables (fallback):
@@ -131,6 +138,10 @@ Environment Variables (fallback):
   THUMBNAIL_ROOT    Directory for thumbnails (default: ./storage/.thumbnails)
   TLS_CERT          Path to TLS certificate file (PEM) — used if -tls-cert is not provided
   TLS_KEY           Path to TLS private key file (PEM) — used if -tls-key is not provided
+
+  Admin User Seeding (optional):
+  ADMIN_EMAIL       Email for the initial admin user. If set, an admin user will be created/updated on startup.
+  ADMIN_PASSWORD    Password for the initial admin user. Must be set alongside ADMIN_EMAIL.
 
 Command-Line Flags (override env vars):
   -h, -help         Show this help message and exit
@@ -156,5 +167,7 @@ Examples:
   export TLS_CERT=/etc/ssl/certs/steadyphoto.pem
   export TLS_KEY=/etc/ssl/private/steadyphoto.key
   DATABASE_URL=postgres://user:pass@localhost:5432/steadyphoto ./server
-`)
+
+  # Seed admin user on startup (requires PostgreSQL connection):
+  DATABASE_URL=postgres://user:pass@localhost:5432/steadyphoto ADMIN_EMAIL=admin@example.com ADMIN_PASSWORD=secret123 ./server`)
 }
