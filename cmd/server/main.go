@@ -18,10 +18,10 @@ import (
 )
 
 const (
-	dbURLKey         = "DATABASE_URL"
-	apiPortKey       = "API_PORT"
-	defaultAPIPort   = "8081"
-	storageRootEnv   = "STORAGE_ROOT"
+	dbURLKey           = "DATABASE_URL"
+	apiPortKey         = "API_PORT"
+	defaultAPIPort     = "8081"
+	storageRootEnv     = "STORAGE_ROOT"
 	defaultStorageRoot = "./storage"
 	thumbRootEnv       = "THUMBNAIL_ROOT"
 	defaultThumbRoot   = "./storage/.thumbnails"
@@ -30,7 +30,20 @@ const (
 	tlsKeyKey  = "TLS_KEY"  // Path to TLS private key file (PEM) - env var fallback
 )
 
+var (
+	version   string // Will hold the version number
+	buildTime string // Will hold the build time
+)
+
+func printVersionBuildInfo() {
+	fmt.Printf("Version: %s\nBuild time: %s\n", version, buildTime)
+}
+
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "version" {
+		printVersionBuildInfo()
+		os.Exit(0)
+	}
 	// Command-line flags (override env vars if supplied)
 	tlsCertPath := flag.String("tls-cert", "", "(CLI override) Path to TLS certificate file (PEM). If provided along with -tls-key, starts HTTPS server.")
 	tlsKeyPath := flag.String("tls-key", "", "(CLI override) Path to TLS private key file (PEM). If provided along with -tls-cert, starts HTTPS server.")
