@@ -1,8 +1,8 @@
-version: '3.8'
-
+name: steadyphoto-development
 services:
   db:
     image: ankane/pgvector:latest # Using a pre-built image with pgvector support
+    container_name: steadyphoto-db-dev
     env_file: .env
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -11,7 +11,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data_dev:/var/lib/postgresql/data
 
 volumes:
-  postgres_data:
+  postgres_data_dev:
