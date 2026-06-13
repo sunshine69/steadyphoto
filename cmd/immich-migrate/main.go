@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -20,9 +21,10 @@ import (
 )
 
 var (
-	baseURL = u.Getenv("IMMICH_BASE_URL", "https://media.kaykraft.org/api")
-	apiKey  = os.Getenv("IMMICH_API_KEY")
-	outDir  = "/tmp/immich-migrate" // temp dir for download/upload/delete
+	baseURL      = u.Getenv("IMMICH_BASE_URL", "https://media.kaykraft.org/api")
+	apiKey       = os.Getenv("IMMICH_API_KEY")
+	outDir       = "/tmp/immich-migrate" // temp dir for download/upload/delete
+	uploadTags   string                     // Tags to attach to uploaded media (colon-separated, e.g., "vacation:sunset")
 
 	// Default rate limit: SteadyPhoto allows 100 requests/min by IP on protected routes.
 	// With a 6-second sleep between uploads, we stay well under the limit (10 req/min).
@@ -137,6 +139,45 @@ func newSteadyPhotoClient(baseURL string, sleepInterval time.Duration) *steadyPh
 		client:        &http.Client{Timeout: 10 * time.Minute},
 		sleepInterval: sleepInterval,
 	}
+}
+
+// setMediaTags sets the tags on a media item via PATCH /api/v1/media/{id}/tags.
+// Tags are colon-separated (e.g., "vacation:sunset"). This replaces existing tags entirely.
+func (c *steadyPhotoClient) setMediaTags(ctx context.Context, mediaID string, tags string) error {
+	url := fmt.Sprintf("%s/api/v1/media/%s/tags", c.baseURL, mediaID)
+
+	body := map[string]string{"tags": tags}
+	jsonBody, err := json.Marshal(body)
+	if err != nil {
+		return fmt.Errorf("failed to marshal tag request body: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "PATCH", url, bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return fmt.Errorf("failed to create tags request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+c.authToken)
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("tags API call failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var responseBody []byte
+	responseBody, err = io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read tags response body: %w", err)
+	}
+
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("tags API returned status %d for media ID %s: %s", resp.StatusCode, mediaID, string(responseBody))
+	}
+
+	log.Printf("[TAGS] Set tags '%s' on media ID %s", tags, mediaID)
+	return nil
 }
 
 // login authenticates with the SteadyPhoto API and stores the auth token
@@ -348,6 +389,9 @@ func (s *migrationStats) printFinalReport(total int) {
 }
 
 func main() {
+	flag.StringVar(&uploadTags, "tags", "", "Colon-separated tags to attach to uploaded media (e.g., 'vacation:sunset')")
+	flag.Parse()
+
 	steadyEmail := os.Getenv("STEADY_EMAIL")
 	steadyPassword := os.Getenv("STEADY_PASSWORD")
 	targetURL := os.Getenv("STEADY_URL")
@@ -373,7 +417,7 @@ func main() {
 	}
 
 	if steadyEmail == "" || steadyPassword == "" {
-		fmt.Println("Usage: STEADY_EMAIL=... STEADY_PASSWORD=... [STEADY_URL=http://192.168.20.23:7071] [DRY_RUN=true] [STEADY_UPLOAD_SLEEP_INTERVAL=5s] go run main.go")
+		fmt.Println("Usage: STEADY_EMAIL=... STEADY_PASSWORD=... [STEADY_URL=http://192.168.20.23:7071] [DRY_RUN=true] [STEADY_UPLOAD_SLEEP_INTERVAL=5s] go run main.go [-tags 'tag1:tag2']")
 		fmt.Println()
 		fmt.Println("Environment Variables:")
 		fmt.Println("  STEADY_EMAIL                     - SteadyPhoto user email (required)")
@@ -381,6 +425,9 @@ func main() {
 		fmt.Println("  STEADY_URL                       - SteadyPhoto API URL (default: http://192.168.20.23:7071)")
 		fmt.Println("  DRY_RUN                          - Set to any value to skip uploads")
 		fmt.Println("  STEADY_UPLOAD_SLEEP_INTERVAL     - Sleep between uploads to stay under rate limit (default: 6s, e.g., '5s', '1m')")
+		fmt.Println()
+		fmt.Println("Flags:")
+		fmt.Println("  -tags                            - Colon-separated tags to attach to uploaded media (e.g., 'vacation:sunset')")
 		os.Exit(1)
 	}
 
@@ -392,6 +439,11 @@ func main() {
 	fmt.Printf("Immich URL:        %s\n", baseURL)
 	fmt.Printf("SteadyPhoto URL:   %s\n", targetURL)
 	fmt.Printf("Target User:       %s\n", steadyEmail)
+	if uploadTags != "" {
+		fmt.Printf("Upload Tags:       '%s' (set via -tags flag)\n", uploadTags)
+	} else {
+		fmt.Println("Upload Tags:       none")
+	}
 	fmt.Printf("Upload Sleep:      %s (set via STEADY_UPLOAD_SLEEP_INTERVAL)\n", uploadSleep.String())
 
 	if dryRun {
@@ -467,7 +519,7 @@ func main() {
 
 		fmt.Printf("\n[%d/%d] Processing: %s\n", i+1, len(allAssets), asset.OriginalFileName)
 
-		if err := migrateAsset(ctx, client, steadyClient, asset, dryRun); err != nil {
+		if err := migrateAsset(ctx, client, steadyClient, asset, dryRun, uploadTags); err != nil {
 			stats.recordError(err)
 			continue
 		}
@@ -491,13 +543,14 @@ func main() {
 }
 
 // migrateAsset handles the migration of a single Immich asset to SteadyPhoto.
-// Downloads file from Immich → uploads to SteadyPhoto → deletes temp file.
+// Downloads file from Immich → uploads to SteadyPhoto → attaches tags (if set) → deletes temp file.
 func migrateAsset(
 	ctx context.Context,
 	immichClient *immichClient,
 	steadyClient *steadyPhotoClient,
 	asset Asset,
 	dryRun bool,
+	tags string, // Tags to attach to the uploaded media (colon-separated)
 ) error {
 	ext := filepath.Ext(asset.OriginalFileName)
 	base := strings.TrimSuffix(asset.OriginalFileName, ext)
@@ -542,7 +595,19 @@ func migrateAsset(
 		return fmt.Errorf("upload via API failed: %w", err)
 	}
 
-	fmt.Printf("  Uploaded successfully - Media ID: %v\n", (*uploadResp)["id"])
+	mediaID, _ := (*uploadResp)["id"].(string)
+	fmt.Printf("  Uploaded successfully - Media ID: %v\n", mediaID)
+
+	// Attach tags to the uploaded media if specified.
+	if tags != "" {
+		fmt.Printf("  Attaching tags: '%s'\n", tags)
+		if err := steadyClient.setMediaTags(ctx, mediaID, tags); err != nil {
+			log.Printf("[WARN] Failed to attach tags to %s: %v", asset.OriginalFileName, err)
+			// Don't fail the migration if tag attachment fails — upload was successful
+		} else {
+			fmt.Printf("  Tags attached successfully\n")
+		}
+	}
 
 	// Delete the temp file after successful upload to save storage
 	os.Remove(localPath)
