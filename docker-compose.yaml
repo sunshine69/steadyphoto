@@ -1,8 +1,9 @@
+name: steadyphoto-development
 services:
   db:
     image: ankane/pgvector:latest # Using a pre-built image with pgvector support
     env_file: .env
-    container_name: steadyphoto_db_dev
+    container_name: steadyphoto-db-dev
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
