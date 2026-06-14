@@ -107,7 +107,12 @@ func main() {
 	mediaRepo := database.NewPostgresMediaRepository(db)
 	albumRepo := database.NewPostgresAlbumRepository(db)
 	userRepo := database.NewPostgresUserRepository(db)
-	sessionRepo := database.NewPostgresSessionRepository(db)
+	sessionRepo     := database.NewPostgresSessionRepository(db)
+	shareRepo       := database.NewPostgresShareRepository(db)
+	mediaShareRepo  := database.NewPostgresMediaShareRepository(db)
+	albumShareRepo  := database.NewPostgresAlbumShareRepository(db)
+	publicShareRepo := database.NewPostgresPublicShareRepository(db)
+	publicAccessRepo := database.NewPostgresPublicShareAccessRepository(db)
 
 	// Seed the initial admin user (idempotent - updates if email already exists, creates if not)
 	ctx := context.Background()
@@ -119,7 +124,7 @@ func main() {
 	storageService := storage.NewStorageService(storageRoot)
 
 	// Create API server
-	server := api.NewServer(mediaRepo, albumRepo, userRepo, sessionRepo, storageService, thumbRoot)
+	server := api.NewServer(mediaRepo, albumRepo, userRepo, sessionRepo, storageService, thumbRoot, shareRepo, mediaShareRepo, albumShareRepo, publicShareRepo, publicAccessRepo)
 
 	addr := ":" + apiPort
 	log.Printf("Starting SteadyPhoto API on port %s", addr)

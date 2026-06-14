@@ -31,6 +31,12 @@ type Server struct {
 	storageService *storage.StorageService
 	thumbRoot      string
 	sessionManager *UploadSessionManager // For resumable uploads
+	// Sharing repositories and handler
+	shareRepo        domain.ShareRepository
+	mediaShareRepo   domain.MediaShareRepository
+	albumShareRepo   domain.AlbumShareRepository
+	publicShareRepo  domain.PublicShareRepository
+	publicAccessRepo domain.PublicShareAccessRepository
 }
 
 func NewServer(
@@ -40,6 +46,11 @@ func NewServer(
 	sessionRepo domain.SessionRepository,
 	storageService *storage.StorageService,
 	thumbRoot string,
+	shareRepo domain.ShareRepository,
+	mediaShareRepo domain.MediaShareRepository,
+	albumShareRepo domain.AlbumShareRepository,
+	publicShareRepo domain.PublicShareRepository,
+	publicAccessRepo domain.PublicShareAccessRepository,
 ) *Server {
 	s := &Server{
 		router:         chi.NewRouter(),
@@ -50,6 +61,11 @@ func NewServer(
 		storageService: storageService,
 		thumbRoot:      thumbRoot,
 		sessionManager: NewUploadSessionManager(storageService),
+		shareRepo:        shareRepo,
+		mediaShareRepo:   mediaShareRepo,
+		albumShareRepo:   albumShareRepo,
+		publicShareRepo:  publicShareRepo,
+		publicAccessRepo: publicAccessRepo,
 	}
 	s.routes()
 	return s
@@ -253,6 +269,25 @@ func (s *Server) routes() {
 					"total_requested": len(req.MediaIDs),
 				})
 			})
+
+		// SHARING ROUTES — user-to-user + public share link management (auth required)
+		sharesHandler := NewShareHandler(
+			s.shareRepo, s.mediaShareRepo, s.albumShareRepo,
+			s.publicShareRepo, s.publicAccessRepo,
+			s.userRepo, s.albumRepo,
+		)
+
+		protected.Route("/shares", func(r chi.Router) {
+			r.Post("/", sharesHandler.handleCreateShare) // Create a share with specific users + media/albums to share
+		})
+		protected.Get("/media/shared", sharesHandler.handleListSharedMedia)       // List media shared with current user
+		protected.Get("/albums/shared", sharesHandler.handleListSharedAlbums)     // List albums shared with current user
+
+		protected.Route("/public-shares", func(r chi.Router) {
+			r.Post("/", sharesHandler.handleCreatePublicShare)    // Create public share link (with optional password + expiration)
+			r.Delete("/{id}", sharesHandler.handleDeletePublicShare)  // Revoke public share link by ID
+			r.Get("/", sharesHandler.handleListPublicShares)      // List all public shares for current user
+		})
 
 		})
 	})
