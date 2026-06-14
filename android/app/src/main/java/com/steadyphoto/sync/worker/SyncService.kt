@@ -60,10 +60,22 @@ class SyncService : Service(), KoinComponent {
         // Periodic sync interval as fallback (5 minutes) - FileObserver handles real-time
         private const val PERIODIC_SYNC_INTERVAL_MS = 300_000L
         
+        // Max consecutive failed upload attempts before giving up and stopping the service.
+        // Prevents infinite battery drain when uploads keep failing.
+        private const val MAX_CONSECUTIVE_UPLOAD_FAILURES = 3
+
         fun newIntent(context: Context): Intent {
             return Intent(context, SyncService::class.java)
         }
     }
+
+    // Track consecutive upload failures to prevent infinite retries
+    private var consecutiveUploadFailures = 0
+    
+    // Flag to track whether Stop was explicitly requested. Prevents START_STICKY from 
+    // restarting the service after a manual stop. Android may restart killed services,
+    // and without this flag it would start running again even though the user stopped it.
+    private var stopRequested = false
 
     override fun onCreate() {
         super.onCreate()
@@ -133,7 +145,18 @@ class SyncService : Service(), KoinComponent {
         when (intent?.action) {
             ACTION_START_SYNC -> startSyncJob()
             ACTION_STOP_SYNC -> stopSyncJob()
-            else -> startSyncJob()
+            else -> {
+                // If Android restarts this service after it was killed (e.g., during Doze mode),
+                // check if the user had explicitly requested a stop. Don't auto-restart if so.
+                if (!stopRequested) {
+                    startSyncJob()
+                } else {
+                    Log.d("SyncService", "Not restarting service — user had stopped it")
+                    stopRequested = false  // Reset flag for next time the user starts sync
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    stopSelf()
+                }
+            }
         }
         return START_STICKY
     }
@@ -147,8 +170,17 @@ class SyncService : Service(), KoinComponent {
                     } catch (_: CancellationException) {
                         break
                     }
-                    // Periodic fallback sync every 5 minutes - catches anything FileObserver/ContentObserver missed
-                    performSync()
+                    
+                    // Perform a single scan to check for new items, then upload if needed.
+                    // If nothing needs doing, do NOT loop again — exit the service early.
+                    val hasWork = performSyncAndCheckForMore()
+                    
+                    if (!hasWork) {
+                        Log.d("SyncService", "No more work to do — stopping sync job")
+                        break  // Exit the loop; service will stop itself via onDestroy after cleanup
+                    }
+                    
+                    // Only delay between actual work cycles. If there was work, wait and check again.
                     delay(PERIODIC_SYNC_INTERVAL_MS)
                 }
             }
@@ -156,17 +188,27 @@ class SyncService : Service(), KoinComponent {
     }
 
     private fun stopSyncJob() {
+        // Mark that the user explicitly requested a stop. This prevents START_STICKY from
+        // restarting the service after it's been killed by Android (e.g., during Doze mode).
+        stopRequested = true
+        
         syncJob?.cancel()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
 
-    /**
-     * Performs the full synchronization cycle:
-     * 1. Scan device for new/changed media files (using MediaContentObserver's logic internally)
-     * 2. Upload pending items to server
+   /**
+     * Performs the full synchronization cycle and returns whether there's more work.
+     * 
+     * Returns true if:
+     * - New items were scanned/uploaded, OR
+     * - Pending uploads were found (so we should check again later)
+     * 
+     * Returns false if nothing to do — service can safely stop itself.
      */
-    private suspend fun performSync() {
+    private suspend fun performSyncAndCheckForMore(): Boolean {
+        var hasWork = false
+        
         try {
             // Step 1: Scan for new media files - this uses the same query as ContentObserver
             // but queries ALL rows without MIME type filtering (the key fix)
@@ -176,6 +218,8 @@ class SyncService : Service(), KoinComponent {
             
             when (scanResult) {
                 is com.steadyphoto.sync.data.repository.ScanResult.Success -> {
+                    hasWork = true  // Items were found
+                    
                     updateNotification(
                         "Scanning...", 
                         "${scanResult.totalScanned} items scanned, ${scanResult.newItemsInserted} new items found"
@@ -183,7 +227,8 @@ class SyncService : Service(), KoinComponent {
                     
                     // Step 2: Upload pending/failed items using the upload manager
                     val pendingAndFailed = container.mediaItemDao.getPendingAndFailedItems(
-                        listOf(UploadStatus.PENDING, UploadStatus.FAILED)
+                        listOf(com.steadyphoto.sync.data.local.entity.UploadStatus.PENDING, 
+                               com.steadyphoto.sync.data.local.entity.UploadStatus.FAILED)
                     )
                     
                     if (pendingAndFailed.isNotEmpty()) {
@@ -204,6 +249,7 @@ class SyncService : Service(), KoinComponent {
                             
                             when {
                                 result.isSuccess -> {
+                                    consecutiveUploadFailures = 0  // Reset failure counter on success
                                     val uploadResult = result.getOrNull()
                                     updateNotification(
                                         "Upload Complete", 
@@ -211,8 +257,20 @@ class SyncService : Service(), KoinComponent {
                                     )
                                 }
                                 else -> {
+                                    consecutiveUploadFailures++
                                     val error = result.exceptionOrNull()?.message ?: "Unknown error"
                                     updateNotification("Upload Failed", error)
+                                    
+                                    // Check if we've exceeded the max consecutive failure limit
+                                    if (consecutiveUploadFailures >= MAX_CONSECUTIVE_UPLOAD_FAILURES) {
+                                        Log.w("SyncService", 
+                                            "Max upload failures reached ($MAX_CONSECUTIVE_UPLOAD_FAILURES). Stopping service to prevent battery drain.")
+                                        updateNotification(
+                                            "Upload Failed", 
+                                            "Too many failed uploads. Please check network and try again later."
+                                        )
+                                        return false  // Stop the service — no more retries
+                                    }
                                 }
                             }
                         }
@@ -224,16 +282,20 @@ class SyncService : Service(), KoinComponent {
                 is com.steadyphoto.sync.data.repository.ScanResult.NoNewItems -> {
                     // No new items found, check for pending uploads anyway
                     val pendingAndFailed = container.mediaItemDao.getPendingAndFailedItems(
-                        listOf(UploadStatus.PENDING, UploadStatus.FAILED)
+                        listOf(com.steadyphoto.sync.data.local.entity.UploadStatus.PENDING, 
+                               com.steadyphoto.sync.data.local.entity.UploadStatus.FAILED)
                     )
                     
                     if (pendingAndFailed.isNotEmpty()) {
+                        hasWork = true  // Pending uploads exist — check again later
+                        
                         updateNotification("Uploading...", "${pendingAndFailed.size} items to upload")
                         
                         val result = container.uploadManager.uploadMedia(pendingAndFailed)
                         
                         when {
                             result.isSuccess -> {
+                                consecutiveUploadFailures = 0  // Reset failure counter on success
                                 val uploadResult = result.getOrNull()
                                 updateNotification(
                                     "Upload Complete", 
@@ -241,8 +303,20 @@ class SyncService : Service(), KoinComponent {
                                 )
                             }
                             else -> {
+                                consecutiveUploadFailures++
                                 val error = result.exceptionOrNull()?.message ?: "Unknown error"
                                 updateNotification("Upload Failed", error)
+                                
+                                // Check if we've exceeded the max consecutive failure limit
+                                if (consecutiveUploadFailures >= MAX_CONSECUTIVE_UPLOAD_FAILURES) {
+                                    Log.w("SyncService", 
+                                        "Max upload failures reached ($MAX_CONSECUTIVE_UPLOAD_FAILURES). Stopping service to prevent battery drain.")
+                                    updateNotification(
+                                        "Upload Failed", 
+                                        "Too many failed uploads. Please check network and try again later."
+                                    )
+                                    return false  // Stop the service — no more retries
+                                }
                             }
                         }
                     } else {
@@ -262,7 +336,20 @@ class SyncService : Service(), KoinComponent {
             // Log the error but don't crash the service
             android.util.Log.e("SyncService", "Error during sync cycle", e)
             updateNotification("Sync Error", e.message ?: "Unknown error")
+            
+            // If an unexpected exception occurs, reset failure counter and stop
+            consecutiveUploadFailures = 0
         }
+        
+        return hasWork
+    }
+
+    /**
+     * Performs the full synchronization cycle.
+     * This is a convenience wrapper for FileObserver/ContentObserver callbacks.
+     */
+    private suspend fun performSync() {
+        performSyncAndCheckForMore()  // Ignore return value — observers keep service alive
     }
 
     private fun createNotificationChannel() {

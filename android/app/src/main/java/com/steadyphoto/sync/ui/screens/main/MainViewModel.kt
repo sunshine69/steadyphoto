@@ -256,7 +256,8 @@ class MainViewModel(
     }
 
     /**
-     * Stop background sync - this cancels the periodic WorkManager jobs.
+     * Stop background sync - this cancels WorkManager jobs.
+     * The Service will be stopped automatically when stopSyncJob() is called via ACTION_STOP_SYNC intent.
      */
     fun stopBackgroundSync() {
         viewModelScope.launch {
@@ -266,15 +267,13 @@ class MainViewModel(
 
                 _uiState.value = _uiState.value.copy(
                     isBackgroundSyncRunning = false,
-                    syncState = SyncUiState.Idle,  // Reset state so Stop button becomes disabled again
-                    errorMessage = "Background sync stopped"
+                    syncState = SyncUiState.Idle  // Reset state so Start button becomes enabled again
                 )
             } catch (e: Exception) {
                 android.util.Log.e("MainViewModel", "Error stopping background sync", e)
                 _uiState.value = _uiState.value.copy(
                     isBackgroundSyncRunning = false,
-                    syncState = SyncUiState.Idle,  // Reset state so Stop button becomes disabled again
-                    errorMessage = "Could not stop background sync. Please try again."
+                    syncState = SyncUiState.Idle  // Reset state so Start button becomes enabled again
                 )
             }
         }

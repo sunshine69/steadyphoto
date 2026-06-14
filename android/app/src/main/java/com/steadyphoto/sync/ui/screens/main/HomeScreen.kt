@@ -155,7 +155,19 @@ fun HomeScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Button(
-                    onClick = { viewModel.startBackgroundSync() },
+                    onClick = { 
+                        viewModel.startBackgroundSync()
+                        
+                        // Send START intent to the foreground service so it starts its real-time detection loop
+                        val syncIntent = com.steadyphoto.sync.worker.SyncService.newIntent(context).apply {
+                            action = com.steadyphoto.sync.worker.SyncService.ACTION_START_SYNC
+                        }
+                        try {
+                            context.startForegroundService(syncIntent)
+                        } catch (e: Exception) {
+                            android.util.Log.w("HomeScreen", "Failed to start SyncService", e)
+                        }
+                    },
                     // Enabled if NOT currently syncing (scanning or uploading) and no error present
                     enabled = uiState.syncState is SyncUiState.Idle && 
                              uiState.errorMessage == null,
@@ -167,10 +179,23 @@ fun HomeScreen(
                 }
 
                 Button(
-                    onClick = { viewModel.stopBackgroundSync() },
-                    // Enabled if currently scanning or uploading (background sync is active)
+                    onClick = { 
+                        viewModel.stopBackgroundSync()
+                        
+                        // Send STOP intent to the foreground service so it stops its real-time detection loop and destroys itself
+                        val syncIntent = com.steadyphoto.sync.worker.SyncService.newIntent(context).apply {
+                            action = com.steadyphoto.sync.worker.SyncService.ACTION_STOP_SYNC
+                        }
+                        try {
+                            context.startForegroundService(syncIntent)
+                        } catch (e: Exception) {
+                            android.util.Log.w("HomeScreen", "Failed to stop SyncService", e)
+                        }
+                    },
+                    // Enabled if currently syncing or uploading OR background sync is running
                     enabled = uiState.syncState is SyncUiState.Uploading || 
-                             uiState.syncState is SyncUiState.Scanning,
+                             uiState.syncState is SyncUiState.Scanning ||
+                             uiState.isBackgroundSyncRunning,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.errorContainer,
                         contentColor = MaterialTheme.colorScheme.onErrorContainer
