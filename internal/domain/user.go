@@ -18,6 +18,12 @@ type User struct {
 	UpdatedAt    time.Time `json:"updated_at" db:"updated_at"`
 }
 
+// SearchUserResult is a minimal representation of a user for search results (only id and email)
+type SearchUserResult struct {
+	ID    uuid.UUID `json:"id" db:"id"`
+	Email string    `json:"email" db:"email"`
+}
+
 const (
 	UserStatusPending  = "pending"
 	UserStatusActive   = "active"
@@ -48,6 +54,9 @@ type UserRepository interface {
 	// Admin methods for user management
 	ListUsers(ctx context.Context, status string) ([]*User, error)
 	GetByUsernameOrEmail(ctx context.Context, identifier string) (*User, error)
+	
+	// Search users by partial email match (returns only id and email for active users)
+	SearchUsers(ctx context.Context, query string) ([]*SearchUserResult, error)
 	
 	// Bulk operations for admin management
 	BulkUpdateStatus(ctx context.Context, userIDs []uuid.UUID, newStatus string) error

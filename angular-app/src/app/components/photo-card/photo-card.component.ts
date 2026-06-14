@@ -1,6 +1,7 @@
-import { Component, Input, Output, EventEmitter, ChangeDetectionStrategy } from '@angular/core';
+import { Component, Input, Output, EventEmitter, ChangeDetectionStrategy, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Photo } from '../../models/photo.model';
+import { ShareTriggerService } from '../../services/share-trigger.service';
 
 @Component({
   selector: 'app-photo-card',
@@ -37,6 +38,19 @@ import { Photo } from '../../models/photo.model';
         <p class="photo-filename" [title]="photo.filename">{{ photo.filename }}</p>
         <p class="photo-date">{{ isVideo() ? formatDuration(photo.videoMetadata?.duration) : (photo.captured_at | date:'shortDate') }}</p>
       </div >
+
+      <!-- Share button overlay on hover -->
+      <button 
+        class="share-btn-overlay" 
+        title="Share this photo"
+        (click)="onShareClick($event)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+          <circle cx="9" cy="7" r="4"/>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+          <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+        </svg>
+      </button>
     </div >
   `,
   styles: [`
@@ -176,14 +190,58 @@ import { Photo } from '../../models/photo.model';
       font-size: 0.8rem;
       color: #6c757d;
     }
+
+    /* Share button overlay on photo card */
+    .share-btn-overlay {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 32px;
+      height: 32px;
+      background-color: rgba(99, 102, 241, 0.9);
+      border: none;
+      border-radius: 50%;
+      color: white;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transform: scale(0.8);
+      transition: all 0.2s ease-in-out;
+      z-index: 1;
+    }
+
+    .photo-card:hover .share-btn-overlay {
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    .share-btn-overlay:hover {
+      background-color: #4f46e5;
+      box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4);
+      transform: scale(1.1);
+    }
+
+    .share-btn-overlay svg {
+      width: 16px;
+      height: 16px;
+    }
   `]
 })
 export class PhotoCardComponent {
+  private shareTrigger = inject(ShareTriggerService);
+
   @Input() photo!: Photo;
   @Output() cardClick = new EventEmitter<string>();
 
   onCardClick() {
     this.cardClick.emit(this.photo.id);
+  }
+
+  onShareClick(event: Event): void {
+    event.stopPropagation();
+    this.shareTrigger.open(this.photo.id, 'media');
   }
 
   isVideo(): boolean {

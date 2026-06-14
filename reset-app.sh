@@ -29,4 +29,6 @@ killall worker.exe
 
 # go test ./... -v -count=1
 ps -ef|grep 'ng serv' | awk '{print $2}' | while read pid; do kill $pid; done
-( cd angular-app && npx ng serve & )
+cd angular-app && npx ng serve &
+cd ..
+

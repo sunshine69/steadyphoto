@@ -38,8 +38,10 @@ export const authInterceptor: HttpInterceptorFn = (req: HttpRequest<unknown>, ne
 
   return next(authReq).pipe(
     catchError((error: HttpErrorResponse) => {
-      // Only attempt refresh on first failure (not on retry from a previous refresh)
-      if (!authReq.headers.has('X-Auth-Retry')) {
+      // Only attempt refresh for actual 401 errors — NOT for 403, 500, etc.
+      // Public share endpoints return 403 (not 401) when password is required/incorrect.
+      // If we try to refresh on a 403, the refresh fails and swallows the original error data.
+      if (!authReq.headers.has('X-Auth-Retry') && error.status === 401) {
         // LAYER 1: Check if we're in the middle of logout — skip ALL refresh attempts during logout.
         // This prevents the "refresh avalanche" where concurrent requests fail with 401 and each tries to refresh,
         // hitting the rate limiter (429) and hanging the browser.
@@ -48,7 +50,7 @@ export const authInterceptor: HttpInterceptorFn = (req: HttpRequest<unknown>, ne
           return throwError(() => error);
         }
 
-        console.warn('AuthInterceptor: Detected 401, attempting silent refresh...');
+ 
 
         // LAYER 2: Use the single-refresh mechanism from AuthService to prevent concurrent refreshes.
         // This ensures only ONE refresh happens even if multiple requests fail simultaneously.
@@ -84,7 +86,7 @@ export const authInterceptor: HttpInterceptorFn = (req: HttpRequest<unknown>, ne
         );
       }
 
-      // For any other error code (403, 500, etc.), just pass it through
+      // For any other error code (403, 500, etc.), just pass it through unchanged
       return throwError(() => error);
     })
   );

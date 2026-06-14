@@ -53,14 +53,14 @@ func NewServer(
 	publicAccessRepo domain.PublicShareAccessRepository,
 ) *Server {
 	s := &Server{
-		router:         chi.NewRouter(),
-		mediaRepo:      mediaRepo,
-		albumRepo:      albumRepo,
-		userRepo:       userRepo,
-		sessionRepo:    sessionRepo,
-		storageService: storageService,
-		thumbRoot:      thumbRoot,
-		sessionManager: NewUploadSessionManager(storageService),
+		router:           chi.NewRouter(),
+		mediaRepo:        mediaRepo,
+		albumRepo:        albumRepo,
+		userRepo:         userRepo,
+		sessionRepo:      sessionRepo,
+		storageService:   storageService,
+		thumbRoot:        thumbRoot,
+		sessionManager:   NewUploadSessionManager(storageService),
 		shareRepo:        shareRepo,
 		mediaShareRepo:   mediaShareRepo,
 		albumShareRepo:   albumShareRepo,
@@ -107,6 +107,9 @@ func (s *Server) routes() {
 				profile.Get("/profile", s.handleGetProfile)
 				profile.Patch("/profile/email", s.handleUpdateProfileEmail)
 				profile.Patch("/profile/password", s.handleChangePassword)
+
+				// User search endpoint for sharing - returns partial user info (email only)
+				profile.Get("/users/search", s.handleSearchUsers)
 			})
 		})
 
@@ -128,6 +131,13 @@ func (s *Server) routes() {
 				adminRoutes.Delete("/users/bulk-delete", s.handleBulkDeleteUsers)
 			})
 		})
+
+		// Sharing handler instance — needed for both protected and public routes
+		sharesHandler := NewShareHandler(
+			s.shareRepo, s.mediaShareRepo, s.albumShareRepo,
+			s.publicShareRepo, s.publicAccessRepo,
+			s.userRepo, s.albumRepo, s.mediaRepo,
+		)
 
 		// PROTECTED ROUTES group (for non-auth resources like media) - general rate limiting as safety net
 		r.Group(func(protected chi.Router) {
@@ -270,25 +280,37 @@ func (s *Server) routes() {
 				})
 			})
 
-		// SHARING ROUTES — user-to-user + public share link management (auth required)
-		sharesHandler := NewShareHandler(
-			s.shareRepo, s.mediaShareRepo, s.albumShareRepo,
-			s.publicShareRepo, s.publicAccessRepo,
-			s.userRepo, s.albumRepo,
-		)
+			// SHARING ROUTES — user-to-user + public share link management (auth required)
+			protected.Route("/shares", func(r chi.Router) {
+				r.Post("/", sharesHandler.handleCreateShare) // Create a share with specific users + media/albums to share
+			})
+			protected.Get("/media/shared", sharesHandler.handleListSharedMedia)   // List media shared with current user
+			protected.Get("/albums/shared", sharesHandler.handleListSharedAlbums) // List albums shared with current user
 
-		protected.Route("/shares", func(r chi.Router) {
-			r.Post("/", sharesHandler.handleCreateShare) // Create a share with specific users + media/albums to share
-		})
-		protected.Get("/media/shared", sharesHandler.handleListSharedMedia)       // List media shared with current user
-		protected.Get("/albums/shared", sharesHandler.handleListSharedAlbums)     // List albums shared with current user
+			protected.Route("/public-shares", func(r chi.Router) {
+				r.Post("/", sharesHandler.handleCreatePublicShare)       // Create public share link (with optional password + expiration)
+				r.Delete("/{id}", sharesHandler.handleDeletePublicShare) // Revoke public share link by ID
+				r.Get("/", sharesHandler.handleListPublicShares)         // List all public shares for current user
+			})
 
-		protected.Route("/public-shares", func(r chi.Router) {
-			r.Post("/", sharesHandler.handleCreatePublicShare)    // Create public share link (with optional password + expiration)
-			r.Delete("/{id}", sharesHandler.handleDeletePublicShare)  // Revoke public share link by ID
-			r.Get("/", sharesHandler.handleListPublicShares)      // List all public shares for current user
-		})
-
+			// Public share viewing endpoints (no authentication required - outside protected group)
+			r.Group(func(public chi.Router) {
+				public.Get("/public/shares/media/{token}", sharesHandler.handleGetPublicShareMedia)
+				public.Get("/public/shares/album/{token}", sharesHandler.handleGetPublicShareAlbum)
+				public.Get("/public/shares/media/{token}/original", s.handleGetPublicShareMediaOriginal)
+				public.Get("/public/shares/media/{token}/thumb", s.handleGetPublicShareMediaThumb)
+				// Album media serving endpoints - serve by token (each item in album has its own share record)
+				public.Get("/public/shares/album/{token}/media/original", func(w http.ResponseWriter, r *http.Request) {
+					tokenStr := chi.URLParam(r, "token")
+					mediaPath := r.URL.Query().Get("path")
+					s.serveAlbumMediaOriginal(w, r, tokenStr, mediaPath)
+				})
+				public.Get("/public/shares/album/{token}/media/thumb", func(w http.ResponseWriter, r *http.Request) {
+					tokenStr := chi.URLParam(r, "token")
+					mediaPath := r.URL.Query().Get("path")
+					s.serveAlbumMediaThumb(w, r, tokenStr, mediaPath)
+				})
+			})
 		})
 	})
 

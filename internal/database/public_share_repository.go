@@ -216,3 +216,36 @@ func (r *PostgresPublicShareRepository) GetSharedAlbumByToken(ctx context.Contex
 		MediaItems: mediaItems,
 	}, nil
 }
+// GetOriginalFileByToken retrieves a media item's original file path for public serving by token.
+func (r *PostgresPublicShareRepository) GetOriginalFileByToken(ctx context.Context, token string) (*domain.Media, error) {
+	query := `
+		SELECT m.* FROM media m
+		JOIN public_shares ps ON ps.resource_type = 'media' AND ps.resource_id = m.id AND m.deleted_at IS NULL
+		WHERE ps.token = $1
+	`
+
+	var result domain.Media
+	err := r.db.GetContext(ctx, &result, query, token)
+	if err != nil {
+		return nil, fmt.Errorf("shared media file not found: %w", err)
+	}
+
+	return &result, nil
+}
+
+// GetThumbnailFileByToken retrieves a media item's thumbnail info for public serving by token.
+func (r *PostgresPublicShareRepository) GetThumbnailFileByToken(ctx context.Context, token string) (*domain.Media, error) {
+	query := `
+		SELECT m.* FROM media m
+		JOIN public_shares ps ON ps.resource_type = 'media' AND ps.resource_id = m.id AND m.deleted_at IS NULL
+		WHERE ps.token = $1
+	`
+
+	var result domain.Media
+	err := r.db.GetContext(ctx, &result, query, token)
+	if err != nil {
+		return nil, fmt.Errorf("shared media file not found: %w", err)
+	}
+
+	return &result, nil
+}

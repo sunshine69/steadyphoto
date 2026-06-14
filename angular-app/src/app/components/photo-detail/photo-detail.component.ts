@@ -6,6 +6,7 @@ import { Subscription } from 'rxjs';
 import { PhotoService } from '../../services/photo.service';
 import { AlbumService } from '../../services/album.service';
 import { PresentationService, MediaItem } from '../../services/presentation.service';
+import { ShareTriggerService } from '../../services/share-trigger.service';
 import { Photo } from '../../models/photo.model';
 
 @Component({
@@ -51,6 +52,10 @@ import { Photo } from '../../models/photo.model';
                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2 2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                   Download
                 </a>
+                <button (click)="sharePhoto()" class="btn btn-info ms-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                  Share
+                </button>
                 <button (click)="startPresentation()" class="btn btn-warning ms-2">
                   🎬 Presentation Mode
                 </button>
@@ -191,6 +196,7 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
   private photoService = inject(PhotoService);
   private albumService = inject(AlbumService);
   private presentationService = inject(PresentationService);
+  private shareTrigger = inject(ShareTriggerService);
   private subscription?: Subscription;
 
   // Tag editing state
@@ -387,6 +393,11 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
     return input.split(':')
       .map(tag => tag.trim())
       .filter(tag => tag.length > 0);
+  }
+
+  sharePhoto(): void {
+    if (!this.photo) return;
+    this.shareTrigger.open(this.photo.id, 'media');
   }
 
   searchByTag(tag: string): void {

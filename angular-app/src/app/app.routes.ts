@@ -8,7 +8,7 @@ import { RegisterComponent } from './components/register/register.component';
 import { PresentationComponent } from './components/presentation/presentation.component';
 import { ExploreComponent } from './components/explore/explore.component';
 import { MapComponent } from './components/map/map.component';
-import { SharingComponent } from './components/sharing/sharing.component';
+import { SharingDashboardComponent } from './components/sharing-dashboard/sharing-dashboard.component';
 import { FavoritesComponent } from './components/favorites/favorites.component';
 import { CameraComponent } from './components/camera/camera.component';
 import { ScreenshotsComponent } from './components/screenshots/screenshots.component';
@@ -28,7 +28,9 @@ export const routes: Routes = [
   // New Immich-style Views
   { path: 'explore', component: ExploreComponent, canActivate: [authGuard] },
   { path: 'map', component: MapComponent, canActivate: [authGuard] },
-  { path: 'sharing', component: SharingComponent, canActivate: [authGuard] },
+  
+  // Sharing Routes - unified dashboard with tabs
+  { path: 'sharing', component: SharingDashboardComponent, canActivate: [authGuard] },
   
   // Library Routes
   { path: 'favorites', component: FavoritesComponent, canActivate: [authGuard] },
@@ -53,6 +55,10 @@ export const routes: Routes = [
   // Auth Routes (Public)
   { path: 'login', component: LoginComponent },
   { path: 'register', component: RegisterComponent },
+  
+  // Public Share Routes (Unauthenticated - for shared media and albums)
+  { path: 'public/shares/media/:token', loadComponent: () => import('./components/public-share/public-share-media.component').then(m => m.PublicShareMediaComponent) },
+  { path: 'public/shares/album/:token', loadComponent: () => import('./components/public-share/public-share-album.component').then(m => m.PublicShareAlbumComponent) },
   
   // Redirect unknown routes to Photos
   { path: '**', redirectTo: '' }

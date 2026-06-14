@@ -132,3 +132,27 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 }
+// handleSearchUsers handles GET /api/v1/users/search?query=... - searches for users by email/username
+func (s *Server) handleSearchUsers(w http.ResponseWriter, r *http.Request) {
+	userID, ok := GetUserIDFromContext(r.Context())
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	queryParam := r.URL.Query().Get("query")
+	if queryParam == "" || len(queryParam) < 2 {
+		http.Error(w, "Query parameter 'query' is required and must be at least 2 characters", http.StatusBadRequest)
+		return
+	}
+
+	users, err := s.userRepo.SearchUsers(r.Context(), queryParam)
+	if err != nil {
+		log.Printf("[ERROR] handleSearchUsers: failed to search users for user (%s): %v", userID, err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(users)
+}

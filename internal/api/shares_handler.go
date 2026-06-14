@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"steadyphoto/internal/domain"
@@ -22,9 +25,10 @@ type ShareHandler struct {
 	publicAccessRepo  domain.PublicShareAccessRepository
 	userRepo          domain.UserRepository
 	albumRepo         domain.AlbumRepository // For ownership validation of albums being shared
+	mediaRepo         domain.MediaRepository // For ownership validation of media being shared
 }
 
-func NewShareHandler(shareRepo domain.ShareRepository, mediaShareRepo domain.MediaShareRepository, albumShareRepo domain.AlbumShareRepository, publicShareRepo domain.PublicShareRepository, publicAccessRepo domain.PublicShareAccessRepository, userRepo domain.UserRepository, albumRepo domain.AlbumRepository) *ShareHandler {
+func NewShareHandler(shareRepo domain.ShareRepository, mediaShareRepo domain.MediaShareRepository, albumShareRepo domain.AlbumShareRepository, publicShareRepo domain.PublicShareRepository, publicAccessRepo domain.PublicShareAccessRepository, userRepo domain.UserRepository, albumRepo domain.AlbumRepository, mediaRepo domain.MediaRepository) *ShareHandler {
 	return &ShareHandler{
 		shareRepo:        shareRepo,
 		mediaShareRepo:   mediaShareRepo,
@@ -33,6 +37,7 @@ func NewShareHandler(shareRepo domain.ShareRepository, mediaShareRepo domain.Med
 		publicAccessRepo: publicAccessRepo,
 		userRepo:         userRepo,
 		albumRepo:        albumRepo,
+		mediaRepo:        mediaRepo,
 	}
 }
 
@@ -81,15 +86,33 @@ type PublicShareLinkResponse struct {
 
 // PublicShareListResponse represents the list of public share links.
 type PublicShareListResponse struct {
-	ID             uuid.UUID     `json:"id"`
-	Token          string        `json:"token"`
-	SharerUserID   uuid.UUID     `json:"sharerUserId"`
-	ResourceType   string        `json:"resourceType"`
-	ResourceID     uuid.UUID     `json:"-"` // Not exposed in response
-	PasswordProtected bool       `json:"password_protected"`
-	ExpiresAt      *time.Time    `json:"expires_at"`
-	CreatedAt      time.Time     `json:"created_at"`
-	AccessCount    int           `json:"access_count"`
+	ID                uuid.UUID     `json:"id"`
+	Token             string        `json:"token"`
+	SharerUserID      uuid.UUID     `json:"sharerUserId"`
+	ResourceType      string        `json:"resourceType"`
+	ResourceID        uuid.UUID     `json:"-"` // Not exposed in response
+	PasswordProtected bool          `json:"password_protected"`
+	ExpiresAt         *time.Time    `json:"expires_at"`
+	CreatedAt         time.Time     `json:"created_at"`
+	AccessCount       int           `json:"access_count"`
+}
+
+// SharedAlbumWithMedia represents an album with its media items for public share responses.
+type SharedAlbumWithMedia struct {
+	ID           uuid.UUID        `json:"id"`
+	Name         string           `json:"name"`
+	Description  *string          `json:"description,omitempty"`
+	CreatedAt    time.Time        `json:"createdAt"`
+	UpdatedAt    time.Time        `json:"updatedAt"`
+	MediaItems   []MediaShareItem `json:"media_items"`
+}
+
+// MediaShareItem represents a media item in a shared album.
+type MediaShareItem struct {
+	ID        uuid.UUID `json:"id"`
+	Filename  string    `json:"filename"`
+	Path      string    `json:"path"`
+	MediaType string    `json:"mediaType"`
 }
 
 // handleCreateShare handles POST /api/v1/shares — Create a share.
@@ -142,12 +165,14 @@ func (h *ShareHandler) handleCreateShare(w http.ResponseWriter, r *http.Request)
 
 	// Validate that media items belong to the sharer
 	for _, mediaID := range req.MediaIDs {
-		media, err := h.mediaShareRepo.GetSharedMediaByID(ctx, mediaID, userID)
+		log.Printf("[DEBUG] handleCreateShare - validating ownership for mediaID: %s, userID: %s", mediaID, userID)
+		media, err := h.mediaRepo.GetByID(ctx, mediaID, &userID)
 		if err != nil || media == nil {
-			log.Printf("[ERROR] handleCreateShare - media not found or access denied: %v", err)
+			log.Printf("[ERROR] handleCreateShare - media not found or access denied for mediaID=%s, userID=%s: %v", mediaID, userID, err)
 			http.Error(w, "One or more media items do not belong to you", http.StatusBadRequest)
 			return
 		}
+		log.Printf("[DEBUG] handleCreateShare - ownership validated for mediaID: %s (filename: %s)", media.ID, media.Filename)
 		_ = media // validated
 	}
 
@@ -354,14 +379,14 @@ func (h *ShareHandler) handleCreatePublicShare(w http.ResponseWriter, r *http.Re
 
 	// Validate resource ownership based on type
 	if req.ResourceType == "media" {
-		_, err := h.mediaShareRepo.GetSharedMediaByID(ctx, req.ResourceID, userID)
+		_, err := h.mediaRepo.GetByID(ctx, req.ResourceID, &userID)
 		if err != nil || req.ResourceID == uuid.Nil {
 			log.Printf("[ERROR] handleCreatePublicShare - media not found or access denied: %v", err)
 			http.Error(w, "Media item not found or does not belong to you", http.StatusBadRequest)
 			return
 		}
 	} else if req.ResourceType == "album" {
-		_, err := h.mediaShareRepo.GetSharedAlbumByID(ctx, req.ResourceID, userID)
+		_, err := h.albumRepo.GetByID(ctx, req.ResourceID, userID)
 		if err != nil || req.ResourceID == uuid.Nil {
 			log.Printf("[ERROR] handleCreatePublicShare - album not found or access denied: %v", err)
 			http.Error(w, "Album not found or does not belong to you", http.StatusBadRequest)
@@ -481,6 +506,7 @@ func (h *ShareHandler) handleListPublicShares(w http.ResponseWriter, r *http.Req
 
 // handleGetPublicShareMedia handles GET /public/shares/media/{token} — View shared media via public link.
 func (h *ShareHandler) handleGetPublicShareMedia(w http.ResponseWriter, r *http.Request) {
+log.Printf("[DEBUG] handleGetPublicShareMedia called - token: %s", chi.URLParam(r, "token"))
 	ctx := r.Context()
 
 	tokenStr := chi.URLParam(r, "token")
@@ -585,6 +611,371 @@ func (h *ShareHandler) handleGetPublicShareAlbum(w http.ResponseWriter, r *http.
 	// Increment access count (best-effort — don't fail the request if incrementing fails)
 	h.publicShareRepo.IncrementAccessCount(ctx, publicShare.ID)
 
+	// Include media items in the response so Angular doesn't need to make additional requests
+	mediaResponses := make([]MediaShareItem, len(albumItem.MediaItems))
+	for i, m := range albumItem.MediaItems {
+		mediaResponses[i] = MediaShareItem{
+			ID:        m.ID,
+			Filename:  m.Filename,
+			Path:      m.Path,
+			MediaType: string(m.MediaType),
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(albumItem.Album)
+	json.NewEncoder(w).Encode(SharedAlbumWithMedia{
+		ID:           albumItem.Album.ID,
+		Name:         albumItem.Album.Name,
+		Description:  albumItem.Album.Description,
+		CreatedAt:    albumItem.Album.CreatedAt,
+		UpdatedAt:    albumItem.Album.UpdatedAt,
+		MediaItems:   mediaResponses,
+	})
 }
+
+// handleGetPublicShareMedia handles GET /public/shares/media/:token — Returns media metadata for public share link.
+func (s *Server) handleGetPublicShareMedia(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	tokenStr := chi.URLParam(r, "token")
+
+	// Get the public share by token
+	publicShare, err := s.publicShareRepo.GetByToken(ctx, tokenStr)
+	if err != nil {
+		log.Printf("[ERROR] handleGetPublicShareMedia - get public share: %v", err)
+		http.Error(w, "Share link not found or expired", http.StatusNotFound)
+		return
+	}
+
+	// Check if the share has expired
+	if publicShare.ExpiresAt != nil && time.Now().After(*publicShare.ExpiresAt) {
+		log.Printf("[WARN] handleGetPublicShareMedia - expired public share accessed: %s", tokenStr)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusGone)
+		json.NewEncoder(w).Encode(map[string]string{"error": "This share link has expired"})
+		return
+	}
+
+	// Check if password is required and verify it
+	if publicShare.PasswordHash != nil && *publicShare.PasswordHash != "" {
+		password := r.URL.Query().Get("password")
+		if password == "" || !security.CheckPasswordHash(password, *publicShare.PasswordHash) {
+			log.Printf("[WARN] handleGetPublicShareMedia - wrong/missing password for share: %s", tokenStr)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Incorrect or missing password"})
+			return
+		}
+	}
+
+	// Get the media item by token for public serving
+	media, err := s.publicShareRepo.GetOriginalFileByToken(ctx, tokenStr)
+	if err != nil {
+		log.Printf("[ERROR] handleGetPublicShareMedia - get shared media: %v", err)
+		http.Error(w, "Media not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"Media": map[string]interface{}{
+			"ID":            media.ID,
+			"Filename":      media.Filename,
+			"Path":          media.Path,
+			"MediaType":     string(media.MediaType),
+			"Width":         media.Width,
+			"Height":        media.Height,
+			"Size":          media.SizeBytes,
+			"Type":          string(media.MediaType),
+			"CapturedAt":    media.CapturedAt,
+			"Metadata":      media.Metadata,
+			"VideoMetadata": media.VideoMetadata,
+		},
+	})
+}
+
+// handleGetPublicShareMediaOriginal handles GET /public/shares/media/{token}/original — Stream original file via public link.
+// Also serves album media when ?path=<media_path> query parameter is provided.
+func (s *Server) handleGetPublicShareMediaOriginal(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	tokenStr := chi.URLParam(r, "token")
+
+	// If path query parameter is provided, this is an album media request
+	if mediaPath := r.URL.Query().Get("path"); mediaPath != "" {
+		s.serveAlbumMediaOriginal(w, r, tokenStr, mediaPath)
+		return
+	}
+
+	// Original file by token for individual media share
+	media, err := s.publicShareRepo.GetOriginalFileByToken(ctx, tokenStr)
+	if err != nil {
+		log.Printf("[ERROR] handleGetPublicShareMediaOriginal - get shared media: %v", err)
+		http.Error(w, "Media not found", http.StatusNotFound)
+		return
+	}
+
+	// Resolve the absolute path using our Storage Service
+	targetPath := media.Path
+	absPath, resolveErr := s.storageService.ResolvePath(targetPath)
+	if resolveErr != nil {
+		targetPath = strings.TrimLeft(targetPath, "/\\")
+		absPath, resolveErr = s.storageService.ResolvePath(targetPath)
+	}
+
+	if resolveErr != nil {
+		log.Printf("[ERROR] handleGetPublicShareMediaOriginal - resolvePath (%s): %v", targetPath, resolveErr)
+		http.Error(w, "Could not locate file: "+resolveErr.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	contentType := s.getContentType(media.MediaType, media.Filename)
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Accept-Ranges", "bytes")
+	w.Header().Set("Access-Control-Expose-Headers", "Content-Length, Content-Type, Accept-Ranges, Content-Range")
+
+	http.ServeFile(w, r, absPath)
+}
+
+// handleGetPublicShareMediaThumb handles GET /public/shares/media/{token}/thumb — Stream thumbnail via public link.
+// Also serves album media when ?path=<media_path> query parameter is provided.
+func (s *Server) handleGetPublicShareMediaThumb(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	tokenStr := chi.URLParam(r, "token")
+
+	// If path query parameter is provided, this is an album media request
+	if mediaPath := r.URL.Query().Get("path"); mediaPath != "" {
+		s.serveAlbumMediaThumb(w, r, tokenStr, mediaPath)
+		return
+	}
+
+	// Thumbnail by token for individual media share
+	media, err := s.publicShareRepo.GetThumbnailFileByToken(ctx, tokenStr)
+	if err != nil {
+		log.Printf("[ERROR] handleGetPublicShareMediaThumb - get shared media: %v", err)
+		http.Error(w, "Media not found", http.StatusNotFound)
+		return
+	}
+
+	// Calculate thumbnail path (same logic as handleGetThumbnail)
+	relPath := filepath.Clean(media.Path)
+	ext := filepath.Ext(relPath)
+
+	var thumbRelPath string
+	if media.MediaType == domain.MediaTypeVideo {
+		cleanPath := strings.TrimPrefix(media.Path, "storage/")
+		basePart := strings.TrimSuffix(cleanPath, ext)
+		basePart = strings.Replace(basePart, "/.videos/", "/", 1)
+		thumbRelPath = basePart + ".webp"
+	} else {
+		cleanPath := strings.TrimPrefix(media.Path, "storage/")
+		basePart := strings.TrimSuffix(cleanPath, ext)
+		thumbRelPath = basePart + "_thumb.webp"
+	}
+
+	fullThumbPath := filepath.Join(s.thumbRoot, ".thumbnails", thumbRelPath)
+
+	if _, err := os.Stat(fullThumbPath); os.IsNotExist(err) {
+		log.Printf("[WARN] handleGetPublicShareMediaThumb: Thumbnail NOT FOUND at %s. Attempting fallback to original.", fullThumbPath)
+		targetPath := media.Path
+		absPath, resolveErr := s.storageService.ResolvePath(targetPath)
+		if resolveErr != nil {
+			targetPath = strings.TrimLeft(targetPath, "/\\")
+			absPath, resolveErr = s.storageService.ResolvePath(targetPath)
+		}
+
+		if resolveErr != nil {
+			log.Printf("[ERROR] handleGetPublicShareMediaThumb - fallback failed for (%s): %v", targetPath, resolveErr)
+			http.Error(w, "Thumbnail not found and fallback failed", http.StatusNotFound)
+			return
+		}
+
+		contentType := s.getContentType(media.MediaType, media.Filename)
+		w.Header().Set("Content-Type", contentType)
+		log.Printf("[INFO] handleGetPublicShareMediaThumb: Serving original file as fallback from %s", absPath)
+		http.ServeFile(w, r, absPath)
+		return
+	}
+
+	contentType := s.getContentType(media.MediaType, media.Filename)
+	w.Header().Set("Content-Type", contentType)
+	http.ServeFile(w, r, fullThumbPath)
+}
+
+// serveAlbumMediaOriginal serves album media original file by path via public album link.
+func (s *Server) serveAlbumMediaOriginal(w http.ResponseWriter, r *http.Request, tokenStr string, mediaPath string) {
+	ctx := r.Context()
+
+	// Get the media item by token for public serving
+	publicShare, err := s.publicShareRepo.GetByToken(ctx, tokenStr)
+	if err != nil {
+		log.Printf("[ERROR] serveAlbumMediaOriginal - get public share: %v", err)
+		http.Error(w, "Share link not found or expired", http.StatusNotFound)
+		return
+	}
+
+	// Check if the share has expired
+	if publicShare.ExpiresAt != nil && time.Now().After(*publicShare.ExpiresAt) {
+		log.Printf("[WARN] serveAlbumMediaOriginal - expired public share accessed: %s", tokenStr)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusGone)
+		json.NewEncoder(w).Encode(map[string]string{"error": "This share link has expired"})
+		return
+	}
+
+	// Check if password is required and verify it
+	if publicShare.PasswordHash != nil && *publicShare.PasswordHash != "" {
+		password := r.URL.Query().Get("password")
+		if password == "" || !security.CheckPasswordHash(password, *publicShare.PasswordHash) {
+			log.Printf("[WARN] serveAlbumMediaOriginal - wrong/missing password for share: %s", tokenStr)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Incorrect or missing password"})
+			return
+		}
+	}
+
+	// Get the album with media items by token
+	albumItem, err := s.publicShareRepo.GetSharedAlbumByToken(ctx, tokenStr)
+	if err != nil {
+		log.Printf("[ERROR] serveAlbumMediaOriginal - get shared album: %v", err)
+		http.Error(w, "Album not found", http.StatusNotFound)
+		return
+	}
+
+	// Find the media item in the album by path (case-insensitive comparison)
+	var media *domain.Media
+	for _, m := range albumItem.MediaItems {
+		if strings.EqualFold(m.Path, mediaPath) {
+			media = m
+			break
+		}
+	}
+
+	if media == nil {
+		log.Printf("[ERROR] serveAlbumMediaOriginal - media not found for path: %s", mediaPath)
+		http.Error(w, "Media not found in album", http.StatusNotFound)
+		return
+	}
+
+	// Resolve the absolute path using our Storage Service
+	targetPath := media.Path
+	absPath, resolveErr := s.storageService.ResolvePath(targetPath)
+	if resolveErr != nil {
+		targetPath = strings.TrimLeft(targetPath, "/\\")
+		absPath, resolveErr = s.storageService.ResolvePath(targetPath)
+	}
+
+	if resolveErr != nil {
+		log.Printf("[ERROR] serveAlbumMediaOriginal - resolvePath (%s): %v", targetPath, resolveErr)
+		http.Error(w, "Could not locate file: "+resolveErr.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	contentType := s.getContentType(media.MediaType, media.Filename)
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Accept-Ranges", "bytes")
+	w.Header().Set("Access-Control-Expose-Headers", "Content-Length, Content-Type, Accept-Ranges, Content-Range")
+
+	http.ServeFile(w, r, absPath)
+}
+
+// serveAlbumMediaThumb serves album media thumbnail by path via public album link.
+func (s *Server) serveAlbumMediaThumb(w http.ResponseWriter, r *http.Request, tokenStr string, mediaPath string) {
+	ctx := r.Context()
+
+	// Get the media item by token for public serving
+	publicShare, err := s.publicShareRepo.GetByToken(ctx, tokenStr)
+	if err != nil {
+		log.Printf("[ERROR] serveAlbumMediaThumb - get public share: %v", err)
+		http.Error(w, "Share link not found or expired", http.StatusNotFound)
+		return
+	}
+
+	// Check if the share has expired
+	if publicShare.ExpiresAt != nil && time.Now().After(*publicShare.ExpiresAt) {
+		log.Printf("[WARN] serveAlbumMediaThumb - expired public share accessed: %s", tokenStr)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusGone)
+		json.NewEncoder(w).Encode(map[string]string{"error": "This share link has expired"})
+		return
+	}
+
+	// Check if password is required and verify it
+	if publicShare.PasswordHash != nil && *publicShare.PasswordHash != "" {
+		password := r.URL.Query().Get("password")
+		if password == "" || !security.CheckPasswordHash(password, *publicShare.PasswordHash) {
+			log.Printf("[WARN] serveAlbumMediaThumb - wrong/missing password for share: %s", tokenStr)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Incorrect or missing password"})
+			return
+		}
+	}
+
+	// Get the album with media items by token
+	albumItem, err := s.publicShareRepo.GetSharedAlbumByToken(ctx, tokenStr)
+	if err != nil {
+		log.Printf("[ERROR] serveAlbumMediaThumb - get shared album: %v", err)
+		http.Error(w, "Album not found", http.StatusNotFound)
+		return
+	}
+
+	// Find the media item in the album by path (case-insensitive comparison)
+	var media *domain.Media
+	for _, m := range albumItem.MediaItems {
+		if strings.EqualFold(m.Path, mediaPath) {
+			media = m
+			break
+		}
+	}
+
+	if media == nil {
+		log.Printf("[ERROR] serveAlbumMediaThumb - media not found for path: %s", mediaPath)
+		http.Error(w, "Media not found in album", http.StatusNotFound)
+		return
+	}
+
+	// Calculate thumbnail path (same logic as handleGetThumbnail)
+	relPath := filepath.Clean(media.Path)
+	ext := filepath.Ext(relPath)
+
+	var thumbRelPath string
+	if media.MediaType == domain.MediaTypeVideo {
+		cleanPath := strings.TrimPrefix(media.Path, "storage/")
+		basePart := strings.TrimSuffix(cleanPath, ext)
+		basePart = strings.Replace(basePart, "/.videos/", "/", 1)
+		thumbRelPath = basePart + ".webp"
+	} else {
+		cleanPath := strings.TrimPrefix(media.Path, "storage/")
+		basePart := strings.TrimSuffix(cleanPath, ext)
+		thumbRelPath = basePart + "_thumb.webp"
+	}
+
+	fullThumbPath := filepath.Join(s.thumbRoot, ".thumbnails", thumbRelPath)
+
+	if _, err := os.Stat(fullThumbPath); os.IsNotExist(err) {
+		log.Printf("[WARN] serveAlbumMediaThumb: Thumbnail NOT FOUND at %s. Attempting fallback to original.", fullThumbPath)
+		targetPath := media.Path
+		absPath, resolveErr := s.storageService.ResolvePath(targetPath)
+		if resolveErr != nil {
+			targetPath = strings.TrimLeft(targetPath, "/\\")
+			absPath, resolveErr = s.storageService.ResolvePath(targetPath)
+		}
+
+		if resolveErr != nil {
+			log.Printf("[ERROR] serveAlbumMediaThumb - fallback failed for (%s): %v", targetPath, resolveErr)
+			http.Error(w, "Thumbnail not found and fallback failed", http.StatusNotFound)
+			return
+		}
+
+		contentType := s.getContentType(media.MediaType, media.Filename)
+		w.Header().Set("Content-Type", contentType)
+		log.Printf("[INFO] serveAlbumMediaThumb: Serving original file as fallback from %s", absPath)
+		http.ServeFile(w, r, absPath)
+		return
+	}
+
+	contentType := s.getContentType(media.MediaType, media.Filename)
+	w.Header().Set("Content-Type", contentType)
+	http.ServeFile(w, r, fullThumbPath)
+}
+

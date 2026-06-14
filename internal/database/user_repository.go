@@ -123,6 +123,25 @@ func (r *PostgresUserRepository) GetByUsernameOrEmail(ctx context.Context, ident
 	return &user, nil
 }
 
+func (r *PostgresUserRepository) SearchUsers(ctx context.Context, query string) ([]*domain.SearchUserResult, error) {
+	var results []*domain.SearchUserResult
+	
+	// Use ILIKE for case-insensitive partial matching on email field only
+	searchQuery := `SELECT id, email FROM users 
+					WHERE status = 'active' 
+					AND email ILIKE $1
+					ORDER BY email ASC`
+	
+	lowerQuery := "%" + strings.ToLower(query) + "%"
+	
+	err := r.db.SelectContext(ctx, &results, searchQuery, lowerQuery)
+	if err != nil {
+		return nil, err
+	}
+	
+	return results, nil
+}
+
 type PostgresSessionRepository struct {
 	db *sqlx.DB
 }

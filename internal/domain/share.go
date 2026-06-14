@@ -110,6 +110,12 @@ type PublicShareRepository interface {
 
 	// Get shared album by token for public access (no auth required)
 	GetSharedAlbumByToken(ctx context.Context, token string) (*PublicShareAlbumWithSharerInfo, error)
+
+	// Get original file path by token for public serving (no auth required)
+	GetOriginalFileByToken(ctx context.Context, token string) (*Media, error)
+
+	// Get thumbnail file path by token for public serving (no auth required)
+	GetThumbnailFileByToken(ctx context.Context, token string) (*Media, error)
 }
 
 // PublicShareAccessRepository defines the interface for public share access logging

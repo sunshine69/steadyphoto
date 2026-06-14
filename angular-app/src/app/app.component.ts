@@ -10,6 +10,8 @@ import { UploadTriggerService } from './services/upload-trigger.service';
 import { SidebarComponent } from './components/sidebar/sidebar.component';
 import { UserManagementComponent } from './components/user-management/user-management.component';
 import { AuthService, CurrentUser } from './services/auth.service';
+import { ShareModalComponent } from './components/share-modal/share-modal.component';
+import { ShareTriggerService } from './services/share-trigger.service';
 
 import { SearchService, SearchScope } from './services/search.service';
 import { Subscription } from 'rxjs';
@@ -17,7 +19,7 @@ import { Subscription } from 'rxjs';
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, RouterModule, PresentationModeComponent, SidebarComponent, FormsModule, UploadModalComponent, UserManagementComponent],
+  imports: [CommonModule, RouterModule, PresentationModeComponent, SidebarComponent, FormsModule, UploadModalComponent, UserManagementComponent, ShareModalComponent],
   template: `
     <!-- Main Layout Container -->
     <div class="app-layout">
@@ -64,6 +66,16 @@ import { Subscription } from 'rxjs';
               </svg>
             </button>
 
+            <!-- Share Button - Opens share modal for the currently selected item -->
+            <button class="icon-btn share-trigger" title="Share" (click)="openShareModal()">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                <circle cx="9" cy="7" r="4"/>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+              </svg>
+            </button>
+
             <!-- User Avatar (click to open user management) -->
             <div class="user-avatar" (click)="openUserManagement()" title="{{ isAdmin ? 'User Management' : 'Profile' }}">{{ avatarInitial }}</div>
           </div>
@@ -83,6 +95,11 @@ import { Subscription } from 'rxjs';
           [items]="presentationService.getItems()"
           [startIndex]="presentationService.getCurrentIndex()">
         </app-presentation-mode>
+
+        <!-- Share Modal (shown when share trigger service is open) -->
+        <app-share-modal 
+          *ngIf="shareTrigger.isShareModalOpen$ | async">
+        </app-share-modal>
 
         <!-- User Management Modal -->
         <app-user-management #userManagement></app-user-management>
@@ -268,6 +285,7 @@ export class AppComponent implements OnInit, OnDestroy {
   avatarInitial = 'U';
 
   public uploadTrigger = inject(UploadTriggerService);
+  public shareTrigger = inject(ShareTriggerService);
   
   @ViewChild('userManagement', { static: false }) userManagementComponent!: UserManagementComponent;
 
@@ -367,6 +385,15 @@ export class AppComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     window.removeEventListener('presentationModeClosed', this.handlePresentationClose.bind(this));
+  }
+
+  openShareModal(itemId?: string, itemType: 'media' | 'album' = 'media'): void {
+    if (itemId) {
+      this.shareTrigger.open(itemId, itemType);
+    } else {
+      // No item to share - could show a toast or alert
+      console.warn('No item selected to share');
+    }
   }
 
   handlePresentationClose(): void {
