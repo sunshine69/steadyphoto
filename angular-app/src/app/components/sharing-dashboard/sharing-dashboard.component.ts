@@ -1,7 +1,7 @@
 import { Component, OnInit, OnDestroy, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
-import { ShareService, SharedMediaItem, SharedAlbumItem } from '../../services/share.service';
+import { ShareService, SharedMediaItem, SharedAlbumItem, ShareGroupListItem } from '../../services/share.service';
 import { Subscription } from 'rxjs';
 
 @Component({
@@ -59,7 +59,7 @@ import { Subscription } from 'rxjs';
             <div 
               *ngFor="let item of sharedMediaItems; let i = index" 
               class="shared-photo-card"
-              (click)="viewPhoto(item.media_id)">
+              (click)="viewPhoto(item.id)">
               <div class="thumb-container">
                 <img [src]="item.thumbnail_url" [alt]="item.filename" class="photo-thumb">
                 <div class="share-badge">Shared with you</div>
@@ -105,7 +105,7 @@ import { Subscription } from 'rxjs';
             <div 
               *ngFor="let item of sharedAlbums; let i = index" 
               class="shared-album-card"
-              (click)="viewAlbum(item.album_id)">
+              (click)="viewAlbum(item.id)">
               <div class="thumb-container">
                 <img [src]="item.thumbnail_url || 'assets/placeholder-album.jpg'" [alt]="item.name" class="album-thumb">
                 <div class="share-badge">Shared with you</div>
@@ -205,7 +205,7 @@ import { Subscription } from 'rxjs';
           </div>
         </section>
 
-        <!-- User-to-User Shares Section -->
+        <!-- User-to-User Shares Section (outgoing share groups) -->
         <section class="sharing-section" *ngIf="userToUserShares.length > 0 || loadingUserToUserShares">
           <div class="section-header">
             <h2>User-to-User Shares</h2>
@@ -225,29 +225,30 @@ import { Subscription } from 'rxjs';
             <p>Select photos and share them with people using the Share button.</p>
           </div>
 
-          <!-- Shared Photos Grid -->
-          <div *ngIf="!loadingUserToUserShares && userToUserShares.length > 0" class="photo-grid">
+          <!-- User-to-User Shares List -->
+          <div *ngIf="!loadingUserToUserShares && userToUserShares.length > 0" class="shares-list">
             <div 
-              *ngFor="let item of userToUserShares; let i = index" 
-              class="shared-photo-card"
-              (click)="viewPhoto(item.media_id)">
-              <div class="thumb-container">
-                <img [src]="item.thumbnail_url" [alt]="item.filename" class="photo-thumb">
-                <div class="share-badge">Shared with {{ getRecipientName(item) }}</div>
-              </div>
-              <div class="card-info">
-                <p class="filename">{{ item.filename }}</p>
-                <p class="shared-date">Shared {{ formatDate(item.created_at) }}</p>
-              </div>
-            </div>
+              *ngFor="let share of userToUserShares; let i = index" 
+              class="share-group-card">
 
-            <!-- Load More -->
-            <button 
-              *ngIf="hasMoreUserToUserShares" 
-              (click)="loadMoreUserToUserShares()" 
-              class="load-more-btn">
-              Load more photos
-            </button>
+              <!-- Share Group Info -->
+              <div class="share-info">
+                <p class="filename">📷 {{ share.mediaCount }} photos, 📁 {{ share.albumsCount }} albums shared with {{ share.shareeName || 'Someone' }}</p>
+                <p class="shared-date">Shared {{ formatDate(share.sharedAt) }}</p>
+              </div>
+
+              <!-- Share Actions -->
+              <div class="share-actions">
+                <button 
+                  *ngIf="!revokingId"
+                  (click)="revokeOutgoingShare(share.id)" 
+                  class="btn-revoke"
+                  [title]="'Revoke share group'">
+                  🗑️ Revoke
+                </button>
+              </div>
+
+            </div>
           </div>
         </section>
 
@@ -262,383 +263,87 @@ import { Subscription } from 'rxjs';
     </div>
   `,
   styles: [`
-    .sharing-page {
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 32px 24px;
-    }
-
-    /* Header */
-    .page-header {
-      margin-bottom: 32px;
-    }
-
-    .page-header h1 {
-      font-size: 28px;
-      color: #f3f4f6;
-      margin: 0 0 8px 0;
-      font-weight: 700;
-    }
-
-    .subtitle {
-      color: #9ca3af;
-      font-size: 15px;
-      margin: 0;
-    }
+    .sharing-page { max-width: 1200px; margin: 0 auto; padding: 32px 24px; }
+    .page-header { margin-bottom: 32px; }
+    .page-header h1 { font-size: 28px; color: #f3f4f6; margin: 0 0 8px 0; font-weight: 700; }
+    .subtitle { color: #9ca3af; font-size: 15px; margin: 0; }
 
     /* Tabs */
-    .tabs-container {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 32px;
-      border-bottom: 1px solid #374151;
-      padding-bottom: 0;
-    }
+    .tabs-container { display: flex; gap: 8px; margin-bottom: 32px; border-bottom: 1px solid #374151; padding-bottom: 0; }
+    .tabs-container button { background: none; border: none; color: #9ca3af; font-size: 15px; font-weight: 500; padding: 12px 24px; cursor: pointer; position: relative; transition: all 0.2s ease; }
+    .tabs-container button:hover { color: #e5e7eb; }
+    .tabs-container button.active { color: #818cf8; }
+    .tabs-container button.active::after { content: ''; position: absolute; bottom: -1px; left: 0; right: 0; height: 2px; background-color: #6366f1; border-radius: 99px; }
 
-    .tabs-container button {
-      background: none;
-      border: none;
-      color: #9ca3af;
-      font-size: 15px;
-      font-weight: 500;
-      padding: 12px 24px;
-      cursor: pointer;
-      position: relative;
-      transition: all 0.2s ease;
-    }
-
-    .tabs-container button:hover {
-      color: #e5e7eb;
-    }
-
-    .tabs-container button.active {
-      color: #818cf8;
-    }
-
-    .tabs-container button.active::after {
-      content: '';
-      position: absolute;
-      bottom: -1px;
-      left: 0;
-      right: 0;
-      height: 2px;
-      background-color: #6366f1;
-      border-radius: 99px;
-    }
-
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-width: 20px;
-      height: 20px;
-      padding: 0 6px;
-      background-color: #6366f1;
-      color: white;
-      font-size: 11px;
-      border-radius: 99px;
-      margin-left: 8px;
-    }
+    .badge { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 6px; background-color: #6366f1; color: white; font-size: 11px; border-radius: 99px; margin-left: 8px; }
 
     /* Sections */
-    .sharing-section {
-      margin-bottom: 40px;
-    }
-
-    .section-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 20px;
-    }
-
-    .section-header h2 {
-      font-size: 18px;
-      color: #f3f4f6;
-      margin: 0;
-      font-weight: 600;
-    }
-
-    .count-badge {
-      background-color: rgba(99, 102, 241, 0.15);
-      color: #818cf8;
-      padding: 4px 12px;
-      border-radius: 99px;
-      font-size: 13px;
-    }
+    .sharing-section { margin-bottom: 40px; }
+    .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+    .section-header h2 { font-size: 18px; color: #f3f4f6; margin: 0; font-weight: 600; }
+    .count-badge { background-color: rgba(99, 102, 241, 0.15); color: #818cf8; padding: 4px 12px; border-radius: 99px; font-size: 13px; }
 
     /* Loading State */
-    .loading-state {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 48px 0;
-      color: #9ca3af;
-    }
-
-    .spinner {
-      width: 32px;
-      height: 32px;
-      border: 3px solid #374151;
-      border-top-color: #6366f1;
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-      margin-bottom: 16px;
-    }
-
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
+    .loading-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 48px 0; color: #9ca3af; }
+    .spinner { width: 32px; height: 32px; border: 3px solid #374151; border-top-color: #6366f1; border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 16px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
 
     /* Empty States */
-    .empty-state, .nothing-state {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-      padding: 48px 0;
-    }
-
-    .icon {
-      font-size: 48px;
-      margin-bottom: 16px;
-    }
-
-    .empty-state h3, .nothing-state h3 {
-      color: #e5e7eb;
-      font-size: 16px;
-      margin: 0 0 8px 0;
-    }
-
-    .empty-state p, .nothing-state p {
-      color: #9ca3af;
-      font-size: 14px;
-      margin: 0;
-    }
+    .empty-state, .nothing-state { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 48px 0; }
+    .icon { font-size: 48px; margin-bottom: 16px; }
+    .empty-state h3, .nothing-state h3 { color: #e5e7eb; font-size: 16px; margin: 0 0 8px 0; }
+    .empty-state p, .nothing-state p { color: #9ca3af; font-size: 14px; margin: 0; }
 
     /* Photo Grid */
-    .photo-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-      gap: 16px;
-    }
+    .photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+    .shared-photo-card { background-color: #1e293b; border-radius: 12px; overflow: hidden; cursor: pointer; transition: transform 0.2s ease, box-shadow 0.2s ease; }
+    .shared-photo-card:hover { transform: translateY(-4px); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3); }
 
-    .shared-photo-card {
-      background-color: #1e293b;
-      border-radius: 12px;
-      overflow: hidden;
-      cursor: pointer;
-      transition: transform 0.2s ease, box-shadow 0.2s ease;
-    }
+    .thumb-container { position: relative; width: 100%; aspect-ratio: 16/9; overflow: hidden; }
+    @supports not (aspect-ratio: 16/9) { .thumb-container { padding-top: 56.25%; } .photo-thumb { position: absolute; top: 0; left: 0; } }
 
-    .shared-photo-card:hover {
-      transform: translateY(-4px);
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-    }
+    .photo-thumb, .album-thumb { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .share-badge { position: absolute; top: 8px; right: 8px; background-color: rgba(99, 102, 241, 0.9); color: white; padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: 500; }
 
-    .thumb-container {
-      position: relative;
-      width: 100%;
-      aspect-ratio: 16/9;
-      overflow: hidden;
-    }
-
-    @supports not (aspect-ratio: 16/9) {
-      .thumb-container {
-        padding-top: 56.25%;
-      }
-      .photo-thumb {
-        position: absolute;
-        top: 0;
-        left: 0;
-      }
-    }
-
-    .photo-thumb, .album-thumb {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      display: block;
-    }
-
-    .share-badge {
-      position: absolute;
-      top: 8px;
-      right: 8px;
-      background-color: rgba(99, 102, 241, 0.9);
-      color: white;
-      padding: 4px 8px;
-      border-radius: 6px;
-      font-size: 11px;
-      font-weight: 500;
-    }
-
-    .card-info {
-      padding: 12px;
-    }
-
-    .filename {
-      margin: 0;
-      color: #e5e7eb;
-      font-size: 14px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .shared-date, .album-info p {
-      margin: 4px 0 0;
-      color: #9ca3af;
-      font-size: 12px;
-    }
+    .card-info { padding: 12px; }
+    .filename { margin: 0; color: #e5e7eb; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .shared-date, .album-info p { margin: 4px 0 0; color: #9ca3af; font-size: 12px; }
 
     /* Album Grid */
-    .album-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-      gap: 16px;
-    }
-
-    .shared-album-card {
-      background-color: #1e293b;
-      border-radius: 12px;
-      overflow: hidden;
-      cursor: pointer;
-      transition: transform 0.2s ease, box-shadow 0.2s ease;
-    }
-
-    .shared-album-card:hover {
-      transform: translateY(-4px);
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-    }
+    .album-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+    .shared-album-card { background-color: #1e293b; border-radius: 12px; overflow: hidden; cursor: pointer; transition: transform 0.2s ease, box-shadow 0.2s ease; }
+    .shared-album-card:hover { transform: translateY(-4px); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3); }
 
     /* Share Links List */
-    .shares-list {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
+    .shares-list { display: flex; flex-direction: column; gap: 12px; }
+    .share-link-card, .share-group-card { background-color: #1e293b; border-radius: 12px; padding: 16px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 
-    .share-link-card {
-      background-color: #1e293b;
-      border-radius: 12px;
-      padding: 16px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-    }
+    .share-info { flex: 1; min-width: 0; }
+    .link-url { color: #818cf8; font-size: 13px; word-break: break-all; margin-top: 4px; }
+    .share-actions { display: flex; gap: 8px; flex-shrink: 0; }
 
-    .share-info {
-      flex: 1;
-      min-width: 0;
-    }
+    .btn-copy, .btn-revoke { padding: 6px 12px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; transition: all 0.2s ease; }
+    .btn-copy { background-color: rgba(99, 102, 241, 0.15); color: #818cf8; }
+    .btn-copy:hover { background-color: rgba(99, 102, 241, 0.3); }
+    .btn-revoke { background-color: rgba(239, 68, 68, 0.15); color: #f87171; }
+    .btn-revoke:hover:not(:disabled) { background-color: rgba(239, 68, 68, 0.3); }
+    .btn-revoke:disabled { opacity: 0.5; cursor: not-allowed; }
 
-    .link-url {
-      color: #818cf8;
-      font-size: 13px;
-      word-break: break-all;
-      margin-top: 4px;
-    }
-
-    .share-actions {
-      display: flex;
-      gap: 8px;
-      flex-shrink: 0;
-    }
-
-    .btn-copy, .btn-revoke {
-      padding: 6px 12px;
-      border-radius: 6px;
-      border: none;
-      cursor: pointer;
-      font-size: 13px;
-      transition: all 0.2s ease;
-    }
-
-    .btn-copy {
-      background-color: rgba(99, 102, 241, 0.15);
-      color: #818cf8;
-    }
-
-    .btn-copy:hover {
-      background-color: rgba(99, 102, 241, 0.3);
-    }
-
-    .btn-revoke {
-      background-color: rgba(239, 68, 68, 0.15);
-      color: #f87171;
-    }
-
-    .btn-revoke:hover:not(:disabled) {
-      background-color: rgba(239, 68, 68, 0.3);
-    }
-
-    .btn-revoke:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
-    .share-meta {
-      display: flex;
-      gap: 12px;
-    }
-
-    .expired-badge {
-      color: #f87171;
-      font-size: 12px;
-    }
-
-    .expires-info {
-      color: #9ca3af;
-      font-size: 12px;
-    }
+    .share-meta { display: flex; gap: 12px; }
+    .expired-badge { color: #f87171; font-size: 12px; }
+    .expires-info { color: #9ca3af; font-size: 12px; }
 
     /* Load More Button */
-    .load-more-btn {
-      display: block;
-      width: 100%;
-      padding: 16px;
-      margin-top: 24px;
-      background-color: rgba(99, 102, 241, 0.1);
-      border: none;
-      color: #818cf8;
-      font-size: 15px;
-      cursor: pointer;
-      border-radius: 8px;
-      transition: all 0.2s ease;
-    }
-
-    .load-more-btn:hover {
-      background-color: rgba(99, 102, 241, 0.2);
-    }
+    .load-more-btn { display: block; width: 100%; padding: 16px; margin-top: 24px; background-color: rgba(99, 102, 241, 0.1); border: none; color: #818cf8; font-size: 15px; cursor: pointer; border-radius: 8px; transition: all 0.2s ease; }
+    .load-more-btn:hover { background-color: rgba(99, 102, 241, 0.2); }
 
     /* Responsive */
     @media (max-width: 768px) {
-      .sharing-page {
-        padding: 24px 16px;
-      }
-
-      .photo-grid, .album-grid {
-        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-        gap: 12px;
-      }
-
-      .share-link-card {
-        flex-direction: column;
-        align-items: stretch;
-      }
-
-      .share-actions {
-        justify-content: center;
-      }
-
-      .tabs-container button {
-        padding: 10px 16px;
-        font-size: 14px;
-      }
+      .sharing-page { padding: 24px 16px; }
+      .photo-grid, .album-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+      .share-link-card, .share-group-card { flex-direction: column; align-items: stretch; }
+      .share-actions { justify-content: center; }
+      .tabs-container button { padding: 10px 16px; font-size: 14px; }
     }
   `]
 })
@@ -669,16 +374,12 @@ export class SharingDashboardComponent implements OnInit, OnDestroy {
   publicSharesCount = 0;
   loadingPublicShares = false;
   hasMorePublicShares = true;
-  private publicShareOffset = 0;
-  private readonly PUBLIC_SHARE_LIMIT = 20;
+  
 
-  // My Shares - User-to-User Shares
-  userToUserShares: Array<SharedMediaItem> = [];
+  // My Shares - User-to-User Shares (outgoing share groups)
+  userToUserShares: Array<ShareGroupListItem> = [];
   userToUserShareCount = 0;
   loadingUserToUserShares = false;
-  hasMoreUserToUserShares = true;
-  private userToUserOffset = 0;
-  private readonly USER_TO_USER_LIMIT = 20;
 
   // Revoking state
   revokingId: string | null = null;
@@ -691,7 +392,6 @@ export class SharingDashboardComponent implements OnInit, OnDestroy {
     this.loadPublicShares();
     this.loadUserToUserShares();
     
-    // Listen for share modal events to refresh data
     window.addEventListener('share-modal-open', () => {});
   }
 
@@ -713,18 +413,12 @@ export class SharingDashboardComponent implements OnInit, OnDestroy {
         this.hasMoreSharedMedia = this.sharedMediaOffset + this.SHARED_MEDIA_LIMIT < this.sharedMediaCount;
         this.sharedMediaOffset += this.SHARED_MEDIA_LIMIT;
       },
-      error: (err) => {
-        console.error('Failed to load shared media:', err);
-      },
-      complete: () => {
-        this.loadingSharedMedia = false;
-      }
+      error: (err) => { console.error('Failed to load shared media:', err); },
+      complete: () => { this.loadingSharedMedia = false; }
     });
   }
 
-  loadMoreSharedMedia(): void {
-    this.loadSharedMedia();
-  }
+  loadMoreSharedMedia(): void { this.loadSharedMedia(); }
 
   // --- Shared with Me - Albums ---
 
@@ -739,18 +433,12 @@ export class SharingDashboardComponent implements OnInit, OnDestroy {
         this.hasMoreSharedAlbums = this.sharedAlbumOffset + this.SHARED_ALBUM_LIMIT < this.sharedAlbumCount;
         this.sharedAlbumOffset += this.SHARED_ALBUM_LIMIT;
       },
-      error: (err) => {
-        console.error('Failed to load shared albums:', err);
-      },
-      complete: () => {
-        this.loadingSharedAlbums = false;
-      }
+      error: (err) => { console.error('Failed to load shared albums:', err); },
+      complete: () => { this.loadingSharedAlbums = false; }
     });
   }
 
-  loadMoreSharedAlbums(): void {
-    this.loadSharedAlbums();
-  }
+  loadMoreSharedAlbums(): void { this.loadSharedAlbums(); }
 
   // --- My Shares - Public Links ---
 
@@ -760,75 +448,46 @@ export class SharingDashboardComponent implements OnInit, OnDestroy {
     this.loadingPublicShares = true;
     this.shareService.listMyPublicShares().subscribe({
       next: (shares) => {
-        // Filter out expired shares from display but keep count
         const activeShares = shares.filter((s: any) => !this.isExpired(s.expires_at));
         this.publicShares.push(...activeShares);
         this.publicSharesCount = shares.length;
         this.hasMorePublicShares = false; // API returns all at once
       },
-      error: (err) => {
-        console.error('Failed to load public shares:', err);
-      },
-      complete: () => {
-        this.loadingPublicShares = false;
-      }
+      error: (err) => { console.error('Failed to load public shares:', err); },
+      complete: () => { this.loadingPublicShares = false; }
     });
   }
 
-  loadMorePublicShares(): void {
-    this.loadPublicShares();
-  }
+  loadMorePublicShares(): void { this.loadPublicShares(); }
 
-  // --- My Shares - User-to-User Shares ---
+  // --- My Shares - User-to-User Shares (outgoing) ---
 
   loadUserToUserShares(): void {
-    if (this.loadingUserToUserShares || !this.hasMoreUserToUserShares) return;
+    if (this.loadingUserToUserShares) return;
     
     this.loadingUserToUserShares = true;
-    this.shareService.listSharedMedia(this.USER_TO_USER_LIMIT, this.userToUserOffset).subscribe({
-      next: (response) => {
-        // These are items shared with us via user-to-user sharing
-        // Filter to only show those where we're the recipient and it was a direct share
-        const ourShares = response.items.filter((item: any) => item.shared_by !== null);
-        this.userToUserShares.push(...ourShares as any);
-        this.userToUserShareCount = response.total || 0;
-        this.hasMoreUserToUserShares = this.userToUserOffset + this.USER_TO_USER_LIMIT < this.userToUserShareCount;
-        this.userToUserOffset += this.USER_TO_USER_LIMIT;
+    this.shareService.listMyOutgoingShares().subscribe({
+      next: (shares) => {
+        this.userToUserShares.push(...(shares || []));
+        this.userToUserShareCount = shares.length;
+        
       },
-      error: (err) => {
-        console.error('Failed to load user-to-user shares:', err);
-      },
-      complete: () => {
-        this.loadingUserToUserShares = false;
-      }
+      error: (err) => { console.error('Failed to load outgoing shares:', err); },
+      complete: () => { this.loadingUserToUserShares = false; }
     });
-  }
-
-  loadMoreUserToUserShares(): void {
-    this.loadUserToUserShares();
   }
 
   // --- Actions ---
 
-  viewPhoto(mediaId: string): void {
-    window.location.href = `/photos/${mediaId}`;
-  }
-
-  viewAlbum(albumId: string): void {
-    window.location.href = `/albums/${albumId}`;
-  }
+  viewPhoto(mediaId: string): void { window.location.href = `/photos/${mediaId}`; }
+  
+  viewAlbum(albumId: string): void { window.location.href = `/albums/${albumId}`; }
 
   copyLink(share: any): void {
     const url = this.getShareableUrl(share);
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(url).then(() => {
-        // Could show a toast notification here
-      }).catch((err) => {
-        console.error('Clipboard API failed, using fallback:', err);
-        this._copyFallback(url);
-      });
+      navigator.clipboard.writeText(url).then(() => {}).catch((err) => { console.error('Clipboard API failed:', err); this._copyFallback(url); });
     } else {
-      // Fallback for browsers without Clipboard API (non-HTTPS, older browsers)
       this._copyFallback(url);
     }
   }
@@ -844,14 +503,8 @@ export class SharingDashboardComponent implements OnInit, OnDestroy {
     textArea.select();
     try {
       const successful = document.execCommand('copy');
-      if (successful) {
-        console.log('Copied to clipboard (fallback)');
-      } else {
-        console.error('execCommand copy failed');
-      }
-    } catch (err) {
-      console.error('Fallback copy failed:', err);
-    }
+      if (successful) console.log('Copied to clipboard (fallback)'); else console.error('execCommand copy failed');
+    } catch (err) { console.error('Fallback copy failed:', err); }
     document.body.removeChild(textArea);
   }
 
@@ -862,14 +515,21 @@ export class SharingDashboardComponent implements OnInit, OnDestroy {
     
     try {
       await this.shareService.revokePublicShareLink(id).toPromise();
-      // Remove from local list
       this.publicShares = this.publicShares.filter(s => s.id !== id);
       this.publicSharesCount--;
-    } catch (err) {
-      console.error('Failed to revoke share:', err);
-    } finally {
-      this.revokingId = null;
-    }
+    } catch (err) { console.error('Failed to revoke share:', err); } finally { this.revokingId = null; }
+  }
+
+  async revokeOutgoingShare(id: string): Promise<void> {
+    if (!confirm('Are you sure you want to revoke this share group?')) return;
+    
+    this.revokingId = id;
+    
+    try {
+      await this.shareService.revokeOutgoingShare(id).toPromise();
+      this.userToUserShares = this.userToUserShares.filter(s => s.id !== id);
+      this.userToUserShareCount--;
+    } catch (err) { console.error('Failed to revoke outgoing share:', err); } finally { this.revokingId = null; }
   }
 
   // --- Helpers ---
@@ -885,33 +545,15 @@ export class SharingDashboardComponent implements OnInit, OnDestroy {
   }
 
   getShortUrl(url: string): string {
-    // Truncate long URLs for display
-    if (url.length > 50) {
-      return url.substring(0, 47) + '...';
-    }
+    if (url.length > 50) return url.substring(0, 47) + '...';
     return url;
   }
 
-  getResourceTitle(share: any): string {
-    // This would typically come from the share response with resource metadata
-    return `Resource ${share.resourceId}`;
-  }
-
-  getRecipientName(item: SharedMediaItem): string {
-    // This would come from a user lookup API - for now return placeholder
-    return 'Someone';
-  }
+  getResourceTitle(share: any): string { return `Resource ${share.resourceId}`; }
 
   isExpired(expiresAt?: string): boolean {
     if (!expiresAt) return false;
-    
-    try {
-      const expirationDate = new Date(expiresAt);
-      return expirationDate < new Date();
-    } catch (err) {
-      console.error('Failed to parse expiration date:', err);
-      return true; // Treat invalid dates as expired
-    }
+    try { const expirationDate = new Date(expiresAt); return expirationDate < new Date(); } catch (err) { console.error('Failed to parse expiration date:', err); return true; }
   }
 
   formatDate(dateString?: string): string {
@@ -928,9 +570,6 @@ export class SharingDashboardComponent implements OnInit, OnDestroy {
       if (daysAgo < 7) return `${daysAgo} days ago`;
       
       return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    } catch (err) {
-      console.error('Failed to format date:', err);
-      return dateString;
-    }
+    } catch (err) { console.error('Failed to format date:', err); return dateString; }
   }
 }

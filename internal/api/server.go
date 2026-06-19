@@ -282,7 +282,9 @@ func (s *Server) routes() {
 
 			// SHARING ROUTES — user-to-user + public share link management (auth required)
 			protected.Route("/shares", func(r chi.Router) {
-				r.Post("/", sharesHandler.handleCreateShare) // Create a share with specific users + media/albums to share
+				r.Post("/", sharesHandler.handleCreateShare)                       // Create a share with specific users + media/albums to share
+				r.Get("/", sharesHandler.handleListOutgoingShareGroups)           // List outgoing share groups for current user
+				r.Delete("/{id}", sharesHandler.handleRevokeOutgoingShare)        // Revoke an outgoing share group by ID
 			})
 			protected.Get("/media/shared", sharesHandler.handleListSharedMedia)   // List media shared with current user
 			protected.Get("/albums/shared", sharesHandler.handleListSharedAlbums) // List albums shared with current user
@@ -291,6 +293,8 @@ func (s *Server) routes() {
 				r.Post("/", sharesHandler.handleCreatePublicShare)       // Create public share link (with optional password + expiration)
 				r.Delete("/{id}", sharesHandler.handleDeletePublicShare) // Revoke public share link by ID
 				r.Get("/", sharesHandler.handleListPublicShares)         // List all public shares for current user
+
+	
 			})
 
 			// Public share viewing endpoints (no authentication required - outside protected group)

@@ -81,3 +81,14 @@ export interface SharedItemsResponse<T> {
   limit: number;
   offset: number;
 }
+
+// Outgoing share group (group of media/albums the current user has shared with someone)
+export interface ShareGroupListItem {
+  id: string;
+  sharerName?: string;   // Name of current user (displayed on their side, not needed for outgoing)
+  shareeName?: string;   // Name of person receiving shares
+  mediaCount: number;    // Number of media items in this share group
+  albumsCount: number;   // Number of albums in this share group  
+  sharedAt: string;      // ISO datetime when shares were created
+}
+

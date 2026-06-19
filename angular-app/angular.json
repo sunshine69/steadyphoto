@@ -65,7 +65,8 @@
           "options": {
             "browserTarget": "steadyphoto-angular:build",
             "port": 4200,
-            "host": "0.0.0.0"
+            "host": "0.0.0.0",
+            "disableHostCheck": true
           },
           "configurations": {
             "production": {

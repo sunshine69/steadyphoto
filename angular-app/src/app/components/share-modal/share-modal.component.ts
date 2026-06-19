@@ -345,6 +345,12 @@ export class ShareModalComponent implements OnInit, OnDestroy {
 
   private searchTimeout: any;
   private shareSubscription?: Subscription;
+  
+  // Guard flag to prevent infinite loop on modal close.
+  // Without this, the subscription in ngOnInit fires when isShareModalOpen$ turns false 
+  // and isVisible is still true (the 100ms setTimeout hasn't fired yet), causing 
+  // closeModal() → shareTrigger.close() → subscriber calls closeModal() again — forever.
+  private _isClosing = false;
 
   ngOnInit(): void {
     // Subscribe to share trigger service for open/close events (like UploadModalComponent)
@@ -356,11 +362,14 @@ export class ShareModalComponent implements OnInit, OnDestroy {
           this.open(data.itemId, data.itemType || 'media');
         }
       } else if (!isOpen && this.isVisible) {
-        this.closeModal();
+        // Modal was already closed by an explicit action (click close / ESC / backdrop).
+        // Don't call closeModal() again — that would re-trigger the subject to false
+        // and cause a race loop. Just hide the modal here since the trigger said "not open".
+        this.isVisible = false;
       }
     });
 
-     window.addEventListener('keydown', this.handleEscapeKey);
+    window.addEventListener('keydown', this.handleEscapeKey);
   }
 
   ngOnDestroy(): void {
@@ -369,7 +378,7 @@ export class ShareModalComponent implements OnInit, OnDestroy {
   }
 
   private handleEscapeKey = (e: KeyboardEvent): void => {
-     if(e.key === 'Escape' && this.isVisible) this.closeModal();
+     if(e.key === 'Escape' && this.isVisible && !this._isClosing) this.closeModal();
   };
 
   @HostListener('document:click', ['$event'])
@@ -417,10 +426,14 @@ export class ShareModalComponent implements OnInit, OnDestroy {
   }
 
   closeModal(): void {
+    if (this._isClosing) return; // Prevent re-entrance — the guard flag stops infinite loops.
+    this._isClosing = true;
+
     // Notify the trigger service that the modal is being closed
     this.shareTrigger.close();
      setTimeout(() => { 
        this.isVisible = false;
+       this._isClosing = false;
      }, 100); 
   }
 

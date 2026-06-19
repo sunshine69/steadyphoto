@@ -74,3 +74,16 @@ func (r *PostgresAlbumShareRepository) ListSharedAlbumsForUser(ctx context.Conte
 
 	return items, nil
 }
+
+// GetOutgoingShareGroupAlbumIDs returns the album IDs in an outgoing share group (shares made BY a user).
+func (r *PostgresAlbumShareRepository) GetOutgoingShareGroupAlbumIDs(ctx context.Context, shareID uuid.UUID) ([]uuid.UUID, error) {
+	query := `SELECT album_id FROM album_shares WHERE share_id = $1`
+
+	var albumIDs []uuid.UUID
+	err := r.db.SelectContext(ctx, &albumIDs, query, shareID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get outgoing share group album IDs: %w", err)
+	}
+
+	return albumIDs, nil
+}

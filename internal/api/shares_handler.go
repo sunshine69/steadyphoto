@@ -979,3 +979,115 @@ func (s *Server) serveAlbumMediaThumb(w http.ResponseWriter, r *http.Request, to
 	http.ServeFile(w, r, fullThumbPath)
 }
 
+
+
+// ShareGroupListResponse represents the response for listing outgoing share groups.
+type ShareGroupListResponse struct {
+	ShareID           uuid.UUID   `json:"id"`
+	SharerName        string      `json:"sharerName,omitempty"`
+	ShareeName        string      `json:"shareeName,omitempty"`
+	MediaCount        int         `json:"mediaCount"`
+	AlbumsCount       int         `json:"albumsCount"`
+	SharedAt          time.Time   `json:"sharedAt"`
+}
+
+// handleListOutgoingShareGroups handles GET /api/v1/shares — List outgoing share groups for current user.
+func (h *ShareHandler) handleListOutgoingShareGroups(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	userID, ok := GetUserIDFromContext(ctx)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	groups, err := h.shareRepo.ListOutgoingShareGroups(ctx, userID)
+	if err != nil {
+		log.Printf("[ERROR] handleListOutgoingShareGroups: %v", err)
+		http.Error(w, "Failed to list outgoing shares", http.StatusInternalServerError)
+		return
+	}
+
+	// Fetch all details in a single query (O(n)) instead of O(n*m)
+	details, _ := h.shareRepo.ListOutgoingShares(ctx, userID)
+	detailMap := make(map[uuid.UUID]*domain.ShareWithDetails)
+	if details != nil {
+		for _, d := range details {
+			detailMap[d.ID] = d
+		}
+	}
+
+	response := make([]ShareGroupListResponse, len(groups))
+	for i, g := range groups {
+		detail, hasDetail := detailMap[g.ID]
+		mediaCount := 0
+		albumCount := 0
+		if hasDetail && detail != nil {
+			mediaCount = len(detail.Media)
+			albumCount = len(detail.Albums)
+		}
+
+		response[i] = ShareGroupListResponse{
+			ShareID:     g.ID,
+			SharerName:  g.SharerName,
+			ShareeName:  g.ShareeName,
+			MediaCount:  mediaCount,
+			AlbumsCount: albumCount,
+			SharedAt:    g.SharedAt,
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// handleRevokeOutgoingShare handles DELETE /api/v1/shares/{id} — Revoke an outgoing share group.
+func (h *ShareHandler) handleRevokeOutgoingShare(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	userID, ok := GetUserIDFromContext(ctx)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	idStr := chi.URLParam(r, "id")
+	shareGroupID, err := uuid.Parse(idStr)
+	if err != nil {
+		log.Printf("[ERROR] handleRevokeOutgoingShare - invalid UUID: %v", err)
+		http.Error(w, "Invalid share group ID", http.StatusBadRequest)
+		return
+	}
+
+	// Verify ownership by checking if this share is in the user's outgoing shares
+	details, err := h.shareRepo.ListOutgoingShares(ctx, userID)
+	if err != nil {
+		log.Printf("[ERROR] handleRevokeOutgoingShare - list outgoing shares: %v", err)
+		http.Error(w, "Failed to verify ownership", http.StatusInternalServerError)
+		return
+	}
+
+	found := false
+	for _, d := range details {
+		if d.ID == shareGroupID {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		log.Printf("[WARN] handleRevokeOutgoingShare - user %s tried to revoke non-owned share: %s", userID, shareGroupID)
+		http.Error(w, "Forbidden: You do not own this share group", http.StatusForbidden)
+		return
+	}
+
+	err = h.shareRepo.DeleteShareGroup(ctx, shareGroupID)
+	if err != nil {
+		log.Printf("[ERROR] handleRevokeOutgoingShare - delete share: %v", err)
+		http.Error(w, "Failed to revoke share", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"message": "Share group revoked successfully"})
+}

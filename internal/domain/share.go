@@ -64,10 +64,53 @@ type PublicShareAccess struct {
 	AccessedAt     time.Time   `db:"accessed_at" json:"-"`
 }
 
+// OutgoingMediaInShare is a media item that belongs to an outgoing user-to-user share group.
+type OutgoingMediaInShare struct {
+	ID        uuid.UUID    `db:"media_id" json:"id"`
+	Filename  string       `db:"filename" json:"filename"`
+	Path      *string      `db:"path" json:"-"`
+	MediaType MediaType     `db:"media_type" json:"mediaType"`
+}
+
+// OutgoingAlbumInShare is an album that belongs to an outgoing user-to-user share group.
+type OutgoingAlbumInShare struct {
+	ID          uuid.UUID  `json:"id"`
+	Name        string     `json:"name"`
+	Description *string    `json:"description"`
+	CoverMediaID *uuid.UUID `db:"cover_media_id" json:"-"`
+}
+
+// ShareWithDetails represents an outgoing share group with its media and albums, plus the sharer/sharee names.
+type ShareWithDetails struct {
+	ID           uuid.UUID              `json:"id"`
+	SharerUserID uuid.UUID              `json:"sharerUserId"`
+	ShareeUserID uuid.UUID              `json:"shareeUserId"`
+	SharedAt     time.Time              `json:"sharedAt"`
+	Media        []OutgoingMediaInShare  `json:"media"`
+	Albums       []OutgoingAlbumInShare  `json:"albums"`
+}
+
+// ShareWithSharerName enriches a Share with sharer and sharee display names.
+type ShareWithSharerName struct {
+	ID           uuid.UUID   `json:"id"`
+	SharerUserID uuid.UUID   `json:"sharerUserId"`
+	ShareeUserID uuid.UUID   `json:"shareeUserId"`
+	SharedAt     time.Time   `json:"sharedAt"`
+	SharerName   string      `json:"sharerName,omitempty"`
+	ShareeName   string      `json:"shareeName,omitempty"`
+}
+
 // ShareRepository defines the interface for share storage and retrieval
 type ShareRepository interface {
 	CreateShare(ctx context.Context, sharerUserID uuid.UUID, shareeUserID uuid.UUID) (*Share, error)
 	GetBySharerAndSharee(ctx context.Context, sharerUserID uuid.UUID, shareeUserID uuid.UUID) (*Share, error)
+
+	// Outgoing shares — list all groups created BY a user (the sharer).
+	ListOutgoingShares(ctx context.Context, sharerUserID uuid.UUID) ([]*ShareWithDetails, error)
+	ListOutgoingShareGroups(ctx context.Context, sharerUserID uuid.UUID) ([]*ShareWithSharerName, error)
+
+	// Revoke — delete a share group and its media_shares/album_shares.
+	DeleteShareGroup(ctx context.Context, shareID uuid.UUID) error
 }
 
 // MediaShareRepository defines the interface for media share storage and retrieval
@@ -86,6 +129,9 @@ type MediaShareRepository interface {
 
 	// Get media in a shared album for a user (incoming shares)
 	ListMediaInSharedAlbum(ctx context.Context, albumID uuid.UUID, shareeUserID uuid.UUID, limit int, offset int) ([]*MediaWithSharerInfo, int, error)
+
+	// Get media items in an outgoing share group (shares made BY the current user).
+	GetOutgoingShareGroupMediaIDs(ctx context.Context, shareID uuid.UUID) ([]uuid.UUID, error)
 }
 
 // AlbumShareRepository defines the interface for album share storage and retrieval
@@ -94,6 +140,9 @@ type AlbumShareRepository interface {
 
 	// Get shared albums for a user (incoming shares)
 	ListSharedAlbumsForUser(ctx context.Context, shareeUserID uuid.UUID) ([]*AlbumWithSharerInfo, error)
+
+	// Get albums in an outgoing share group.
+	GetOutgoingShareGroupAlbumIDs(ctx context.Context, shareID uuid.UUID) ([]uuid.UUID, error)
 }
 
 // PublicShareRepository defines the interface for public share storage and retrieval

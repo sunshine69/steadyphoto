@@ -9,15 +9,17 @@ import {
   ShareRequest, PublicShareRequest,
   SharedMediaItem, SharedAlbumItem,
   CreateShareResponseFull, PublicShareLinkResponse,
-  PublicShareListItem, SharedItemsResponse, SearchUser
+  PublicShareListItem, SharedItemsResponse, SearchUser,
+  ShareGroupListItem
 } from '../models/share.model';
 
 // Re-export types so components can import them from share.service.ts
-export {
+export type {
   ShareRequest, PublicShareRequest,
   SharedMediaItem, SharedAlbumItem,
   CreateShareResponseFull, PublicShareLinkResponse,
-  PublicShareListItem, SharedItemsResponse, SearchUser
+  PublicShareListItem, SharedItemsResponse, SearchUser,
+  ShareGroupListItem
 };
 
 @Injectable({ providedIn: 'root' })
@@ -142,6 +144,32 @@ export class ShareService {
   // --- Auth state management (same pattern as AuthService) ---
 
   /** Attempts to refresh the access token using the stored refresh cookie. */
+  // --- Outgoing Shares API (items shared BY the current user) ---
+
+  /** List outgoing share groups created by the current user */
+  listMyOutgoingShares(): Observable<ShareGroupListItem[]> {
+    return this.http.get<any>(`${this.API_BASE_URL}/shares`, { withCredentials: true })
+      .pipe(
+        tap((res) => console.log('ShareService: Outgoing shares listed', res)),
+        map(response => response || []),
+        catchError(err => {
+          console.error('ShareService: Failed to list outgoing shares', err);
+          return throwError(() => err);
+        })
+      );
+  }
+
+  /** Revoke an outgoing share group by ID */
+  revokeOutgoingShare(id: string): Observable<{ message: string }> {
+    return this.http.delete<{ message: string }>(`${this.API_BASE_URL}/shares/${id}`, { withCredentials: true })
+      .pipe(
+        tap((res) => console.log('ShareService: Outgoing share revoked', res)),
+        catchError(err => {
+          console.error('ShareService: Failed to revoke outgoing share', err);
+          return throwError(() => err);
+        })
+      );
+  }
   refreshToken(): Observable<any> {
     return this.http.post(`${this.API_BASE_URL}/auth/refresh`, {}, { withCredentials: true })
       .pipe(
@@ -174,8 +202,6 @@ export class ShareService {
     }
 
     // Mark refresh as in-flight (only the first caller does this)
-    let isRefreshing = true;
-    
     console.log('ShareService: Starting token refresh due to 401');
     
     return this.refreshToken().pipe(
@@ -193,10 +219,7 @@ export class ShareService {
         this._refreshInFlightSubject.next();
         return throwError(() => err);
       }),
-      finalize(() => {
-        // Reset the in-flight flag when done
-        isRefreshing = false;
-      })
+      finalize(() => {})
     );
   }
 

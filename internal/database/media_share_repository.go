@@ -279,3 +279,16 @@ func (r *PostgresMediaShareRepository) ListMediaInSharedAlbum(ctx context.Contex
 
 	return items, totalItems, nil
 }
+
+// GetOutgoingShareGroupMediaIDs returns the media IDs in an outgoing share group (shares made BY a user).
+func (r *PostgresMediaShareRepository) GetOutgoingShareGroupMediaIDs(ctx context.Context, shareID uuid.UUID) ([]uuid.UUID, error) {
+	query := `SELECT media_id FROM media_shares WHERE share_id = $1`
+
+	var mediaIDs []uuid.UUID
+	err := r.db.SelectContext(ctx, &mediaIDs, query, shareID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get outgoing share group media IDs: %w", err)
+	}
+
+	return mediaIDs, nil
+}
