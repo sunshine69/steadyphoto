@@ -27,6 +27,7 @@ import { Photo } from '../../models/photo.model';
                 class="main-video rounded shadow w-100"
                 crossorigin="use-credentials"
                 (error)="onVideoError($event)"
+                (loadstart)="onMediaLoadStart()"
               >
                 Your browser does not support the video tag.
               </video>
@@ -39,6 +40,8 @@ import { Photo } from '../../models/photo.model';
                 [alt]="photo.filename" 
                 class="main-image rounded shadow"
                 crossorigin="use-credentials"
+                (error)="onImageError($event)"
+                (loadstart)="onMediaLoadStart()"
               >
             </div>
             
@@ -205,14 +208,39 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     const id = this.route.snapshot.paramMap.get('id');
+    
+    // Check if navigating from shared media (source=shared query param)
+    const isSharedMedia = this.route.snapshot.queryParams['source'] === 'shared';
+    
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log(`🔍 [DEBUG] PhotoDetailComponent.ngOnInit`);
+    console.log(`   Route params: id=${id}, source=${isSharedMedia ? 'shared' : 'owner'}`);
+    console.log(`   Query params:`, this.route.snapshot.queryParams);
+    
     if (id) {
-      // Use getMedia instead of getPhoto since it works for both photos and videos
-      this.subscription = this.photoService.getMedia(id).subscribe({
+      // Use getSharedMedia() for shared access, or getMedia() for ownership check
+      const fetch$ = isSharedMedia 
+        ? this.photoService.getSharedMedia(id)
+        : this.photoService.getMedia(id);
+      
+      console.log(`   API call: ${isSharedMedia ? 'GET /media/shared/' + id : 'GET /media/' + id}`);
+      
+      this.subscription = fetch$.subscribe({
         next: (photo) => {
+          console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+          console.log(`🟢 [DEBUG] PhotoDetailComponent photo loaded successfully!`);
+          console.log(`   ID: ${photo.id}`);
+          console.log(`   Filename: ${photo.filename}`);
+          console.log(`   mediaType: ${photo.mediaType || 'N/A'}`);
+          console.log(`   path (for <img>/<video> src): ${photo.path}`);
+          console.log(`   thumbnailUrl: ${photo.thumbnailUrl || 'N/A'}`);
+          console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
           this.photo = photo;
         },
         error: (err) => {
-          console.error('Error fetching photo', err);
+          console.error('❌ [DEBUG] PhotoDetailComponent Error fetching media', err);
+          console.error('   Status:', err.status);
+          console.error('   URL:', err.url || 'N/A');
           this.router.navigate(['/']);
         }
       });
@@ -253,7 +281,36 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
   }
 
   onVideoError(event: Event): void {
-    console.error('Video playback error:', event);
+    const err = (event as any).target?.error;
+    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.error('❌ [DEBUG] Video media load FAILED!');
+    console.error(`   Media type: video`);
+    console.error(`   URL requested: ${this.photo?.path}`);
+    console.error(`   Error details:`, err ? `code=${err.code}, message=${err.message || 'N/A'}` : 'No error object available');
+    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  }
+
+  onImageError(event: Event): void {
+    const img = (event as any).target;
+    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.error('❌ [DEBUG] Image load FAILED!');
+    console.error(`   URL requested: ${this.photo?.path}`);
+    console.error(`   Media type: photo`);
+    console.error(`   Alt text (filename): ${img?.alt || 'N/A'}`);
+    if (typeof img?.complete !== 'undefined') {
+      console.error(`   Image complete flag: ${img.complete}, naturalWidth: ${img.naturalWidth || 0}, naturalHeight: ${img.naturalHeight || 0}`);
+    }
+    const err = (event as any).target?.error;
+    if (err) {
+      console.error(`   Error details:`, `code=${err.code}, message=${err.message || 'N/A'}`);
+    } else {
+      console.error('   No error event - image may have been blocked by CORS/same-origin policies');
+    }
+    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  }
+
+  onMediaLoadStart(): void {
+    console.log(`🟡 [DEBUG] Media load STARTED: ${this.photo?.path}`);
   }
 
   goBack(): void {
@@ -263,6 +320,8 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
   startPresentation(): void {
     if (!this.photo) return;
 
+    // Check if viewing from a shared album (source=shared query param + albumIds present)
+    const isSharedMedia = this.route.snapshot.queryParams['source'] === 'shared';
     const albumIdsParam = this.route.snapshot.queryParams['albumIds'];
     
     let mediaItems: MediaItem[];
@@ -282,7 +341,9 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
           next: (photos) => {
             mediaItems = photos.filter((p): p is Photo => p !== null).map(p => ({
               id: p.id,
-              path: `${this.photoService['API_BASE_URL']}/media/${p.id}/original`,
+              path: isSharedMedia 
+                ? `${this.photoService['API_BASE_URL']}/media/shared/${p.id}/original`
+                : `${this.photoService['API_BASE_URL']}/media/${p.id}/original`,
               filename: p.filename || '',
               mediaType: p.mediaType || 'photo'
             }));
@@ -308,7 +369,9 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
         next: (response) => {
           mediaItems = response.photos.map(p => ({
             id: p.id,
-            path: p.path,
+            path: isSharedMedia 
+              ? `${this.photoService['API_BASE_URL']}/media/shared/${p.id}/original`
+              : p.path,
             filename: p.filename,
             mediaType: p.mediaType
           }));

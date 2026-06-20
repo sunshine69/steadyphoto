@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { BehaviorSubject, Observable, Subject, throwError, of } from 'rxjs';
 import { catchError, tap, switchMap, finalize, map } from 'rxjs/operators';
 import { environment } from '../../environments/environment';
@@ -21,6 +21,27 @@ export type {
   PublicShareListItem, SharedItemsResponse, SearchUser,
   ShareGroupListItem
 };
+
+// Extended shared media item with full details (for single-item view)
+export interface SharedMediaDetail {
+  id: string;
+  userId: string; // owner of the media (not necessarily current user)
+  filename: string;
+  path: string;   // file path for thumbnail/original serving
+  mediaType: 'photo' | 'video';
+  capturedAt: string;
+  sharerUserId: string; // who shared it with current user
+}
+
+// Extended shared album detail
+export interface SharedAlbumDetail {
+  id: string;
+  name: string;
+  description?: string;
+  userId: string;      // owner of the album (not necessarily current user)
+  createdAt: string;
+  sharerUserId: string; // who shared it with current user
+}
 
 @Injectable({ providedIn: 'root' })
 export class ShareService {
@@ -141,6 +162,75 @@ export class ShareService {
       );
   }
 
+  // --- Shared Media Detail Endpoints (checks sharee access, not ownership) ---
+
+  /** Get full metadata for a single media item that was shared with current user */
+  getSharedMediaDetail(id: string): Observable<SharedMediaDetail> {
+    return this.http.get<any>(`${this.API_BASE_URL}/media/shared/${id}`, { withCredentials: true })
+      .pipe(
+        tap((res) => console.log('ShareService: Shared media detail fetched', res)),
+        map(response => ({
+          id: response.ID ?? response.id,
+          userId: response.UserID ?? response.userId,     // owner of the media (may not be current user!)
+          filename: response.Filename ?? response.filename,
+          path: response.Path ?? response.path,            // file path for thumbnail/original serving
+          mediaType: response.MediaType ?? response.mediaType as 'photo' | 'video',
+          capturedAt: response.CapturedAt ?? response.capturedAt,
+          sharerUserId: response.SharerUserID ?? response.sharerUserId
+        })),
+        catchError(err => {
+          console.error('ShareService: Failed to fetch shared media detail:', err);
+          return throwError(() => err);
+        })
+      );
+  }
+
+  /** Get thumbnail URL for a shared media item */
+  getSharedMediaThumbnailUrl(id: string): Observable<string | null> {
+    // First try the dedicated thumbnail endpoint
+    const thumbPath = `${this.API_BASE_URL}/media/shared/${id}/thumb`;
+    
+    return this.http.head(thumbPath, { observe: 'response', responseType: 'text' }).pipe(
+      map(response => {
+        if (response.status === 200) {
+          // Thumbnail exists — use it
+          console.log('ShareService: Shared media thumbnail available at:', thumbPath);
+          return thumbPath;
+        } else {
+          // No thumbnail, fall back to original as fallback
+          const originalPath = `${this.API_BASE_URL}/media/shared/${id}/original`;
+          return originalPath;
+        }
+      }),
+      catchError(() => {
+        // If even the thumbnail request fails entirely (401/403/etc), 
+        // try fetching via /original instead — this endpoint should succeed if sharee access is valid
+        console.log('ShareService: Thumbnail check failed, using original as fallback');
+        return of(`${this.API_BASE_URL}/media/shared/${id}/original`);
+      })
+    );
+  }
+
+  /** Get full metadata for a single album that was shared with current user */
+  getSharedAlbumDetail(id: string): Observable<SharedAlbumDetail> {
+    return this.http.get<any>(`${this.API_BASE_URL}/albums/shared/${id}`, { withCredentials: true })
+      .pipe(
+        tap((res) => console.log('ShareService: Shared album detail fetched', res)),
+        map(response => ({
+          id: response.ID ?? response.id,
+          name: response.Name ?? response.name,
+          description: response.Description ?? response.description, // note: may be null in DB
+          userId: response.UserID ?? response.userId,     // owner of the album (may not be current user!)
+          createdAt: response.CreatedAt ?? response.createdAt,
+          sharerUserId: response.SharerUserID ?? response.sharerUserId
+        })),
+        catchError(err => {
+          console.error('ShareService: Failed to fetch shared album detail:', err);
+          return throwError(() => err);
+        })
+      );
+  }
+
   // --- Auth state management (same pattern as AuthService) ---
 
   /** Attempts to refresh the access token using the stored refresh cookie. */
@@ -170,6 +260,7 @@ export class ShareService {
         })
       );
   }
+
   refreshToken(): Observable<any> {
     return this.http.post(`${this.API_BASE_URL}/auth/refresh`, {}, { withCredentials: true })
       .pipe(

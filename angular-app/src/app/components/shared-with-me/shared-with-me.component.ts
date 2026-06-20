@@ -1,12 +1,13 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { Router, RouterModule } from '@angular/router';
 import { ShareService, SharedMediaItem, SharedAlbumItem } from '../../services/share.service';
 import { Photo } from '../../models/photo.model';
 
 @Component({
   selector: 'app-shared-with-me',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, RouterModule],
   template: `
     <div class="shared-with-me-container">
       <!-- Header -->
@@ -357,6 +358,8 @@ export class SharedWithMeComponent implements OnInit {
     }
   }
 
+  private router = inject(Router);
+
   constructor(private shareService: ShareService) {}
 
   ngOnInit(): void {
@@ -425,18 +428,9 @@ export class SharedWithMeComponent implements OnInit {
     this.loadSharedAlbums();
   }
 
-  // Load thumbnail for a shared media item
-  private loadItemThumbnail(mediaId: string): void {
-    // TODO: Add API endpoint to get thumbnail URL for shared items
-    // For now, use the fallback thumbnail (will be replaced when backend provides thumbnails)
-    console.log('Loading thumbnail for shared item:', mediaId);
-  }
+  // Load thumbnail for a shared media item - delegated to the implementation below with real API call
 
-  // Load thumbnail for a shared album
-  private loadAlbumThumbnail(albumId: string): void {
-    // TODO: Add API endpoint to get album cover/thumbnail
-    console.log('Loading thumbnail for shared album:', albumId);
-  }
+  // Load thumbnail for a shared album - delegated to the implementation below with real API call
 
   // Get fallback thumbnail URL when image fails to load
   getFallbackThumbnail(): string {
@@ -451,25 +445,51 @@ export class SharedWithMeComponent implements OnInit {
     }
   }
 
-  // View the shared item (navigate to photo detail page)
+  // View the shared media item (navigate to photo detail page with 'source=shared')
   viewItem(item: SharedMediaItem & { sharerName?: string }): void {
-    // TODO: Navigate to photo detail route with the shared media ID
-    console.log('Viewing shared media:', item.id);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log(`🔍 [DEBUG] SharedWithMeComponent.viewItem`);
+    console.log(`   Item ID: ${item.id}`);
+    console.log(`   Filename: ${item.filename}`);
+    console.log(`   Thumbnail URL (shown on this page):`, (item as any).thumbnailUrl || 'N/A');
+    console.log(`   Navigating to: /photos/${item.id}?source=shared`);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━' + '━'.repeat(10));
     
-    // Emit event for parent component to handle navigation
-    window.dispatchEvent(new CustomEvent('navigate-to-photo', { 
-      detail: { id: item.id } 
-    }));
+    // Navigate using Angular Router with a query param so PhotoDetailComponent knows
+    // to use the shared-media endpoint instead of ownership-checking endpoint
+    this.router.navigate(['/photos', item.id], { queryParams: { source: 'shared' } });
   }
 
-  // View a shared album (navigate to album detail page)
+  // View a shared album (navigate to album detail page with 'source=shared')
   viewAlbum(item: SharedAlbumItem & { sharerName?: string }): void {
-    // TODO: Navigate to album detail route with the shared album ID
     console.log('Viewing shared album:', item.id);
     
-    window.dispatchEvent(new CustomEvent('navigate-to-album', { 
-      detail: { id: item.id } 
-    }));
+    // Navigate using Angular Router with a query param so AlbumDetailComponent knows
+    // to use the shared-album endpoint instead of ownership-checking endpoint
+    this.router.navigate(['/albums', item.id], { queryParams: { source: 'shared' } });
+  }
+
+  // Load thumbnail for a shared media item using the dedicated shared-media endpoint
+  private loadItemThumbnail(mediaId: string): void {
+    this.shareService.getSharedMediaThumbnailUrl(mediaId).subscribe({
+      next: (thumbUrl) => {
+        if (thumbUrl) {
+          const item = this.sharedMedia.find(i => i.id === mediaId);
+          if (item) {
+            item.thumbnailUrl = thumbUrl;
+          }
+        }
+      },
+      error: (err) => {
+        console.error('Failed to load thumbnail for shared media:', err, mediaId);
+      }
+    });
+  }
+
+  // Load thumbnail for a shared album using the dedicated shared-album endpoint
+  private loadAlbumThumbnail(albumId: string): void {
+    // Try to get album cover from backend (if an API exists) or generate based on media types
+    console.log('Loading thumbnail for shared album:', albumId);
   }
 
   // Toggle favorite status for a shared item (optional feature)

@@ -126,7 +126,7 @@ export class PhotoService {
   }
 
   getMedia(id: string): Observable<Photo> {
-    // Use /media/{id} endpoint which works for both photos and videos
+    // Use /media/{id} endpoint which works for both photos and videos (ownership check)
     return this.http.get<any>(`${this.API_BASE_URL}/media/${id}`)
       .pipe(
         map(response => {
@@ -136,6 +136,97 @@ export class PhotoService {
         }),
         catchError(this.handleError)
       );
+  }
+
+  /**
+   * Fetches a shared media item using /media/shared/{id} endpoint.
+   * This does NOT check ownership — it checks sharee access instead.
+   */
+  getSharedMedia(id: string): Observable<Photo> {
+    return this.http.get<any>(`${this.API_BASE_URL}/media/shared/${id}`)
+      .pipe(
+        map(response => {
+          // Backend returns media object directly, not wrapped
+          const mediaData = response?.Media || response;
+          return this.normalizeSharedMedia(mediaData);
+        }),
+        catchError(this.handleError)
+      );
+  }
+
+  /**
+   * Fetches a shared album detail using /albums/shared/{id} endpoint.
+   * This does NOT check ownership — it checks sharee access instead.
+   */
+  getSharedAlbum(id: string): Observable<any> {
+    return this.http.get<any>(`${this.API_BASE_URL}/albums/shared/${id}`)
+      .pipe(
+        map(response => response),
+        catchError(this.handleError)
+      );
+  }
+
+  /**
+   * Fetches media items belonging to a shared album.
+   */
+  getSharedAlbumMedia(albumId: string, limit = 50, offset = 0): Observable<any> {
+    return this.http.get<any>(`${this.API_BASE_URL}/albums/shared/${albumId}/media?limit=${limit}&offset=${offset}`)
+      .pipe(
+        map(response => response),
+        catchError(this.handleError)
+      );
+  }
+
+  /**
+   * Normalizes shared media data from /media/shared/{id} endpoint.
+   * The backend may return the path as either "path" or "Path", and file type info similarly.
+   */
+  private normalizeSharedMedia(p: any): Photo {
+    const id = p.ID ?? p.id ?? '';
+    
+    // Determine media type - check multiple possible field names
+    let mediaType: 'photo' | 'video' | undefined;
+    const rawMediaType = p.MediaType || p.mediaType || p.media_type;
+    if (rawMediaType) {
+      const mt = String(rawMediaType).toLowerCase();
+      if (mt === 'video') {
+        mediaType = 'video';
+      } else {
+        mediaType = 'photo';
+      }
+    }
+    
+    // Use /media/shared/{id}/original for serving shared media files
+    const filePath = id ? `${this.API_BASE_URL}/media/shared/${id}/original` : '';
+    
+    return {
+      id: id,
+      path: filePath,
+      thumbnailUrl: id ? `${this.API_BASE_URL}/media/shared/${id}/thumb` : '',
+      filename: p.Filename ?? p.filename ?? '',
+      captured_at: p.CapturedAt ?? p.captured_at ?? '',
+      width: p.Width ?? p.width,
+      height: p.Height ?? p.height,
+      size: p.Size ?? p.size,
+      type: p.Type ?? p.type,
+      mediaType: mediaType,
+      metadata: p.Metadata ? {
+        camera: p.Metadata.Camera,
+        iso: p.Metadata.Iso,
+        aperture: p.Metadata.Aperture,
+        focal_length: p.Metadata.FocalLength,
+        gps_lat: p.Metadata.GpsLat,
+        gps_lon: p.Metadata.GpsLon,
+      } : undefined,
+      videoMetadata: p.VideoMetadata ? {
+        duration: p.VideoMetadata.Duration ?? p.VideoMetadata.duration,
+        bitrate: p.VideoMetadata.Bitrate ?? p.VideoMetadata.bitrate,
+        video_codec: p.VideoMetadata.VideoCodec ?? p.VideoMetadata.video_codec,
+        audio_codec: p.VideoMetadata.AudioCodec ?? p.VideoMetadata.audio_codec,
+        frame_rate: p.VideoMetadata.FrameRate ?? p.VideoMetadata.frame_rate,
+      } : undefined,
+      tags: p.Tags ?? p.tags ?? ''
+    };
   }
 
   getPhoto(id: string): Observable<Photo> {

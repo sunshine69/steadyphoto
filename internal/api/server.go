@@ -288,6 +288,18 @@ func (s *Server) routes() {
 			})
 			protected.Get("/media/shared", sharesHandler.handleListSharedMedia)   // List media shared with current user
 			protected.Get("/albums/shared", sharesHandler.handleListSharedAlbums) // List albums shared with current user
+			// Serve shared media items (metadata + files) - checks sharee access instead of ownership
+			protected.Route("/media/shared/{id}", func(r chi.Router) {
+				r.Get("/", s.handleGetSharedMedia)                  // Get metadata for a single shared media item
+				r.Get("/thumb", s.handleGetSharedMediaThumb)        // Serve thumbnail for a shared media item
+				r.Get("/original", s.handleGetSharedMediaOriginal)  // Stream original file for a shared media item
+			})
+
+			// Shared album detail and media endpoints - checks sharee access instead of ownership
+			protected.Route("/albums/shared/{id}", func(r chi.Router) {
+				r.Get("/", s.handleGetSharedAlbum)        // Get metadata for a single shared album
+				r.Get("/media", s.handleListSharedAlbumMedia)  // List media items in a shared album
+			})
 
 			protected.Route("/public-shares", func(r chi.Router) {
 				r.Post("/", sharesHandler.handleCreatePublicShare)       // Create public share link (with optional password + expiration)

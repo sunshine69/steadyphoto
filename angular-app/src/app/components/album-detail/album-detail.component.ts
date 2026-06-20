@@ -286,6 +286,9 @@ export class AlbumDetailComponent implements OnInit, OnDestroy {
   loading = true;
   albumId!: string;
 
+  // Track whether we're viewing a shared album (for path construction)
+  isSharedAlbumView: boolean = false;
+
   // Album Grid Pagination State
   totalAlbumPhotos = 0;
   albumLimit = 20;
@@ -324,9 +327,13 @@ export class AlbumDetailComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     const id = this.route.snapshot.paramMap.get('id');
+    
+    // Check if navigating from shared media (source=shared query param)
+    const isSharedAlbum = this.route.snapshot.queryParams['source'] === 'shared';
+    
     if (id) {
       this.albumId = id;
-      this.loadAlbumContent(id);
+      this.loadAlbumContent(id, isSharedAlbum);
     } else {
       this.router.navigate(['/albums']);
     }
@@ -336,38 +343,59 @@ export class AlbumDetailComponent implements OnInit, OnDestroy {
     // Clean up presentation state when leaving album detail
   }
 
-  private loadAlbumContent(id: string): void {
+  private loadAlbumContent(id: string, isShared = false): void {
     this.loading = true;
-    this.albumService.getAlbum(id).subscribe({
-      next: (album: Album) => {
-        this.albumName = album.name || 'Untitled Album';
-        this.fetchMedia(id);
-      },
-      error: (err: any) => {
-        console.error('Error loading album metadata', err);
-        this.loading = false;
-        this.albumName = 'Error loading album';
-      }
-    });
+    this.isSharedAlbumView = isShared;
+    
+    if (isShared) {
+      // Use shared album endpoint for sharee access
+      this.http.get<any>(`${this.photoService['API_BASE_URL']}/albums/shared/${id}`).subscribe({
+        next: (albumResponse) => {
+          const albumData = albumResponse.Album || albumResponse;
+          this.albumName = albumData.name || 'Untitled Album';
+          this.fetchMedia(id, isShared);
+        },
+        error: (err: any) => {
+          console.error('Error loading shared album metadata', err);
+          this.loading = false;
+          this.albumName = 'Error loading album';
+        }
+      });
+    } else {
+      // Use ownership-checking album endpoint
+      this.albumService.getAlbum(id).subscribe({
+        next: (album: Album) => {
+          this.albumName = album.name || 'Untitled Album';
+          this.fetchMedia(id);
+        },
+        error: (err: any) => {
+          console.error('Error loading album metadata', err);
+          this.loading = false;
+          this.albumName = 'Error loading album';
+        }
+      });
+    }
   }
 
-  private fetchMedia(id: string): void {
+  private fetchMedia(id: string, isShared = false): void {
     // Load first page with pagination params
-    this.loadAlbumPageFromAPI(id, 0);
+    this.loadAlbumPageFromAPI(id, 0, isShared);
   }
 
-  private loadAlbumPageFromAPI(id: string, offset: number): void {
+  private loadAlbumPageFromAPI(id: string, offset: number, isShared = false): void {
     this.loading = true;
     
     const limit = this.albumLimit;
-    const url = `${this.photoService['API_BASE_URL']}/albums/${id}/media?limit=${limit}&offset=${offset}`;
+    const url = isShared 
+      ? `${this.photoService['API_BASE_URL']}/albums/shared/${id}/media?limit=${limit}&offset=${offset}`
+      : `${this.photoService['API_BASE_URL']}/albums/${id}/media?limit=${limit}&offset=${offset}`;
     
     this.http.get<any>(url).subscribe({
       next: (response) => {
         const rawPhotos: any[] = response.media || [];
         const totalItems = response.totalItems || 0;
         
-        this.photos = rawPhotos.map((p: any) => this.normalizePhoto(p));
+        this.photos = rawPhotos.map((p: any) => this.normalizePhoto(p, isShared));
         this.totalAlbumPhotos = totalItems;
         this.albumOffset = offset;
         this.loading = false;
@@ -387,7 +415,7 @@ export class AlbumDetailComponent implements OnInit, OnDestroy {
     
     if (!this.albumId) return;
     
-    this.loadAlbumPageFromAPI(this.albumId, newOffset);
+    this.loadAlbumPageFromAPI(this.albumId, newOffset, this.isSharedAlbumView);
     window.scrollTo(0, 0);
   }
 
@@ -397,7 +425,7 @@ export class AlbumDetailComponent implements OnInit, OnDestroy {
       
       if (!this.albumId) return;
       
-      this.loadAlbumPageFromAPI(this.albumId, targetOffset);
+      this.loadAlbumPageFromAPI(this.albumId, targetOffset, this.isSharedAlbumView);
       window.scrollTo(0, 0);
     } 
   }
@@ -405,7 +433,7 @@ export class AlbumDetailComponent implements OnInit, OnDestroy {
   /**
    * Normalizes raw photo data from the API to ensure thumbnailUrl is properly constructed.
    */
-  private normalizePhoto(p: any): Photo {
+  private normalizePhoto(p: any, isShared = false): Photo {
     const id = p.ID ?? p.id ?? '';
     
     let mediaType: 'photo' | 'video' | undefined;
@@ -419,10 +447,25 @@ export class AlbumDetailComponent implements OnInit, OnDestroy {
       }
     }
 
+    // Normalize path to API URL endpoint instead of raw file system path
+    const apiBaseUrl = this.photoService['API_BASE_URL'];
+    let normalizedPath = '';
+    if (id) {
+      if (isShared) {
+        // For shared albums, construct the /original endpoint from the ID
+        normalizedPath = `${apiBaseUrl}/media/shared/${id}/original`;
+      } else {
+        // For regular albums, use whatever path the backend provides
+        normalizedPath = p.Path ?? p.path ?? '';
+      }
+    }
+
     return {
       id: id,
-      path: p.Path ?? p.path ?? '',
-      thumbnailUrl: id ? `${this.photoService['API_BASE_URL']}/media/${id}/thumb` : (p.thumbnailUrl || ''),
+      path: normalizedPath,
+      thumbnailUrl: isShared 
+        ? (id ? `${apiBaseUrl}/media/shared/${id}/thumb` : '')
+        : (id ? `${apiBaseUrl}/media/${id}/thumb` : ''),
       filename: p.Filename ?? p.filename ?? '',
       captured_at: p.CapturedAt ?? p.captured_at ?? '',
       width: p.Width ?? p.width,
@@ -453,16 +496,29 @@ export class AlbumDetailComponent implements OnInit, OnDestroy {
 
   onPhotoClick(id: string): void { 
     const ids = this.photos.map(p => p.id).join(',');
-    this.router.navigate(['/photos', id], { queryParams: { albumIds: ids } }); 
+    
+    // Pass source=shared if viewing from a shared album, so PhotoDetailComponent uses the correct endpoint
+    const isSharedAlbum = this.route.snapshot.queryParams['source'] === 'shared';
+    
+    if (isSharedAlbum) {
+      this.router.navigate(['/photos', id], { queryParams: { albumIds: ids, source: 'shared' } }); 
+    } else {
+      this.router.navigate(['/photos', id], { queryParams: { albumIds: ids } }); 
+    }
   }
 
   startPresentationFromAlbum(): void {
     if (this.photos.length === 0 || this.loading) return;
 
-    // Convert photos to MediaItem format for presentation service
+    const isSharedAlbum = this.route.snapshot.queryParams['source'] === 'shared';
+    
+    // Convert photos to MediaItem format for presentation service - use correct URL based on album type
+    const apiBaseUrl = this.photoService['API_BASE_URL'];
     const mediaItems: MediaItem[] = this.photos.map(p => ({
       id: p.id,
-      path: `${this.photoService['API_BASE_URL']}/media/${p.id}/original`,
+      path: isSharedAlbum 
+        ? `${apiBaseUrl}/media/shared/${p.id}/original`  // Shared album → use shared endpoint
+        : `${apiBaseUrl}/media/${p.id}/original`,          // Regular album → use regular endpoint
       filename: p.filename,
       mediaType: p.mediaType || 'photo'
     }));
