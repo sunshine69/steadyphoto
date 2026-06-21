@@ -356,6 +356,9 @@ export class AppComponent implements OnInit, OnDestroy {
       }
     });
 
+    // Try to restore auth state from session cookie
+    this.authService.initializeAuth();
+
     // Initial check for admin status and avatar
     this.checkAdminStatus();
   }

@@ -220,12 +220,44 @@ export class AuthService {
 
   /** Returns the synchronous value of the auth state. */
   isAuthenticated(): boolean {
-    return this._isAuthenticatedSubject.value;
+    // First check if the BehaviorSubject was set (e.g., after login)
+    if (this._isAuthenticatedSubject.value) {
+      return true;
+    }
+    // Fallback: check if there's a stored currentUser in localStorage
+    const currentUser = localStorage.getItem('currentUser');
+    return currentUser !== null;
   }
 
   /** Internal method used by login/logout handlers to update the auth state stream. */
   setAuthenticated(status: boolean): void {
     this._isAuthenticatedSubject.next(status);
+  }
+
+  /** Initializes auth state by checking if the user has a valid session cookie. */
+  initializeAuth(): void {
+    this.getProfile().subscribe({
+      next: () => {
+        console.log('AuthService: Session verified, user authenticated');
+        this.setAuthenticated(true);
+        // Also set the current user if not already set
+        if (!this.getCurrentUser()) {
+          const currentUser = localStorage.getItem('currentUser');
+          if (currentUser) {
+            try {
+              const user = JSON.parse(currentUser);
+              this._currentUser.next(user);
+            } catch (e) {
+              console.error('Failed to parse current user from localStorage', e);
+            }
+          }
+        }
+      },
+      error: (err) => {
+        console.warn('AuthService: Session invalid on page load', err);
+        this.setAuthenticated(false);
+      }
+    });
   }
 
   private _currentUser = new BehaviorSubject<User | null>(null);
