@@ -18,37 +18,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// logRequest logs a request with its path and user agent, returning the current time for duration tracking.
-func logRequest(r *http.Request, label string) time.Time {
-	start := time.Now()
-	log.Printf("[INFO] [%s] %s %s from %s", label, r.Method, r.URL.Path, r.RemoteAddr)
-	return start
-}
-
-// logResponse logs the response status and duration.
-func logResponse(label string, startTime time.Time) {
-	duration := time.Since(startTime).String()
-	fmt.Printf("[INFO] [%s] Response sent in %s\n", label, duration)
-}
-
-// logUnauthorized logs an unauthorized access attempt with IP address.
-func logUnauthorized(r *http.Request, label string) {
-	log.Printf("[WARN] [%s] Unauthorized request - no user in context. IP: %s", label, r.RemoteAddr)
-}
-
-// logError logs an error with its label and duration.
-func logError(label string, err error, startTime time.Time) {
-	duration := time.Since(startTime).String()
-	log.Printf("[ERROR] [%s] %v — took %v", label, err, duration)
-}
-
-// logInfo logs an info message with its label and duration.
-func logInfo(label string, msg string, startTime time.Time) {
-	duration := time.Since(startTime).String()
-	log.Printf("[INFO] [%s] %s — took %v", label, msg, duration)
-}
-
-
 type SharedMediaFullResponse struct {
 	ID           uuid.UUID `json:"id"`
 	UserID       uuid.UUID `json:"userId"`
@@ -83,35 +52,42 @@ type SharedAlbumMediaItem struct {
 	CapturedAt time.Time `json:"capturedAt"`
 }
 
+// logRequest logs a request with its path and user agent, returning the current time for duration tracking.
+func logRequest(r *http.Request, label string) time.Time {
+	start := time.Now()
+	log.Printf("[INFO] [%s] %s %s from %s", label, r.Method, r.URL.Path, r.RemoteAddr)
+	return start
+}
+
 // handleGetSharedMedia returns metadata for a single media item shared with the current user.
 func (s *Server) handleGetSharedMedia(w http.ResponseWriter, r *http.Request) {
-	startTime := logRequest(r, "handleGetSharedMedia")
+	start := logRequest(r, "handleGetSharedMedia")
 
 	ctx := r.Context()
 	idStr := chi.URLParam(r, "id")
 
 	userID, ok := GetUserIDFromContext(ctx)
 	if !ok {
-		logUnauthorized(r, "handleGetSharedMedia")
+		log.Printf("[WARN] [%s] Unauthorized request - no user in context. IP: %s", "handleGetSharedMedia", r.RemoteAddr)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		logError("handleGetSharedMedia - parse UUID", err, startTime)
+		log.Printf("[ERROR] [%s] parse UUID (%s): %v — took %v", "handleGetSharedMedia", idStr, err, time.Since(start))
 		http.Error(w, "Invalid UUID format", http.StatusBadRequest)
 		return
 	}
 
 	item, err := s.mediaShareRepo.GetSharedMediaByID(ctx, id, userID)
 	if err != nil {
-		logError("handleGetSharedMedia - GetSharedMediaByID", err, startTime)
+		log.Printf("[ERROR] [%s] GetSharedMediaByID (%s): %v — took %v", "handleGetSharedMedia", id, err, time.Since(start))
 		http.Error(w, "Shared media not found or access denied", http.StatusNotFound)
 		return
 	}
 
-	logInfo("handleGetSharedMedia - Found shared media", fmt.Sprintf("ID=%s, filename=%s, userID=%s", idStr, item.Media.Filename, item.Media.UserID), startTime)
+	log.Printf("[INFO] [%s] Found shared media: ID=%s, filename=%s, userID=%s — took %v", "handleGetSharedMedia", idStr, item.Media.Filename, item.Media.UserID, time.Since(start))
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(SharedMediaFullResponse{
@@ -123,34 +99,32 @@ func (s *Server) handleGetSharedMedia(w http.ResponseWriter, r *http.Request) {
 		CapturedAt:   item.Media.CapturedAt,
 		SharerUserID: item.SharerUserID,
 	})
-
-	logResponse("handleGetSharedMedia", startTime)
 }
 
 // handleGetSharedMediaOriginal streams the actual file for a shared media item.
 func (s *Server) handleGetSharedMediaOriginal(w http.ResponseWriter, r *http.Request) {
-	startTime := logRequest(r, "handleGetSharedMediaOriginal")
+	start := logRequest(r, "handleGetSharedMediaOriginal")
 
 	ctx := r.Context()
 	idStr := chi.URLParam(r, "id")
 
 	userID, ok := GetUserIDFromContext(ctx)
 	if !ok {
-		logUnauthorized(r, "handleGetSharedMediaOriginal")
+		log.Printf("[WARN] [%s] Unauthorized request - no user in context. IP: %s", "handleGetSharedMediaOriginal", r.RemoteAddr)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		logError("handleGetSharedMediaOriginal - parse UUID", err, startTime)
+		log.Printf("[ERROR] [%s] parse UUID (%s): %v — took %v", "handleGetSharedMediaOriginal", idStr, err, time.Since(start))
 		http.Error(w, "Invalid UUID format", http.StatusBadRequest)
 		return
 	}
 
 	item, err := s.mediaShareRepo.GetSharedMediaByID(ctx, id, userID)
 	if err != nil {
-		logError("handleGetSharedMediaOriginal - GetSharedMediaByID", err, startTime)
+		log.Printf("[ERROR] [%s] GetSharedMediaByID (%s): %v — took %v", "handleGetSharedMediaOriginal", id, err, time.Since(start))
 		http.Error(w, "Shared media not found or access denied", http.StatusNotFound)
 		return
 	}
@@ -163,7 +137,7 @@ func (s *Server) handleGetSharedMediaOriginal(w http.ResponseWriter, r *http.Req
 	}
 
 	if err != nil {
-		logError("handleGetSharedMediaOriginal - resolvePath", err, startTime)
+		log.Printf("[ERROR] [%s] resolvePath (%s): %v — took %v", "handleGetSharedMediaOriginal", targetPath, err, time.Since(start))
 		http.Error(w, "Could not locate file: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -173,34 +147,34 @@ func (s *Server) handleGetSharedMediaOriginal(w http.ResponseWriter, r *http.Req
 	w.Header().Set("Accept-Ranges", "bytes")
 	w.Header().Set("Access-Control-Expose-Headers", "Content-Length, Content-Type, Accept-Ranges, Content-Range")
 
-	logInfo("handleGetSharedMediaOriginal - Serving original file", fmt.Sprintf("ID=%s, path=%s", idStr, absPath), startTime)
+	log.Printf("[INFO] [%s] Serving original file: ID=%s, path=%s — took %v", "handleGetSharedMediaOriginal", idStr, absPath, time.Since(start))
 	http.ServeFile(w, r, absPath)
 }
 
 // handleGetSharedMediaThumb streams the thumbnail for a shared media item.
 func (s *Server) handleGetSharedMediaThumb(w http.ResponseWriter, r *http.Request) {
-	startTime := logRequest(r, "handleGetSharedMediaThumb")
+	start := logRequest(r, "handleGetSharedMediaThumb")
 
 	ctx := r.Context()
 	idStr := chi.URLParam(r, "id")
 
 	userID, ok := GetUserIDFromContext(ctx)
 	if !ok {
-		logUnauthorized(r, "handleGetSharedMediaThumb")
+		log.Printf("[WARN] [%s] Unauthorized request - no user in context. IP: %s", "handleGetSharedMediaThumb", r.RemoteAddr)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		logError("handleGetSharedMediaThumb - parse UUID", err, startTime)
+		log.Printf("[ERROR] [%s] parse UUID (%s): %v — took %v", "handleGetSharedMediaThumb", idStr, err, time.Since(start))
 		http.Error(w, "Invalid UUID format", http.StatusBadRequest)
 		return
 	}
 
 	item, err := s.mediaShareRepo.GetSharedMediaByID(ctx, id, userID)
 	if err != nil {
-		logError("handleGetSharedMediaThumb - GetSharedMediaByID", err, startTime)
+		log.Printf("[ERROR] [%s] GetSharedMediaByID (%s): %v — took %v", "handleGetSharedMediaThumb", id, err, time.Since(start))
 		http.Error(w, "Shared media not found or access denied", http.StatusNotFound)
 		return
 	}
@@ -223,7 +197,7 @@ func (s *Server) handleGetSharedMediaThumb(w http.ResponseWriter, r *http.Reques
 	fullThumbPath := filepath.Join(s.thumbRoot, ".thumbnails", thumbRelPath)
 
 	if _, err := os.Stat(fullThumbPath); os.IsNotExist(err) {
-		logInfo("handleGetSharedMediaThumb - Thumbnail NOT FOUND", fmt.Sprintf("Attempting fallback to original from %s", fullThumbPath), startTime)
+		log.Printf("[WARN] [%s] Thumbnail NOT FOUND at %s. Attempting fallback to original. — took %v", "handleGetSharedMediaThumb", fullThumbPath, time.Since(start))
 		targetPath := item.Media.Path
 		absPath, resolveErr := s.storageService.ResolvePath(targetPath)
 		if resolveErr != nil {
@@ -232,51 +206,51 @@ func (s *Server) handleGetSharedMediaThumb(w http.ResponseWriter, r *http.Reques
 		}
 
 		if resolveErr != nil {
-			logError("handleGetSharedMediaThumb - fallback failed", resolveErr, startTime)
+			log.Printf("[ERROR] [%s] fallback failed for (%s): %v — took %v", "handleGetSharedMediaThumb", targetPath, resolveErr, time.Since(start))
 			http.Error(w, "Thumbnail not found and fallback failed", http.StatusNotFound)
 			return
 		}
 
 		contentType := s.getContentType(item.Media.MediaType, item.Media.Filename)
 		w.Header().Set("Content-Type", contentType)
-		logInfo("handleGetSharedMediaThumb - Serving original as fallback", fmt.Sprintf("from %s", absPath), startTime)
+		log.Printf("[INFO] [%s] Serving original file as fallback from %s — took %v", "handleGetSharedMediaThumb", absPath, time.Since(start))
 		http.ServeFile(w, r, absPath)
 		return
 	}
 
-	logInfo("handleGetSharedMediaThumb - Serving thumbnail", fmt.Sprintf("ID=%s, path=%s", idStr, fullThumbPath), startTime)
+	log.Printf("[INFO] [%s] Serving thumbnail: ID=%s, path=%s — took %v", "handleGetSharedMediaThumb", idStr, fullThumbPath, time.Since(start))
 	http.ServeFile(w, r, fullThumbPath)
 }
 
 // handleGetSharedAlbum returns metadata for a single album shared with the current user.
 func (s *Server) handleGetSharedAlbum(w http.ResponseWriter, r *http.Request) {
-	startTime := logRequest(r, "handleGetSharedAlbum")
+	start := logRequest(r, "handleGetSharedAlbum")
 
 	ctx := r.Context()
 	idStr := chi.URLParam(r, "id")
 
 	userID, ok := GetUserIDFromContext(ctx)
 	if !ok {
-		logUnauthorized(r, "handleGetSharedAlbum")
+		log.Printf("[WARN] [%s] Unauthorized request - no user in context. IP: %s", "handleGetSharedAlbum", r.RemoteAddr)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		logError("handleGetSharedAlbum - parse UUID", err, startTime)
+		log.Printf("[ERROR] [%s] parse UUID (%s): %v — took %v", "handleGetSharedAlbum", idStr, err, time.Since(start))
 		http.Error(w, "Invalid UUID format", http.StatusBadRequest)
 		return
 	}
 
 	item, err := s.mediaShareRepo.GetSharedAlbumByID(ctx, id, userID)
 	if err != nil {
-		logError("handleGetSharedAlbum - GetSharedAlbumByID", err, startTime)
+		log.Printf("[ERROR] [%s] GetSharedAlbumByID (%s): %v — took %v", "handleGetSharedAlbum", id, err, time.Since(start))
 		http.Error(w, "Shared album not found or access denied", http.StatusNotFound)
 		return
 	}
 
-	logInfo("handleGetSharedAlbum - Found shared album", fmt.Sprintf("ID=%s, name=%s", idStr, item.Album.Name), startTime)
+	log.Printf("[INFO] [%s] Found shared album: ID=%s, name=%s — took %v", "handleGetSharedAlbum", idStr, item.Album.Name, time.Since(start))
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(SharedAlbumFullResponse{
@@ -287,27 +261,25 @@ func (s *Server) handleGetSharedAlbum(w http.ResponseWriter, r *http.Request) {
 		CreatedAt:    item.Album.CreatedAt,
 		SharerUserID: item.SharerUserID,
 	})
-
-	logResponse("handleGetSharedAlbum", startTime)
 }
 
 // handleListSharedAlbumMedia returns media items in a shared album.
 func (s *Server) handleListSharedAlbumMedia(w http.ResponseWriter, r *http.Request) {
-	startTime := logRequest(r, "handleListSharedAlbumMedia")
+	start := logRequest(r, "handleListSharedAlbumMedia")
 
 	ctx := r.Context()
 	idStr := chi.URLParam(r, "id")
 
 	userID, ok := GetUserIDFromContext(ctx)
 	if !ok {
-		logUnauthorized(r, "handleListSharedAlbumMedia")
+		log.Printf("[WARN] [%s] Unauthorized request - no user in context. IP: %s", "handleListSharedAlbumMedia", r.RemoteAddr)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		logError("handleListSharedAlbumMedia - parse UUID", err, startTime)
+		log.Printf("[ERROR] [%s] parse UUID (%s): %v — took %v", "handleListSharedAlbumMedia", idStr, err, time.Since(start))
 		http.Error(w, "Invalid UUID format", http.StatusBadRequest)
 		return
 	}
@@ -325,16 +297,16 @@ func (s *Server) handleListSharedAlbumMedia(w http.ResponseWriter, r *http.Reque
 		}
 	}
 
-	logInfo("handleListSharedAlbumMedia - Query params", fmt.Sprintf("limit=%d, offset=%d", limit, offset), startTime)
+	log.Printf("[INFO] [%s] Query params: limit=%d, offset=%d — took %v", "handleListSharedAlbumMedia", limit, offset, time.Since(start))
 
 	items, totalItems, err := s.mediaShareRepo.ListMediaInSharedAlbum(ctx, id, userID, limit, offset)
 	if err != nil {
-		logError("handleListSharedAlbumMedia - ListMediaInSharedAlbum", err, startTime)
+		log.Printf("[ERROR] [%s] ListMediaInSharedAlbum (%s): %v — took %v", "handleListSharedAlbumMedia", id, err, time.Since(start))
 		http.Error(w, "Failed to list shared album media: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	logInfo("handleListSharedAlbumMedia - Found items", fmt.Sprintf("%d items (total=%d)", len(items), totalItems), startTime)
+	log.Printf("[INFO] [%s] Found %d items (total=%d) — took %v", "handleListSharedAlbumMedia", len(items), totalItems, time.Since(start))
 
 	respItems := make([]SharedAlbumMediaItem, 0, len(items))
 	for _, item := range items {
@@ -354,6 +326,4 @@ func (s *Server) handleListSharedAlbumMedia(w http.ResponseWriter, r *http.Reque
 		Limit:  limit,
 		Offset: offset,
 	})
-
-	logResponse("handleListSharedAlbumMedia", startTime)
 }

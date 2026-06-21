@@ -53,6 +53,7 @@ type CreateShareRequest struct {
 type SharedMediaResponse struct {
 	ID           uuid.UUID   `json:"id"`
 	Filename     string      `json:"filename"`
+	Path         string      `json:"path"`
 	MediaType    string      `json:"mediaType"`
 	SharerUserID uuid.UUID   `json:"sharerUserId"`
 }
@@ -293,6 +294,7 @@ func (h *ShareHandler) handleListSharedMedia(w http.ResponseWriter, r *http.Requ
 		response.Items[i] = SharedMediaResponse{
 			ID:           item.Media.ID,
 			Filename:     item.Media.Filename,
+			Path:         item.Media.Path,
 			MediaType:    string(item.Media.MediaType),
 			SharerUserID: item.SharerUserID,
 		}
@@ -630,66 +632,6 @@ func (h *ShareHandler) handleGetPublicShareAlbum(w http.ResponseWriter, r *http.
 		CreatedAt:    albumItem.Album.CreatedAt,
 		UpdatedAt:    albumItem.Album.UpdatedAt,
 		MediaItems:   mediaResponses,
-	})
-}
-
-// handleGetPublicShareMedia handles GET /public/shares/media/:token — Returns media metadata for public share link.
-func (s *Server) handleGetPublicShareMedia(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	tokenStr := chi.URLParam(r, "token")
-
-	// Get the public share by token
-	publicShare, err := s.publicShareRepo.GetByToken(ctx, tokenStr)
-	if err != nil {
-		log.Printf("[ERROR] handleGetPublicShareMedia - get public share: %v", err)
-		http.Error(w, "Share link not found or expired", http.StatusNotFound)
-		return
-	}
-
-	// Check if the share has expired
-	if publicShare.ExpiresAt != nil && time.Now().After(*publicShare.ExpiresAt) {
-		log.Printf("[WARN] handleGetPublicShareMedia - expired public share accessed: %s", tokenStr)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusGone)
-		json.NewEncoder(w).Encode(map[string]string{"error": "This share link has expired"})
-		return
-	}
-
-	// Check if password is required and verify it
-	if publicShare.PasswordHash != nil && *publicShare.PasswordHash != "" {
-		password := r.URL.Query().Get("password")
-		if password == "" || !security.CheckPasswordHash(password, *publicShare.PasswordHash) {
-			log.Printf("[WARN] handleGetPublicShareMedia - wrong/missing password for share: %s", tokenStr)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusForbidden)
-			json.NewEncoder(w).Encode(map[string]string{"error": "Incorrect or missing password"})
-			return
-		}
-	}
-
-	// Get the media item by token for public serving
-	media, err := s.publicShareRepo.GetOriginalFileByToken(ctx, tokenStr)
-	if err != nil {
-		log.Printf("[ERROR] handleGetPublicShareMedia - get shared media: %v", err)
-		http.Error(w, "Media not found", http.StatusNotFound)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"Media": map[string]interface{}{
-			"ID":            media.ID,
-			"Filename":      media.Filename,
-			"Path":          media.Path,
-			"MediaType":     string(media.MediaType),
-			"Width":         media.Width,
-			"Height":        media.Height,
-			"Size":          media.SizeBytes,
-			"Type":          string(media.MediaType),
-			"CapturedAt":    media.CapturedAt,
-			"Metadata":      media.Metadata,
-			"VideoMetadata": media.VideoMetadata,
-		},
 	})
 }
 

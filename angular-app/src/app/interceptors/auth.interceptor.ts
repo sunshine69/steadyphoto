@@ -3,6 +3,9 @@ import { HttpInterceptorFn, HttpRequest, HttpHandlerFn, HttpEvent, HttpErrorResp
 import { Observable, throwError, catchError, switchMap } from 'rxjs';
 import { AuthService } from '../services/auth.service';
 
+// Debug prefix for console logs - filter by this to see all debug output
+const DEBUG_PREFIX = '[Auth Interceptor Debug]';
+
 /**
  * AuthInterceptor automatically:
  * 1. Adds `withCredentials: true` to every outgoing request so HttpOnly cookies are sent.
@@ -36,17 +39,26 @@ export const authInterceptor: HttpInterceptorFn = (req: HttpRequest<unknown>, ne
     authReq = authReq.clone({ withCredentials: true });
   }
 
+  console.log(`${DEBUG_PREFIX} Request: ${req.method} ${req.url}`);
+  if (token) {
+    console.log(`${DEBUG_PREFIX} Access token present (first 10 chars): ${token.substring(0, 10)}...`);
+  } else {
+    console.log(`${DEBUG_PREFIX} WARNING: No access token in sessionStorage for request: ${req.url}`);
+  }
+
   return next(authReq).pipe(
     catchError((error: HttpErrorResponse) => {
       // Only attempt refresh for actual 401 errors — NOT for 403, 500, etc.
       // Public share endpoints return 403 (not 401) when password is required/incorrect.
       // If we try to refresh on a 403, the refresh fails and swallows the original error data.
       if (!authReq.headers.has('X-Auth-Retry') && error.status === 401) {
+        console.log(`${DEBUG_PREFIX} 401 Unauthorized detected for: ${req.method} ${req.url}`);
+        
         // LAYER 1: Check if we're in the middle of logout — skip ALL refresh attempts during logout.
         // This prevents the "refresh avalanche" where concurrent requests fail with 401 and each tries to refresh,
         // hitting the rate limiter (429) and hanging the browser.
         if (authService.isLoggingOut()) {
-          console.warn('AuthInterceptor: Skipping refresh — logout in progress');
+          console.warn(`${DEBUG_PREFIX} Skipping refresh — logout in progress`);
           return throwError(() => error);
         }
 
@@ -56,7 +68,7 @@ export const authInterceptor: HttpInterceptorFn = (req: HttpRequest<unknown>, ne
         // This ensures only ONE refresh happens even if multiple requests fail simultaneously.
         return authService.handle401().pipe(
           switchMap(() => {
-            console.log('AuthInterceptor: Refresh completed, retrying original request.');
+            console.log(`${DEBUG_PREFIX} Refresh completed, retrying original request: ${req.method} ${req.url}`);
             
             let retryReq = authReq;
             const newToken = sessionStorage.getItem('access_token');
@@ -78,7 +90,8 @@ export const authInterceptor: HttpInterceptorFn = (req: HttpRequest<unknown>, ne
             return next(retryReq);
           }),
           catchError((refreshErr) => {
-            console.error('AuthInterceptor: Refresh failed, user must log in again.', refreshErr);
+            console.error(`${DEBUG_PREFIX} Refresh failed, user must log in again.`, refreshErr);
+            console.error(`${DEBUG_PREFIX} Error status: ${refreshErr.status}, message: ${refreshErr.message}`);
             // If refresh fails too, we are truly unauthorized (session expired/revoked)
             // In a real app, you'd redirect to /login here using the Router
             return throwError(() => refreshErr);
@@ -87,6 +100,10 @@ export const authInterceptor: HttpInterceptorFn = (req: HttpRequest<unknown>, ne
       }
 
       // For any other error code (403, 500, etc.), just pass it through unchanged
+      if (error.status !== 0) { // Not a network error (status 0 means offline/abort)
+        console.log(`${DEBUG_PREFIX} Non-401 error: ${req.method} ${req.url} - Status: ${error.status}`);
+      }
+
       return throwError(() => error);
     })
   );

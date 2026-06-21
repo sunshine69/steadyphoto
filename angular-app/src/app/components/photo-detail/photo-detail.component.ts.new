@@ -1,0 +1,531 @@
+import { Component, OnInit, OnDestroy, inject } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
+import { ActivatedRoute, Router, RouterModule } from '@angular/router';
+import { Subscription } from 'rxjs';
+import { PhotoService } from '../../services/photo.service';
+import { AlbumService } from '../../services/album.service';
+import { PresentationService, MediaItem } from '../../services/presentation.service';
+import { ShareTriggerService } from '../../services/share-trigger.service';
+import { Photo } from '../../models/photo.model';
+
+// Debug prefix for console logs - filter by this to see all debug output
+const DEBUG_PREFIX = '[PhotoDetail Debug]';
+
+@Component({
+  selector: 'app-photo-detail',
+  standalone: true,
+  imports: [CommonModule, RouterModule, FormsModule],
+  template: `
+    <div class="container mt-4">
+      <div class="row">
+        <div class="col-md-8">
+          <div class="photo-detail-container" *ngIf="photo; else loading">
+            <!-- Video Player for videos -->
+            <div class="video-viewer-wrapper" *ngIf="isVideo()">
+              <video 
+                [attr.src]="isSharedMedia ? getSharedVideoUrl() : photo.path"
+                controls
+                preload="metadata"
+                class="main-video rounded shadow w-100"
+                crossorigin="use-credentials"
+                (error)="onVideoError($event)"
+                (loadstart)="onMediaLoadStart()"
+              >
+                Your browser does not support the video tag.
+              </video>
+            </div>
+            
+            <!-- Image display for photos -->
+            <div class="image-viewer-wrapper" *ngIf="!isVideo()">
+              <img 
+                [src]="isSharedMedia ? getSharedImageUrl() : photo.path" 
+                [alt]="photo.filename" 
+                class="main-image rounded shadow"
+                crossorigin="use-credentials"
+                (error)="onImageError($event)"
+                (loadstart)="onMediaLoadStart()"
+              >
+            </div>
+            
+            <div class="mt-3 d-flex justify-content-between align-items-start">
+              <div>
+                <h3 class="mb-1">{{ photo.filename }}</h3>
+                <p class="text-muted mb-0">Captured: {{ photo.captured_at | date:'medium' }}</p>
+              </div>
+              <div class="btn-group">
+                <!-- Hide download and share buttons for shared media view -->
+                <ng-container *ngIf="!isSharedMedia">
+                  <a [href]="photo.path" download="{{ photo.filename }}" class="btn btn-outline-secondary">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2 2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Download
+                  </a>
+                  <button (click)="sharePhoto()" class="btn btn-info ms-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    Share
+                  </button>
+                  <button (click)="startPresentation()" class="btn btn-warning ms-2">
+                    🎬 Presentation Mode
+                  </button>
+                </ng-container>
+
+                <!-- Back button - show for both owner and shared views -->
+                <a [routerLink]="isSharedMedia ? '/sharing' : '/'" class="btn btn-primary ms-2">
+                  {{ isSharedMedia ? 'Back to Shared' : 'Back to Gallery' }}
+                </a>
+              </div>
+            </div>
+          </div>
+          
+          <ng-template #loading>
+            <div class="text-center py-5">
+              <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+              </div>
+              <p class="mt-2">Loading details...</p>
+            </div>
+          </ng-template>
+        </div>
+        <div class="col-md-4">
+          <!-- Hide details section for shared media view -->
+          <ng-container *ngIf="!isSharedMedia">
+            <div class="card shadow-sm sticky-top" style="top: 100px;">
+              <div class="card-header bg-light">
+                <h5 class="mb-0">Details</h5>
+              </div>
+              <ul class="list-group list-group-flush">
+                <li class="list-group-item">
+                  <span class="text-muted">Filename:</span> {{ photo?.filename }}
+                </li>
+                <li class="list-group-item">
+                  <span class="text-muted">Type:</span> {{ isVideo() ? '🎥 Video' : (photo?.type || 'Photo') }}
+                </li>
+                <li class="list-group-item" *ngIf="isVideo()">
+                  <span class="text-muted">Duration:</span> {{ formatDuration(photo?.videoMetadata?.duration) }}
+                </li>
+                <li class="list-group-item">
+                  <span class="text-muted">Captured:</span> {{ photo?.captured_at | date:'fullDate' }}
+                </li>
+                <li class="list-group-item" *ngIf="photo?.width || photo?.height">
+                  <span class="text-muted">Dimensions:</span> {{ photo?.width }} x {{ photo?.height }}
+                </li>
+                <li class="list-group-item" *ngIf="isVideo()">
+                  <span class="text-muted">Video Codec:</span> {{ photo?.videoMetadata?.video_codec || 'Unknown' }}
+                </li>
+                <li class="list-group-item" *ngIf="isVideo()">
+                  <span class="text-muted">Audio Codec:</span> {{ photo?.videoMetadata?.audio_codec || 'Unknown' }}
+                </li>
+                <li class="list-group-item" *ngIf="isVideo() && (photo?.videoMetadata?.frame_rate ?? 0) > 0">
+                  <span class="text-muted">Frame Rate:</span> {{ photo?.videoMetadata?.frame_rate }} fps
+                </li>
+                <li class="list-group-item" *ngIf="photo?.size">
+                  <span class="text-muted">Size:</span> {{ formatFileSize(photo.size) }}
+                </li>
+                
+                <!-- Tags Section -->
+                <li class="list-group-item">
+                  <div class="d-flex align-items-center mb-2 gap-3">
+                    <span class="text-muted" style="margin-right: 16px !important;">Tags:</span>
+                    <button *ngIf="!isEditingTags" (click)="startEditingTags()" class="btn btn-sm btn-outline-primary py-1 px-2" style="font-size: 0.75rem;">
+                      ✏️ Edit
+                    </button>
+                  </div>
+                  
+                  <!-- Tag Display Mode -->
+                  <div *ngIf="!isEditingTags">
+                    <span *ngIf="photo?.tags && getTagList(photo.tags).length > 0" class="d-flex flex-wrap gap-1 mb-2">
+                      <span 
+                        *ngFor="let tag of getTagList(photo.tags)" 
+                        (click)="searchByTag(tag)"
+                        class="badge bg-primary text-white cursor-pointer" 
+                        style="cursor: pointer;"
+                      >
+                        {{ tag }} ×
+                      </span>
+                    </span>
+                    <div *ngIf="!photo?.tags || getTagList(photo.tags).length === 0" class="text-muted small">
+                      No tags added yet. Click "Edit" to add tags.
+                    </div>
+                  </div>
+                  
+                  <!-- Tag Edit Mode -->
+                  <div *ngIf="isEditingTags">
+                    <input 
+                      type="text" 
+                      [(model)]="tagInput" 
+                      (keyup.enter)="saveTags()"
+                      placeholder="Enter tags separated by commas..."
+                      class="form-control form-control-sm mb-2"
+                      #tagInputRef
+                    >
+                    <div class="btn-group btn-group-sm">
+                      <button (click)="saveTags()" class="btn btn-success">Save</button>
+                      <button (click)="cancelEditingTags()" class="btn btn-secondary">Cancel</button>
+                    </div>
+                  </div>
+                </li>
+              </ul>
+            </div>
+
+            <!-- Share notification for shared view -->
+            <div *ngIf="isSharedMedia" class="card shadow-sm sticky-top mt-3" style="top: 100px;">
+              <div class="card-header bg-warning text-dark">
+                <h5 class="mb-0">🔒 Shared View</h5>
+              </div>
+              <div class="card-body">
+                <p class="text-muted mb-0">You're viewing this photo shared with you by someone else. Some actions (download, share, edit) are not available.</p>
+              </div>
+            </div>
+          </ng-container>
+
+          <!-- Share notification for non-owner view -->
+          <div *ngIf="isSharedMedia" class="card shadow-sm sticky-top" style="top: 100px;">
+            <div class="card-header bg-warning text-dark">
+              <h5 class="mb-0">🔒 Shared View</h5>
+            </div>
+            <div class="card-body">
+              <p class="text-muted mb-0">You're viewing this photo shared with you by someone else. Some actions (download, share, edit) are not available.</p>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  `,
+  styles: [`
+    .image-viewer-wrapper {
+      width: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background-color: #f8f9fa;
+      border-radius: 8px;
+      overflow: hidden;
+      min-height: 300px;
+    }
+    .main-image {
+      max-width: 100%;
+      max-height: 75vh; /* Keeps the image within the viewport height */
+      object-fit: contain; /* Ensures the whole image is visible without cropping */
+      display: block;
+    }
+    .video-viewer-wrapper {
+      width: 100%;
+      background-color: #000;
+      border-radius: 8px;
+      overflow: hidden;
+      min-height: 300px;
+    }
+    .main-video {
+      max-width: 100%;
+      max-height: 75vh; /* Keeps the video within the viewport height */
+      display: block;
+      background-color: #000;
+    }
+  `]
+})
+export class PhotoDetailComponent implements OnInit, OnDestroy {
+  photo: Photo | null = null;
+  private route = inject(ActivatedRoute);
+  private router = inject(Router);
+  private photoService = inject(PhotoService);
+  private albumService = inject(AlbumService);
+  private presentationService = inject(PresentationService);
+  private shareTrigger = inject(ShareTriggerService);
+  private subscription?: Subscription;
+
+  // Tag editing state
+  isEditingTags = false;
+  tagInput = '';
+
+  // Whether viewing from shared media context
+  isSharedMedia: boolean = false;
+
+  ngOnInit(): void {
+    const id = this.route.snapshot.paramMap.get('id');
+    
+    // Check if navigating from shared media (source=shared query param)
+    this.isSharedMedia = this.route.snapshot.queryParams['source'] === 'shared';
+    
+    console.log(`${DEBUG_PREFIX} PhotoDetailComponent.ngOnInit`);
+    console.log(`${DEBUG_PREFIX} Route params: id=${id}, source=${this.isSharedMedia ? 'shared' : 'owner'}`);
+    console.log(`${DEBUG_PREFIX} Query params:`, this.route.snapshot.queryParams);
+    
+    if (id) {
+      // Use getSharedMedia() for shared access, or getMedia() for ownership check
+      const fetch$ = this.isSharedMedia 
+        ? this.photoService.getSharedMedia(id)
+        : this.photoService.getMedia(id);
+      
+      console.log(`${DEBUG_PREFIX} API call: ${this.isSharedMedia ? 'GET /media/shared/' + id : 'GET /media/' + id}`);
+      
+      this.subscription = fetch$.subscribe({
+        next: (photo) => {
+          console.log(`${DEBUG_PREFIX} Photo loaded successfully!`);
+          console.log(`${DEBUG_PREFIX} ID: ${photo.id}`);
+          console.log(`${DEBUG_PREFIX} Filename: ${photo.filename}`);
+          console.log(`${DEBUG_PREFIX} mediaType: ${photo.mediaType || 'N/A'}`);
+          console.log(`${DEBUG_PREFIX} path (for <img>/<video> src): ${photo.path}`);
+          console.log(`${DEBUG_PREFIX} thumbnailUrl: ${photo.thumbnailUrl || 'N/A'}`);
+          
+          this.photo = photo;
+        },
+        error: (err) => { 
+          console.error(`${DEBUG_PREFIX} Error fetching media`, err);
+          console.error(`${DEBUG_PREFIX} Status:`, err.status);
+          console.error(`${DEBUG_PREFIX} URL:`, err.url || 'N/A');
+          
+          // If shared view fails, redirect to sharing page instead of login
+          if (this.isSharedMedia) {
+            console.log(`${DEBUG_PREFIX} Shared media load failed - redirecting to sharing dashboard`);
+            this.router.navigate(['/sharing']);
+          } else {
+            this.router.navigate(['/']);
+          }
+        }
+      });
+    } else {
+      this.router.navigate(['/']);
+    }
+  }
+
+  ngOnDestroy(): void {
+    this.subscription?.unsubscribe();
+  }
+
+  isVideo(): boolean {
+    return this.photo?.mediaType === 'video';
+  }
+
+  formatDuration(seconds?: number): string {
+    if (!seconds || seconds <= 0) return 'Unknown';
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+    
+    if (hrs > 0) {
+      return `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  }
+
+  formatFileSize(bytes?: number): string {
+    if (!bytes) return 'Unknown';
+    const kb = bytes / 1024;
+    const mb = kb / 1024;
+    
+    if (mb >= 1) {
+      return `${mb.toFixed(2)} MB`;
+    }
+    return `${kb.toFixed(2)} KB`;
+  }
+
+  onVideoError(event: Event): void {
+    const err = (event as any).target?.error;
+    console.error(`${DEBUG_PREFIX} Video media load FAILED!`);
+    console.error(`${DEBUG_PREFIX} Media type: video`);
+    console.error(`${DEBUG_PREFIX} URL requested: ${this.photo?.path}`);
+    console.error(`${DEBUG_PREFIX} Error details:`, err ? `code=${err.code}, message=${err.message || 'N/A'}` : 'No error object available');
+  }
+
+  onImageError(event: Event): void {
+    const img = (event as any).target;
+    console.error(`${DEBUG_PREFIX} Image load FAILED!`);
+    console.error(`${DEBUG_PREFIX} URL requested: ${this.photo?.path}`);
+    console.error(`${DEBUG_PREFIX} Media type: photo`);
+    console.error(`${DEBUG_PREFIX} Alt text (filename): ${img?.alt || 'N/A'}`);
+    if (typeof img?.complete !== 'undefined') {
+      console.error(`${DEBUG_PREFIX} Image complete flag: ${img.complete}, naturalWidth: ${img.naturalWidth || 0}, naturalHeight: ${img.naturalHeight || 0}`);
+    }
+    const err = (event as any).target?.error;
+    if (err) {
+      console.error(`${DEBUG_PREFIX} Error details:`, `code=${err.code}, message=${err.message || 'N/A'}`);
+    } else {
+      console.error(`${DEBUG_PREFIX} No error event - image may have been blocked by CORS/same-origin policies`);
+    }
+  }
+
+  onMediaLoadStart(): void {
+    console.log(`${DEBUG_PREFIX} Media load STARTED: ${this.photo?.path}`);
+  }
+
+  goBack(): void {
+    window.history.back();
+  }
+
+  /**
+   * Get the URL for viewing the shared image - uses the thumbnail endpoint which doesn't require ownership check
+   */
+  getSharedImageUrl(): string {
+    const base = this.photoService['API_BASE_URL'];
+    return `${base}/media/shared/${this.photo?.id || 'unknown'}/thumb`;
+  }
+
+  /**
+   * Get the URL for viewing the shared video - uses the original endpoint with shared access
+   */
+  getSharedVideoUrl(): string {
+    const base = this.photoService['API_BASE_URL'];
+    return `${base}/media/shared/${this.photo?.id || 'unknown'}/original`;
+  }
+
+  startPresentation(): void {
+    if (!this.photo) return;
+
+    // Check if viewing from a shared album (source=shared query param + albumIds present)
+    const isSharedMedia = this.route.snapshot.queryParams['source'] === 'shared';
+    const albumIdsParam = this.route.snapshot.queryParams['albumIds'];
+    
+    let mediaItems: MediaItem[];
+    
+    if (albumIdsParam) {
+      // We came from an album - fetch actual photo details to get correct media types
+      const albumPhotoIds: string[] = albumIdsParam.split(',').map((id: string) => id.trim()).filter(Boolean);
+      
+      import('rxjs').then(({ forkJoin, of, catchError }) => {
+        const requests$ = albumPhotoIds.map(id => 
+          this.photoService.getMedia(id).pipe(
+            catchError(() => of(null)) // Skip failed fetches gracefully
+          )
+        );
+        
+        forkJoin(requests$).subscribe({
+          next: (photos) => {
+            mediaItems = photos.filter((p): p is Photo => p !== null).map(p => ({
+              id: p.id,
+              path: isSharedMedia 
+                ? `${this.photoService['API_BASE_URL']}/media/shared/${p.id}/original`
+                : `${this.photoService['API_BASE_URL']}/media/${p.id}/original`,
+              filename: p.filename || '',
+              mediaType: p.mediaType || 'photo'
+            }));
+
+            const startIndex = mediaItems.findIndex(item => item.id === this.photo?.id);
+            
+            if (startIndex !== -1 && mediaItems.length > 0) {
+              this.presentationService.open(mediaItems, startIndex);
+              this.router.navigate(['/presentation']);
+            } else {
+              alert('No items available for presentation.');
+            }
+          },
+          error: (err) => {
+            console.error('Failed to load album media for presentation', err);
+            alert('Failed to start presentation mode.');
+          }
+        });
+      });
+    } else {
+      // No album context - fetch all gallery items
+      this.photoService.listMedia(100, 0).subscribe({
+        next: (response) => {
+          mediaItems = response.photos.map(p => ({
+            id: p.id,
+            path: isSharedMedia 
+              ? `${this.photoService['API_BASE_URL']}/media/shared/${p.id}/original`
+              : p.path,
+            filename: p.filename,
+            mediaType: p.mediaType
+          }));
+
+          const startIndex = mediaItems.findIndex(item => item.id === this.photo?.id);
+          
+          if (startIndex !== -1 && mediaItems.length > 0) {
+            this.presentationService.open(mediaItems, startIndex);
+            this.router.navigate(['/presentation']);
+          } else {
+            alert('No items available for presentation.');
+          }
+        },
+        error: (err) => {
+          console.error('Failed to load media for presentation', err);
+          alert('Failed to start presentation mode.');
+        }
+      });
+    }
+  }
+
+  // Tag editing methods - only available for owner view, not shared view
+  startEditingTags(): void {
+    if (this.isSharedMedia) {
+      alert('You cannot edit tags of shared media.');
+      return;
+    }
+    
+    this.isEditingTags = true;
+    if (this.photo?.tags) {
+      const tagList = this.getTagList(this.photo.tags);
+      // Join with colon as per spec for the input field
+      this.tagInput = tagList.join(': '); 
+    } else {
+      this.tagInput = '';
+    }
+  }
+
+  saveTags(): void {
+    if (!this.photo || this.isSharedMedia) return; // Allow empty string to clear tags, but not in shared view
+    
+    // Use the parser which now supports colon, then join with colon for storage
+    const tagsString = this.parseTagString(this.tagInput).join(':'); 
+    this.photoService.updateTags(this.photo.id, tagsString).subscribe({
+      next: (updated) => {
+        if (this.photo && updated) {
+          // Update the local photo object with new tags to trigger change detection
+          // The backend only returns { status: "success" }, so we manually set the tags field
+          this.photo = { ...this.photo, tags: tagsString };
+        }
+        this.isEditingTags = false;
+        this.tagInput = '';
+      },
+      error: (err) => {
+        console.error('Error updating tags', err);
+        alert('Failed to update tags');
+      }
+    });
+  }
+
+  cancelEditingTags(): void {
+    if (this.isSharedMedia) return; // Don't allow editing in shared view
+    
+    this.isEditingTags = false;
+    if (this.photo?.tags) {
+      const tagList = this.getTagList(this.photo.tags);
+      this.tagInput = tagList.join(': ');
+    } else {
+      this.tagInput = '';
+    }
+  }
+
+  getTagList(tags: any): string[] {
+    if (!tags) return [];
+    // If it's already an array, just use it
+    if (Array.isArray(tags)) return tags;
+    
+    if (typeof tags === 'string') {
+      // Split by colon as per spec requirements
+      return tags.split(':')
+        .map(t => t.trim())
+        .filter(t => t.length > 0);
+    }
+    return [];
+  }
+
+  parseTagString(input: string): string[] {
+    // Split by colon, trim whitespace, remove empty strings
+    return input.split(':')
+      .map(tag => tag.trim())
+      .filter(tag => tag.length > 0);
+  }
+
+  sharePhoto(): void {
+    if (!this.photo || this.isSharedMedia) return; // Can't share someone else's photo
+    
+    this.shareTrigger.open(this.photo.id, 'media');
+  }
+
+  searchByTag(tag: string): void {
+    if (this.isSharedMedia) return; // Don't allow searching by tag in shared view
+    
+    this.router.navigate(['/'], { queryParams: { tag: tag } });
+  }
+}

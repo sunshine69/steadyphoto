@@ -21,7 +21,7 @@ import { Photo } from '../../models/photo.model';
             <!-- Video Player for videos -->
             <div class="video-viewer-wrapper" *ngIf="isVideo()">
               <video 
-                [attr.src]="photo.path"
+                [attr.src]="mediaSrcUrl()" 
                 controls
                 preload="metadata"
                 class="main-video rounded shadow w-100"
@@ -36,7 +36,7 @@ import { Photo } from '../../models/photo.model';
             <!-- Image display for photos -->
             <div class="image-viewer-wrapper" *ngIf="!isVideo()">
               <img 
-                [src]="photo.path" 
+                [src]="thumbnailUrl()" 
                 [alt]="photo.filename" 
                 class="main-image rounded shadow"
                 crossorigin="use-credentials"
@@ -51,7 +51,7 @@ import { Photo } from '../../models/photo.model';
                 <p class="text-muted mb-0">Captured: {{ photo.captured_at | date:'medium' }}</p>
               </div>
               <div class="btn-group">
-                <a [href]="photo.path" download="{{ photo.filename }}" class="btn btn-outline-secondary">
+                <a [href]="originalUrl()" download="{{ photo.filename }}" class="btn btn-outline-secondary">
                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2 2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                   Download
                 </a>
@@ -253,6 +253,45 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
     this.subscription?.unsubscribe();
   }
 
+  // Computed URL properties for shared vs owned media views
+  
+  /** Returns the correct thumbnail URL based on shared/owned context */
+  thumbnailUrl(): string {
+    if (!this.photo) return '';
+    
+    const isShared = this.route.snapshot.queryParams['source'] === 'shared';
+    if (isShared && this.photo.id) {
+      return `${this.photoService['API_BASE_URL']}/media/shared/${this.photo.id}/thumb`;
+    }
+    
+    // For owned media, use thumbnailUrl from the photo object if available
+    return this.photo.thumbnailUrl || this.photo.path;
+  }
+
+  /** Returns the correct original file URL for video playback */
+  mediaSrcUrl(): string {
+    if (!this.photo) return '';
+    
+    const isShared = this.route.snapshot.queryParams['source'] === 'shared';
+    if (isShared && this.photo.id) {
+      return `${this.photoService['API_BASE_URL']}/media/shared/${this.photo.id}/original`;
+    }
+    
+    return this.photo.path;
+  }
+
+  /** Returns the correct original file URL for download */
+  originalUrl(): string {
+    if (!this.photo) return '';
+    
+    const isShared = this.route.snapshot.queryParams['source'] === 'shared';
+    if (isShared && this.photo.id) {
+      return `${this.photoService['API_BASE_URL']}/media/shared/${this.photo.id}/original`;
+    }
+    
+    return this.photo.path;
+  }
+
   isVideo(): boolean {
     return this.photo?.mediaType === 'video';
   }
@@ -332,9 +371,13 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
       
       import('rxjs').then(({ forkJoin, of, catchError }) => {
         const requests$ = albumPhotoIds.map(id => 
-          this.photoService.getMedia(id).pipe(
-            catchError(() => of(null)) // Skip failed fetches gracefully
-          )
+          isSharedMedia 
+            ? this.photoService.getSharedMedia(id).pipe(
+                catchError(() => of(null)) // Skip failed fetches gracefully
+              )
+            : this.photoService.getMedia(id).pipe(
+                catchError(() => of(null)) // Skip failed fetches gracefully
+              )
         );
         
         forkJoin(requests$).subscribe({
@@ -364,32 +407,56 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
         });
       });
     } else {
-      // No album context - fetch all gallery items
-      this.photoService.listMedia(100, 0).subscribe({
-        next: (response) => {
-          mediaItems = response.photos.map(p => ({
-            id: p.id,
-            path: isSharedMedia 
-              ? `${this.photoService['API_BASE_URL']}/media/shared/${p.id}/original`
-              : p.path,
-            filename: p.filename,
-            mediaType: p.mediaType
-          }));
+      // No album context - fetch all gallery items using the appropriate endpoint based on shared context
+      if (isSharedMedia) {
+        this.photoService.listSharedMedia(100, 0).subscribe({
+          next: (response: any) => {
+            mediaItems = response.items.map((p: any) => ({
+              id: p.id || p.ID,
+              path: `${this.photoService['API_BASE_URL']}/media/shared/${(p.id || p.ID)}/original`,
+              filename: p.filename || '',
+              mediaType: (p.mediaType || 'photo')
+            }));
 
-          const startIndex = mediaItems.findIndex(item => item.id === this.photo?.id);
-          
-          if (startIndex !== -1 && mediaItems.length > 0) {
-            this.presentationService.open(mediaItems, startIndex);
-            this.router.navigate(['/presentation']);
-          } else {
-            alert('No items available for presentation.');
+            const startIndex = mediaItems.findIndex(item => item.id === this.photo?.id);
+            
+            if (startIndex !== -1 && mediaItems.length > 0) {
+              this.presentationService.open(mediaItems, startIndex);
+              this.router.navigate(['/presentation']);
+            } else {
+              alert('No items available for presentation.');
+            }
+          },
+          error: (err) => {
+            console.error('Failed to load shared media for presentation', err);
+            alert('Failed to start presentation mode.');
           }
-        },
-        error: (err) => {
-          console.error('Failed to load media for presentation', err);
-          alert('Failed to start presentation mode.');
-        }
-      });
+        });
+      } else {
+        this.photoService.listMedia(100, 0).subscribe({
+          next: (response: any) => {
+            mediaItems = response.photos.map((p: any) => ({
+              id: p.id,
+              path: `${this.photoService['API_BASE_URL']}/media/${p.id}/original`,
+              filename: p.filename,
+              mediaType: p.mediaType || 'photo'
+            }));
+
+            const startIndex = mediaItems.findIndex(item => item.id === this.photo?.id);
+            
+            if (startIndex !== -1 && mediaItems.length > 0) {
+              this.presentationService.open(mediaItems, startIndex);
+              this.router.navigate(['/presentation']);
+            } else {
+              alert('No items available for presentation.');
+            }
+          },
+          error: (err) => {
+            console.error('Failed to load media for presentation', err);
+            alert('Failed to start presentation mode.');
+          }
+        });
+      }
     }
   }
 

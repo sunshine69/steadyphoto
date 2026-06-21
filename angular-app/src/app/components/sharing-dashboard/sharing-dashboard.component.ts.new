@@ -3,7 +3,6 @@ import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { ShareService, SharedMediaItem, SharedAlbumItem, ShareGroupListItem } from '../../services/share.service';
 import { Subscription } from 'rxjs';
-import { environment } from '../../../environments/environment';
 
 // Debug prefix for console logs - filter by this to see all debug output
 const DEBUG_PREFIX = '[Sharing Debug]';
@@ -65,11 +64,12 @@ const DEBUG_PREFIX = '[Sharing Debug]';
               class="shared-photo-card"
               (click)="viewPhoto(item.id)">
               <div class="thumb-container">
-                <img [src]="getSharedMediaThumbUrl(item.id)" [alt]="item.filename" class="photo-thumb">
+                <img [src]="item.thumbnail_url" [alt]="item.filename" class="photo-thumb">
                 <div class="share-badge">Shared with you</div>
               </div>
               <div class="card-info">
                 <p class="filename">{{ item.filename }}</p>
+                <p class="shared-date">Shared {{ formatDate(item.created_at) }}</p>
               </div>
             </div>
 
@@ -110,11 +110,12 @@ const DEBUG_PREFIX = '[Sharing Debug]';
               class="shared-album-card"
               (click)="viewAlbum(item.id)">
               <div class="thumb-container">
-                <img [src]="'assets/placeholder-album.jpg'" [alt]="item.name" class="album-thumb">
+                <img [src]="item.thumbnail_url || 'assets/placeholder-album.jpg'" [alt]="item.name" class="album-thumb">
                 <div class="share-badge">Shared with you</div>
               </div>
               <div class="card-info">
                 <p class="filename">{{ item.name }}</p>
+                <p class="shared-date">{{ item.media_count }} photos · Shared {{ formatDate(item.created_at) }}</p>
               </div>
             </div>
 
@@ -522,7 +523,7 @@ export class SharingDashboardComponent implements OnInit, OnDestroy {
   // --- Actions ---
 
   viewPhoto(mediaId: string): void { 
-    const redirectUrl = `/photos/${mediaId}?source=shared`;
+    const redirectUrl = `/photos/${mediaId}?source=shared`; // FIX: Added source=shared query param
     console.log(`${DEBUG_PREFIX} Clicked shared photo thumbnail - mediaId: ${mediaId}`);
     console.log(`${DEBUG_PREFIX} Redirecting to: ${redirectUrl}`);
     
@@ -538,7 +539,7 @@ export class SharingDashboardComponent implements OnInit, OnDestroy {
   }
   
   viewAlbum(albumId: string): void { 
-    const redirectUrl = `/albums/${albumId}?source=shared`;
+    const redirectUrl = `/albums/${albumId}`;
     console.log(`${DEBUG_PREFIX} Clicked shared album thumbnail - albumId: ${albumId}`);
     console.log(`${DEBUG_PREFIX} Redirecting to: ${redirectUrl}`);
     
@@ -603,12 +604,6 @@ export class SharingDashboardComponent implements OnInit, OnDestroy {
   }
 
   // --- Helpers ---
-
-  /** Returns the thumbnail URL for a shared media item. */
-  getSharedMediaThumbUrl(mediaId: string): string {
-    const baseUrl = environment.apiBaseUrl;
-    return `${baseUrl}/media/shared/${mediaId}/thumb`;
-  }
 
   getShareableUrl(share: any): string {
     const baseUrl = window.location.origin + '/public/shares';

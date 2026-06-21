@@ -167,6 +167,24 @@ export class PhotoService {
   }
 
   /**
+   * Fetches a paginated list of media items shared with the current user.
+   * @param limit Number of items to fetch (default: 20)
+   * @param offset Number of items to skip (default: 0)
+   */
+  listSharedMedia(limit: number = 20, offset: number = 0): Observable<any> {
+    return this.http.get<any>(`${this.API_BASE_URL}/media/shared?limit=${limit}&offset=${offset}`)
+      .pipe(
+        map(response => ({
+          items: response.items || [],
+          total: response.total || 0,
+          limit: response.limit || limit,
+          offset: response.offset || offset
+        })),
+        catchError(this.handleError)
+      );
+  }
+
+  /**
    * Fetches media items belonging to a shared album.
    */
   getSharedAlbumMedia(albumId: string, limit = 50, offset = 0): Observable<any> {

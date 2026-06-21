@@ -6,6 +6,7 @@ import { RouterModule } from '@angular/router';
 import { AppComponent } from './app/app.component';
 import { routes } from './app/app.routes';
 import { authInterceptor } from './app/interceptors/auth.interceptor';
+import { debugInterceptor } from './app/interceptors/debug.interceptor';
 
 bootstrapApplication(AppComponent, {
   providers: [
@@ -13,6 +14,6 @@ bootstrapApplication(AppComponent, {
       BrowserAnimationsModule,
       RouterModule.forRoot(routes)
     ),
-    provideHttpClient(withInterceptors([authInterceptor]))
+    provideHttpClient(withInterceptors([authInterceptor, debugInterceptor]))
   ]
 }).catch(err => console.error(err));
