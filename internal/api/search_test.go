@@ -32,7 +32,7 @@ func TestHandler_SearchMedia(t *testing.T) {
 		mediaList := []*domain.Media{
 			{ID: uuid.New(), Tags: "nature:vacation:summer"},
 		}
-		mediaRepo.On("SearchByTags", mock.Anything, tag).Return(mediaList, nil)
+		mediaRepo.On("SearchByTags", mock.Anything, tag, mock.Anything).Return(mediaList, nil)
 
 		req := httptest.NewRequest("GET", "/media/search?tags="+tag, nil)
 		rr := httptest.NewRecorder()

@@ -1,6 +1,6 @@
 package api
 
-// SharedMediaResponse includes path info so the frontend can generate thumbnails/serve files
+// SharedMediaFullResponse includes path info so the frontend can generate thumbnails/serve files
 import (
 	"encoding/json"
 	"fmt"

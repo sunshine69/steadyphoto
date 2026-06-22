@@ -18,6 +18,7 @@ type AdminUpdateUserRequest struct {
 }
 
 // handleAdminListUsers handles GET /api/v1/admin/users
+
 func (s *Server) handleAdminListUsers(w http.ResponseWriter, r *http.Request) {
 	status := r.URL.Query().Get("status")
 

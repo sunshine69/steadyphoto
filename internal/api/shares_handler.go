@@ -49,6 +49,13 @@ type CreateShareRequest struct {
 	AlbumIDs        []uuid.UUID `json:"album_ids,omitempty"`
 }
 
+// ShareResponse is a single share in API responses.
+type ShareResponse struct {
+	ID           uuid.UUID `json:"id"`
+	SharerUserID uuid.UUID `json:"sharerUserId"`
+	SharedAt     time.Time `json:"sharedAt"`
+}
+
 // SharedMediaResponse represents a shared media item for the API response.
 type SharedMediaResponse struct {
 	ID           uuid.UUID   `json:"id"`
@@ -62,7 +69,7 @@ type SharedMediaResponse struct {
 type SharedAlbumResponse struct {
 	ID           uuid.UUID   `json:"id"`
 	Name         string      `json:"name"`
-	Description  *string     `json:"description"`
+	Description  *string     `json:"description,omitempty"`
 	SharerUserID uuid.UUID   `json:"sharerUserId"`
 }
 

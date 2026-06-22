@@ -3,7 +3,7 @@
 ### **1. Project Overview**
 
 SteadyPhoto is an open-source self-hosted photo and video management system built with Go (backend) and Angular (frontend). It supports multi-tenancy, AI-powered face detection, background job processing, a
-nd migration from Immich.
+nd migration from Immich, user-to-user and public sharing, and admin user management.
 
 ---
 
@@ -50,6 +50,11 @@ oft-delete support |
 | `Album` | ID, Name, Description, CreatedAt, UpdatedAt | User-owned photo albums |
 | `Face` | ID, MediaID, BoundingBox (JSONB), Embedding ([]float32 via pgvector) | AI-detected faces per photo |
 | `Job` | ID, Type (Thumbnail/FaceDetection), Status (Pending/Processing/Completed/Failed), MediaID, ErrorMessage, CreatedAt, UpdatedAt | Background job queue entries |
+| `Share` | ID, SharerUserID, ShareeUserID, SharedAt | User-to-user share group (linking media/album shares) |
+| `MediaShare` | ID, ShareID, MediaID | Individual media item shared with a user |
+| `AlbumShare` | ID, ShareID, AlbumID | Album shared with a user |
+| `PublicShare` | ID, SharerUserID, Token, ResourceType, ResourceID, PasswordHash, ExpiresAt, CreatedAt, AccessCount | Public share link with optional password and expiration |
+| `PublicShareAccess` | ID, PublicShareID, IPAddress, AccessedAt | Audit log for public share link accesses |
 
 **Types:**
 - `MediaType`: `"photo"` or `"video"`
@@ -100,6 +105,17 @@ type Server struct {
 | `/api/v1/admin/users/bulk-status` | BulkUpdateUserStatusHandler | Yes | **Yes** | PATCH |
 | `/api/v1/admin/users/bulk-delete` | BulkDeleteUsersHandler | Yes | **Yes** | DELETE |
 
+| `/api/v1/shares` | CreateShareHandler / ListOutgoingSharesHandler | Yes | — | POST / GET |
+| `/api/v1/shares/{id}` | RevokeShareHandler | Yes | — | DELETE |
+| `/api/v1/media/shared` | ListSharedMediaHandler | Yes | — | GET (paginated: ?limit=&offset=) |
+| `/api/v1/media/shared/{id}` | GetSharedMediaHandler | Yes | — | GET |
+| `/api/v1/media/shared/{id}/thumb` | GetSharedMediaThumbHandler | Yes | — | GET |
+| `/api/v1/albums/shared` | ListSharedAlbumsHandler | Yes | — | GET (paginated: ?limit=&offset=) |
+| `/api/v1/albums/shared/{id}` | GetSharedAlbumHandler | Yes | — | GET |
+| `/api/v1/public-shares` | CreatePublicShareHandler / ListMyPublicSharesHandler | Yes | — | POST / GET |
+| `/api/v1/public-shares/{id}` | RevokePublicShareHandler | Yes | — | DELETE |
+| `/public/shares/media/{token}` | GetPublicMediaHandler | No | — | GET (optional ?password=) |
+| `/public/shares/album/{token}` | GetPublicAlbumHandler | No | — | GET (optional ?password=) |
 #### **Middleware Chain**
 ```
 Request → CORS → RequestID (X-Request-ID) → AuthToken → AdminCheck (if needed) → Handler
@@ -149,6 +165,18 @@ All use `sqlx` with PostgreSQL (`lib/pq`). Parameterized queries only (no string
 - `GetPending(limit)`: fetches pending jobs ordered by created_at ASC (FIFO processing)
 
 ---
+#### **PostgresShareRepository**
+- CRUD for share groups + media/album share junction tables
+- User-to-user share management (create, revoke, list)
+- Shared media/album listing for the current user (paginated)
+- Cleanup on user deletion (incoming shares removed, outgoing shares retained)
+
+#### **PostgresPublicShareRepository**
+- CRUD for public share links
+- Token generation and verification
+- Password verification via bcrypt
+- Access counting and expiration checks
+- Public share access logging
 
 ### **8. Storage Service (`internal/storage`)**
 
@@ -231,9 +259,12 @@ Supported extensions: `.jpg`, `.jpeg`, `.png`, `.gif`, `.webp`, `.mp4`, `.mov`, 
 | 0011 | add_user_role | Adds `role TEXT NOT NULL DEFAULT 'user'` to users; sets admin role for seeded user |
 
 ---
+| 0012 | add_sharing_tables | Creates `shares`, `media_shares`, `album_shares`, `public_shares`, `public_share_accesses`; adds `username` to users; adds search users endpoint |
 
 ### **13. Docker Build (Multi-stage)**
 
+8. **Public Share Links**: Token-based public access with optional password and expiration, with access logging
+9. **User-to-User Sharing**: Junction tables (`media_shares`, `album_shares`) linking share groups to media/albums
 ```
 Stage 1: node:24-alpine → Angular production build (dist/)
 Stage 2: golang:1.26.3-alpine → Go binaries (server + migrate) — static linking, CGO_ENABLED=0

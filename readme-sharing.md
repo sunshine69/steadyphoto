@@ -1,7 +1,7 @@
 # Sharing Feature
 
-**Status:** 🚧 In Progress — Design complete, implementation pending  
-**Last Updated:** June 13, 2026
+**Status:** ✅ Complete — Both user-to-user sharing and public sharing are working  
+**Last Updated:** June 22, 2026
 
 ---
 
@@ -42,6 +42,7 @@ The sharing feature enables users to share photos and albums with other app user
 | :--- | :--- | :--- |
 | `id` | UUID | Primary Key |
 | `sharer_user_id` | UUID | Foreign Key (owner) — who created the public link |
+| `token` | VARCHAR(16) | Unique token for the share link |
 | `resource_type` | VARCHAR(10) | Either 'media' or 'album' — what is being shared |
 | `resource_id` | UUID | The media_id or album_id being shared |
 | `password_hash` | TEXT | Optional bcrypt-hashed password for protection (cost factor 12) |
@@ -69,60 +70,96 @@ The sharing feature enables users to share photos and albums with other app user
 
 ---
 
-## API Specifications
+## API Endpoints
 
 ### User-to-User Sharing Endpoints (Authenticated)
 | Method | Path | Description | Auth Required? |
 |--------|------|-------------|----------------|
 | `POST` | `/api/v1/shares` | Create a share — select user(s) + media/albums to share | Yes |
+| `GET` | `/api/v1/shares` | List outgoing share groups created by current user | Yes |
+| `DELETE` | `/api/v1/shares/{id}` | Revoke an outgoing share group | Yes |
 | `GET` | `/api/v1/media/shared` | Get shared media for current user (paginated: `?limit=20&offset=0`) | Yes |
+| `GET` | `/api/v1/media/shared/{id}` | Get full details for a specific shared media item | Yes |
+| `GET` | `/api/v1/media/shared/{id}/thumb` | Get thumbnail for a shared media item | Yes |
 | `GET` | `/api/v1/albums/shared` | Get shared albums for current user (paginated: `?limit=20&offset=0`) | Yes |
+| `GET` | `/api/v1/albums/shared/{id}` | Get full details for a specific shared album | Yes |
+| `GET` | `/api/v1/auth/users/search?query=` | Search users by email/username for sharing purposes | Yes |
 
 ### Public Sharing Endpoints
 | Method | Path | Description | Auth Required? |
 |--------|------|-------------|----------------|
 | `POST` | `/api/v1/public-shares` | Create a public share link (optionally with password) | Yes |
+| `GET` | `/api/v1/public-shares` | List all public share links for current user | Yes |
 | `DELETE` | `/api/v1/public-shares/{id}` | Revoke a public share link | Yes |
-| GET | `/public/shares/media/{token}` | View shared media via public link (`?password=optional_password`) | No |
-| GET | `/public/shares/album/{token}` | View shared album via public link (`?password=optional_password`) | No |
+| `GET` | `/public/shares/media/{token}` | View shared media via public link (`?password=optional_password`) | No |
+| `GET` | `/public/shares/album/{token}` | View shared album via public link (`?password=optional_password`) | No |
 
 ---
 
-## Detailed Request/Response Formats
+## Frontend Components
+
+### `SharingDashboardComponent` (`/sharing-dashboard`)
+The main sharing dashboard accessible from the sidebar. Contains two tabs:
+- **"Shared with Me"** — Shows photos and albums shared with the current user
+  - Pagination support (20 items per page)
+  - Thumbnail display for photos and albums
+  - Clicking opens the photo/album in the standard viewer
+- **"My Shares"** — Shows links the current user has created
+  - **Public Share Links** — Links created for anyone to view (with copy/revoke actions)
+  - **User-to-User Shares** — Share groups sent to other users (with revoke actions)
+  - Expiration badge for expired links
+  - Copy-to-clipboard and revoke actions for each link
+
+### `SharingComponent` (`/sharing`)
+The multi-select share dialog triggered from the photo grid toolbar when items are selected.
+- Opens a modal for sharing selected items
+- Search users by email/username
+- Toggle between sharing individual photos vs the containing album
+- Create both user-to-user shares and public share links
+
+### `public-share.component.ts`
+Standalone component for viewing public share links without authentication.
+- Displays shared photo or album
+- Password prompt if the share is password-protected
+- Shows "Shared by" attribution
+
+---
+
+## API Response Formats
 
 ### `POST /api/v1/shares` — Create a share
 ```json
 Request: {
-  "sharee_user_ids": ["uuid-of-user-b", "uuid-of-user-c"], // can share with multiple users at once
-  "media_ids": ["uuid-1", "uuid-2"],                      // optional, list of media IDs to share
-  "album_ids": ["uuid-album-1"]                            // optional, list of album IDs to share
+  "sharee_user_ids": ["uuid-of-user-b", "uuid-of-user-c"],
+  "media_ids": ["uuid-1", "uuid-2"],
+  "album_ids": ["uuid-album-1"]
 }
 
 Response: {
-  "shares_created": [                                      // array of shares with their IDs
+  "shares_created": [
     {
       "id": "share-id",
       "sharer_user_id": "user-a-id",
       "shared_at": "2024-12-17T10:30:00Z"
     }
   ],
-  "media_shared_count": 2,                                 // total media items shared
-  "albums_shared_count": 1                                 // total albums shared
+  "media_shared_count": 2,
+  "albums_shared_count": 1
 }
 ```
 
 ### `GET /api/v1/media/shared` — Get shared media for current user
 ```json
 Response: {
-  "items": [                                               // array of shared media (same format as GET /media)
+  "items": [
     {
       "id": "media-uuid",
       "filename": "IMG_001.jpg",
       "mediaType": "photo",
-      "sharer_user_id": "user-a-id"                        // added field to show who shared it
+      "sharer_user_id": "user-a-id"
     }
   ],
-  "total": 42,                                             // total count for pagination
+  "total": 42,
   "limit": 20,
   "offset": 0
 }
@@ -131,12 +168,12 @@ Response: {
 ### `GET /api/v1/albums/shared` — Get shared albums for current user
 ```json
 Response: {
-  "items": [                                               // array of shared albums (same format as GET /albums)
+  "items": [
     {
       "id": "album-uuid",
       "name": "Vacation Trip",
       "description": "Summer holiday photos",
-      "sharer_user_id": "user-a-id"                        // added field to show who shared it
+      "sharer_user_id": "user-a-id"
     }
   ],
   "total": 5,
@@ -148,36 +185,29 @@ Response: {
 ### `POST /api/v1/public-shares` — Create a public share link
 ```json
 Request: {
-  "resource_type": "media",                                // or "album"
-  "resource_id": "uuid-of-media-or-album",                 // the item being shared
-  "password": null,                                        // optional password for protection (bcrypt hashed on server)
-  "expires_at": "2024-12-31T23:59:59Z"                    // optional expiration date/time
+  "resource_type": "media",
+  "resource_id": "uuid-of-media-or-album",
+  "password": null,
+  "expires_at": null
 }
 
 Response: {
   "id": "public-share-id",
-  "token": "abc123xyz",                                    // unique token for the share link
+  "token": "abc123xyz",
   "sharer_user_id": "user-a-id",
   "resource_type": "media",
-  "password_protected": false,                             // whether a password was set
-  "expires_at": null,                                      // when it expires (if any)
+  "password_protected": false,
+  "expires_at": null,
   "created_at": "2024-12-17T10:30:00Z"
-}
-```
-
-### `DELETE /api/v1/public-shares/{id}` — Revoke a public share link
-```json
-Response: {
-  "deleted": true                                          // success confirmation
 }
 ```
 
 ### `GET /public/shares/media/{token}` — View shared media via public link (no auth)
 ```json
-Query params: ?password=optional_password                 // required if password was set on the share
+Query params: ?password=optional_password
 
 Response (200 OK): {
-  "item": {                                                // same format as GET /media/{id}
+  "item": {
     "id": "media-uuid",
     "filename": "IMG_001.jpg",
     "mediaType": "photo"
@@ -187,70 +217,37 @@ Response (200 OK): {
 Response (403 Forbidden): if password is wrong or missing
 ```
 
-### `GET /public/shares/album/{token}` — View shared album via public link (no auth)
-```json
-Query params: ?password=optional_password                 // required if password was set on the share
-
-Response (200 OK): {
-  "item": {                                                // same format as GET /albums/{id} but with media list
-    "id": "album-uuid",
-    "name": "Vacation Trip",
-    "description": "Summer holiday photos",
-    "media_items": [                                       // list of all media in the album (position sorted)
-      {
-        "id": "media-1",
-        "filename": "IMG_001.jpg",
-        "mediaType": "photo"
-      }
-    ]
-  }
-}
-
-Response (403 Forbidden): if password is wrong or missing, or if the share link has expired
-```
-
 ---
 
-## Frontend Implementation Plan
+## Service Layer
 
-### User-to-User Sharing Flow
+### `ShareService` (`share.service.ts`)
+Full-featured service with its own auth interceptor pattern (duplicate of AuthService pattern). Key methods:
+- `createShare()` — User-to-user sharing
+- `searchUsers()` — Find users to share with
+- `createPublicShareLink()` — Create public link
+- `revokePublicShareLink()` — Revoke public link
+- `listMyPublicShares()` — List own public links
+- `listSharedMedia()` — List incoming shared media
+- `listSharedAlbums()` — List incoming shared albums
+- `getSharedMediaDetail()` — Get full detail of shared media
+- `getSharedAlbumDetail()` — Get full detail of shared album
+- `listMyOutgoingShares()` — List outgoing user-to-user share groups
+- `revokeOutgoingShare()` — Revoke an outgoing share group
+- Auth management methods (same pattern as AuthService)
 
-1. **Share Button in Photo Grid** (multi-select mode):
-   - Add a "Share" button to the toolbar when items are selected
-   - Clicking opens a dialog with options:
-     - Select users from existing app users (search by email)
-     - Toggle between sharing photos vs albums — if User A has created an album containing the selected media, offer to share the whole album instead of individual photos
-
-2. **"Shared With Me" View**:
-   - New sidebar link "Shared With Me"
-   - Two sections: Shared Photos and Shared Albums
-   - Each item shows a "View" button that opens the photo/album in a read-only view (no edit/delete buttons shown for shared content)
-   - User B can add shared photos to their own albums — this is already possible since there's no FK constraint on `media.user_id = albums.user_id`
-
-3. **Read-Only View for Shared Content**:
-   - When viewing a shared photo/album, the UI should not show any edit/delete buttons
-   - The "Add to Album" button still works — User B can create their own album containing the shared media (the new album belongs to User B)
-
-### Public Share Link Flow
-
-1. **Generate Public Link**:
-   - Add a "Share via link" option in the share dialog or context menu for individual photos/albums
-   - Options: set password, set expiration date/time
-   - After creation, display the generated URL (e.g., `https://app.steadyphoto.com/public/shares/media/abc123xyz`) with a copy-to-clipboard button
-
-2. **Viewing via Public Link**:
-   - Landing page at `/public/shares/{type}/{token}` that displays the shared content
-   - If password is required, show a password input field before displaying the content
-   - Show sharer's username (e.g., "Shared by John Doe") and original album name if applicable
-
-3. **Manage Public Links**:
-   - User A can view their list of active public share links from a new page/tab
-   - Each link shows: resource type, token (copyable), password status, expiration date, access count
-   - "Revoke" button to delete the link and invalidate it for viewers
+### `ShareModel` (`share.model.ts`)
+Shared interfaces for all share-related data types:
+- `ShareRequest`, `PublicShareRequest`
+- `SharedMediaItem`, `SharedAlbumItem`
+- `CreateShareResponseFull`, `PublicShareLinkResponse`
+- `PublicShareListItem`, `ShareGroupListItem`
+- `SearchUser`
 
 ---
 
 ## Related Documents
 
-- [Architecture Overview](readme-arch.md) — High-level system architecture, API endpoints reference
-- [Album Feature](readme-album.md) — Album data model (used by album sharing)
+- [Authentication & Multi-User Architecture](README-auth.md) — Auth system including admin status via `isAdmin$` observable
+- [User Management](readme-user-mgmt.md) — Admin user account management
+- [Architecture Overview](readme-arch.md) — High-level system architecture

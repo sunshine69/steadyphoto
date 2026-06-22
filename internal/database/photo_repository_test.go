@@ -98,6 +98,7 @@ func TestPostgresMediaRepository(t *testing.T) {
 	repo := NewPostgresMediaRepository(db)
 
 	t.Run("Create_and_GetByID", func(t *testing.T) {
+		userID := uuid.New()
 		media := &domain.Media{
 			ID:         uuid.New(),
 			Path:       "/tmp/test/img.jpg",
@@ -111,6 +112,7 @@ func TestPostgresMediaRepository(t *testing.T) {
 			Metadata:   domain.Metadata{"camera": "sony"},
 			CreatedAt:  time.Now().Truncate(time.Microsecond),
 			UpdatedAt:  time.Now().Truncate(time.Microsecond),
+			UserID:     userID,
 		}
 
 		err := repo.Create(context.Background(), media)
@@ -118,7 +120,7 @@ func TestPostgresMediaRepository(t *testing.T) {
 			t.Fatalf("Failed to create media: %v", err)
 		}
 
-		retrieved, err := repo.GetByID(context.Background(), media.ID)
+		retrieved, err := repo.GetByID(context.Background(), media.ID, &userID)
 		if err != nil {
 			t.Fatalf("Failed to get media: %v", err)
 		}
@@ -179,7 +181,7 @@ func TestPostgresMediaRepository(t *testing.T) {
 			}
 		}
 
-		mediaList, total, err := repo.List(context.Background(), 2, 0)
+		mediaList, total, err := repo.List(context.Background(), 2, 0, nil)
 		if err != nil {
 			t.Fatalf("Failed to list media: %v", err)
 		}
@@ -213,7 +215,8 @@ func TestPostgresMediaRepository(t *testing.T) {
 			t.Fatalf("Failed to update media: %v", err)
 		}
 
-		retrieved, _ := repo.GetByID(context.Background(), media.ID)
+		userID := uuid.New()
+		retrieved, _ := repo.GetByID(context.Background(), media.ID, &userID)
 		if retrieved.SizeBytes != 9999 {
 			t.Errorf("Expected size 9999, got %d", retrieved.SizeBytes)
 		}
@@ -223,6 +226,7 @@ func TestPostgresMediaRepository(t *testing.T) {
 	})
 
 	t.Run("Delete", func(t *testing.T) {
+		userID := uuid.New()
 		media := &domain.Media{
 			ID:         uuid.New(),
 			Path:       "/tmp/test/del.jpg",
@@ -230,17 +234,18 @@ func TestPostgresMediaRepository(t *testing.T) {
 			Hash:       "hash_del",
 			MediaType:  domain.MediaTypePhoto,
 			CapturedAt: time.Now(),
+			UserID:     userID,
 		}
 		if err := repo.Create(context.Background(), media); err != nil {
 			t.Fatalf("Failed to create media for delete test: %v", err)
 		}
 
-		err := repo.Delete(context.Background(), media.ID)
+		err := repo.Delete(context.Background(), media.ID, &userID)
 		if err != nil {
 			t.Fatalf("Failed to delete media: %v", err)
 		}
 
-		_, err = repo.GetByID(context.Background(), media.ID)
+		_, err = repo.GetByID(context.Background(), media.ID, &userID)
 		if err == nil {
 			t.Error("Expected error getting deleted media, got nil")
 		}

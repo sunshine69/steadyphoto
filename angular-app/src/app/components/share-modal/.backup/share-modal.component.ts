@@ -331,9 +331,6 @@ export class ShareModalComponent implements OnInit, OnDestroy {
   requireExpiration = false;
   shareExpiresAt = '';
 
-  // Item type being shared (set when opening modal)
-  itemType: 'media' | 'album' = 'media';
-
   // Items being shared (set when opening modal)
   sharedItems: Array<{ id: string; filename?: string }> = [];
 
@@ -416,11 +413,14 @@ export class ShareModalComponent implements OnInit, OnDestroy {
     this.hasError = false;
     this.createdPublicLink = undefined;
 
-    // Store item type and set the item being shared
-    this.itemType = itemType;
-    this.sharedItems = [{ id: itemId }];
+    // Set the item being shared
+    if (itemType === 'media') {
+      this.sharedItems = [{ id: itemId }];
+    } else {
+      this.sharedItems = [{ id: itemId }];
+    }
 
-    console.log('[DEBUG] Shared items set to:', JSON.stringify(this.sharedItems), 'itemType:', this.itemType);
+    console.log('[DEBUG] Shared items set to:', JSON.stringify(this.sharedItems));
 
     this.isVisible = true;
   }
@@ -512,7 +512,6 @@ export class ShareModalComponent implements OnInit, OnDestroy {
   clearSelected(): void {
     this.sharedItems = [];
     this.selectedUsers = [];
-    this.itemType = 'media';
   }
 
   get canCreateShare(): boolean {
@@ -541,23 +540,16 @@ export class ShareModalComponent implements OnInit, OnDestroy {
     this.isSharing = true;
 
     try {
-      const itemIds = this.sharedItems.filter(i => i.id).map(i => i.id);
+      const mediaIds = this.sharedItems.filter(i => i.id).map(i => i.id);
       
-      console.log('[DEBUG] Item IDs to send:', JSON.stringify(itemIds));
-      console.log('[DEBUG] Item type:', this.itemType);
+      console.log('[DEBUG] Media IDs to send:', JSON.stringify(mediaIds));
       console.log('[DEBUG] Sharee user IDs to send:', JSON.stringify(this.selectedUsers.map(u => u.id)));
 
       // Build request body - use FormData or JSON based on backend expectations
       const requestBody: ShareRequest = {
         sharee_user_ids: this.selectedUsers.map(u => u.id),
+        media_ids: mediaIds,
       };
-
-      // Use the correct ID field based on item type
-      if (this.itemType === 'media') {
-        requestBody.media_ids = itemIds;
-      } else {
-        requestBody.album_ids = itemIds;
-      }
 
       console.log('[DEBUG] Request body being sent:', JSON.stringify(requestBody));
 
@@ -591,10 +583,7 @@ export class ShareModalComponent implements OnInit, OnDestroy {
 
   getItemTypeIcon(): string {
     if (this.sharedItems[0]?.id) {
-      // Return correct icon based on item type
-      if (this.itemType === 'album') {
-        return '📁';
-      }
+      // Try to determine type from item data - for now assume media/photo
       return '📷';
     }
     return '';
@@ -616,8 +605,9 @@ export class ShareModalComponent implements OnInit, OnDestroy {
 
     const item = this.sharedItems[0];
     
-    // Use the correct resource type based on item type
-    const resourceType: 'media' | 'album' = this.itemType;
+    // Determine resource type - for now default to 'media' (photo)
+    // In production, you'd determine this from the item's metadata or context
+    const resourceType: 'media' | 'album' = 'media'; 
 
     this.isCreatingLink = true;
 

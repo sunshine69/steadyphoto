@@ -7,7 +7,6 @@ import { PhotoService } from '../../services/photo.service';
 import { PresentationService, MediaItem } from '../../services/presentation.service';
 import { Photo, ListPhotosResponse } from '../../models/photo.model';
 import { Album } from '../../models/album.model';
-import { ShareTriggerService } from '../../services/share-trigger.service';
 import { PhotoCardComponent } from '../photo-card/photo-card.component';
 import { FormsModule } from '@angular/forms';
 
@@ -42,12 +41,6 @@ import { FormsModule } from '@angular/forms';
              (click)="startPresentationFromAlbum()"
              [disabled]="photos.length === 0">
              🎬 Presentation Mode
-           </button>
-           <button 
-             *ngIf="photos.length > 0 && !loading"
-             class="btn btn-info" 
-             (click)="shareAlbum()">
-             📤 Share
            </button>
         </div>
       </div>
@@ -287,7 +280,6 @@ export class AlbumDetailComponent implements OnInit, OnDestroy {
   private cdr = inject(ChangeDetectorRef);
   private ngZone = inject(NgZone);
   private http = inject(HttpClient);
-  private shareTrigger = inject(ShareTriggerService);
 
   albumName: string = 'Loading...';
   photos: Photo[] = [];
@@ -501,11 +493,6 @@ export class AlbumDetailComponent implements OnInit, OnDestroy {
   }
 
   goBack(): void { this.router.navigate(['/albums']); }
-
-  shareAlbum(): void {
-    if (!this.albumId) return;
-    this.shareTrigger.open(this.albumId, 'album');
-  }
 
   onPhotoClick(id: string): void { 
     const ids = this.photos.map(p => p.id).join(',');

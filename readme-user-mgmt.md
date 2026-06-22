@@ -1,7 +1,7 @@
 # User Management Feature
 
-**Status:** ✅ Backend API Completed — Frontend UI Status Unknown  
-**Last Updated:** June 13, 2026
+**Status:** ✅ Complete — Admin status tracking fixed, fully functional  
+**Last Updated:** June 22, 2026
 
 ---
 
@@ -51,7 +51,7 @@ Admin users can manage other user accounts through a modal interface accessible 
 
 ---
 
-## Frontend Implementation (Angular) ✅ Updated — Security Fix Applied
+## Frontend Implementation (Angular) ✅ Complete — Security Fixes Applied
 
 The Angular auth service (`auth.service.ts`) confirms the following features exist:
 
@@ -59,13 +59,42 @@ The Angular auth service (`auth.service.ts`) confirms the following features exi
 - ✅ **Registration** creates pending user account (requires admin approval)
 - ✅ **Logout** clears local storage and calls backend logout endpoint
 - ✅ **Token refresh** via `/auth/refresh` using HttpOnly cookie
+- ✅ **Admin status tracking** — `isAdmin$` observable dynamically updates on login/logout
+- ✅ **Logout state clearing** — All localStorage, sessionStorage, and BehaviorSubject state cleared
 
 ### Security Fixes Applied
 - ⚠️ **Security Fix**: access_token is now stored in `sessionStorage` instead of `localStorage`. This means the token is cleared when the browser tab is closed, reducing XSS risk. The HttpOnly cookie remains the primary authentication mechanism for normal browser requests (sent automatically via `withCredentials`).
 - ⚠️ **Security Fix**: refresh_token is NOT stored on the client at all — it's managed by server-side session rotation and HttpOnly cookies only.
 
+### User Management Component (`user-management.component.ts`)
+- Subscribes to `isAdmin$` observable for real-time admin status updates
+- No longer requires relogin to see the admin role dropdown — dynamic updates work immediately
+- Properly unsubscribes in `ngOnDestroy` to prevent memory leaks
+
+---
+
+## Bug Fixes
+
+### Admin Status Dropdown Not Showing (Fixed June 22, 2026)
+**Problem**: The admin role dropdown in the user management modal was not displaying unless the user logged out and back in. Suspected race condition and auth — the component didn't see the user was admin.
+
+**Root Cause**: The `isAdmin` property in `UserManagementComponent` was only set once in `ngOnInit()` and never updated. The `AuthService.logout()` method did not properly clear auth state (missing `clearUser()` and `setAuthenticated(false)` calls).
+
+**Solution**:
+1. Added `isAdmin$` observable to `AuthService`
+2. Updated `UserManagementComponent` to subscribe to `isAdmin$` for dynamic updates
+3. Fixed `AuthService.logout()` to call `clearUser()` and `setAuthenticated(false)` in the `finalize` block
+4. Fixed `AuthService.clearUser()` to also call `setAdminStatus(false)`
+5. Fixed `AuthService.login()` to call `setCurrentUser(currentUser)` which sets admin status based on role
+6. Fixed TypeScript errors:
+   - Added `username?: string` to `CurrentUser` interface (was missing, causing compilation error in `setCurrentUser` and `getUsername`)
+   - Removed manual `setCurrentUser({ email: this.email })` call from `login.component.ts` (the `login()` method already does this correctly with the full response)
+
+**Result**: The admin dropdown now appears immediately after login without needing to refresh or relogin.
+
 ---
 
 ## Related Documents
 
+- [Authentication & Multi-User Architecture](README-auth.md) — Auth system including admin status via `isAdmin$` observable
 - [Architecture Overview](readme-arch.md) — High-level system architecture, security summary
