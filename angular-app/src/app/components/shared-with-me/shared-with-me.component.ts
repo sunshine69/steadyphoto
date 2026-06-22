@@ -403,13 +403,15 @@ export class SharedWithMeComponent implements OnInit {
         }
         
         const items = response.items || [];
-        this.sharedAlbums.push(...items);
+        items.forEach((item: SharedAlbumItem) => {
+          // Map the thumbnail from the API response
+          const albumItem: SharedAlbumItem & { sharerName?: string; thumbnailUrl?: string; mediaCount?: number; sharedAt?: string; isFavorite?: boolean; description?: string } = {
+            ...item,
+            thumbnailUrl: (item.thumbnail || undefined) as string | undefined
+          };
+          this.sharedAlbums.push(albumItem);
+        });
         this.hasMoreAlbums = this.albumOffset + 20 < response.total;
-
-        if (this.activeTab === 'albums') {
-          // Fetch album thumbnails in the background
-          items.forEach((item: SharedAlbumItem) => this.loadAlbumThumbnail(item.id));
-        }
       },
       error: (err) => {
         console.error('Failed to load shared albums:', err);

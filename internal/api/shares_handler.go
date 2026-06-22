@@ -71,6 +71,7 @@ type SharedAlbumResponse struct {
 	Name         string      `json:"name"`
 	Description  *string     `json:"description,omitempty"`
 	SharerUserID uuid.UUID   `json:"sharerUserId"`
+	Thumbnail    *string     `json:"thumbnail,omitempty"` // First photo thumbnail path
 }
 
 // CreatePublicShareRequest represents the request body for creating a public share link.
@@ -352,11 +353,17 @@ func (h *ShareHandler) handleListSharedAlbums(w http.ResponseWriter, r *http.Req
 	}
 
 	for i, item := range items {
+		var thumbnail *string
+		if item.FirstMediaID != uuid.Nil {
+			thumbURL := "/api/v1/media/" + item.FirstMediaID.String() + "/thumb"
+			thumbnail = &thumbURL
+		}
 		response.Items[i] = SharedAlbumResponse{
 			ID:           item.Album.ID,
 			Name:         item.Album.Name,
 			Description:  item.Album.Description,
 			SharerUserID: item.SharerUserID,
+			Thumbnail:    thumbnail,
 		}
 	}
 
@@ -642,6 +649,110 @@ func (h *ShareHandler) handleGetPublicShareAlbum(w http.ResponseWriter, r *http.
 	})
 }
 
+// handleGetPublicShareAlbumMedia handles GET /public/shares/album/{token}/media — Paginated media for shared album via public link.
+func (h *ShareHandler) handleGetPublicShareAlbumMedia(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	tokenStr := chi.URLParam(r, "token")
+
+	// Get the public share by token
+	publicShare, err := h.publicShareRepo.GetByToken(ctx, tokenStr)
+	if err != nil {
+		log.Printf("[ERROR] handleGetPublicShareAlbumMedia - get public share: %v", err)
+		http.Error(w, "Share link not found or expired", http.StatusNotFound)
+		return
+	}
+
+	// Check if the share has expired
+	if publicShare.ExpiresAt != nil && time.Now().After(*publicShare.ExpiresAt) {
+		log.Printf("[WARN] handleGetPublicShareAlbumMedia - expired public share accessed: %s", tokenStr)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusGone)
+		json.NewEncoder(w).Encode(map[string]string{"error": "This share link has expired"})
+		return
+	}
+
+	// Check if password is required and verify it
+	if publicShare.PasswordHash != nil && *publicShare.PasswordHash != "" {
+		password := r.URL.Query().Get("password")
+		if password == "" || !security.CheckPasswordHash(password, *publicShare.PasswordHash) {
+			log.Printf("[WARN] handleGetPublicShareAlbumMedia - wrong/missing password for share: %s", tokenStr)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Incorrect or missing password"})
+			return
+		}
+	}
+
+	// Get the album by token (this does its own ownership check internally since it's public)
+	albumItem, err := h.publicShareRepo.GetSharedAlbumByToken(ctx, tokenStr)
+	if err != nil {
+		log.Printf("[ERROR] handleGetPublicShareAlbumMedia - get shared album: %v", err)
+		http.Error(w, "Album not found", http.StatusNotFound)
+		return
+	}
+
+	// Log the access for auditing (best-effort — don't fail the request if logging fails)
+	if ip := r.RemoteAddr; ip != "" {
+		h.publicAccessRepo.CreateAccessLog(ctx, publicShare.ID, ip)
+	}
+
+	// Increment access count (best-effort — don't fail the request if incrementing fails)
+	h.publicShareRepo.IncrementAccessCount(ctx, publicShare.ID)
+
+	// Apply pagination
+	mediaItems := albumItem.MediaItems
+	totalItems := len(mediaItems)
+
+	limit := 20
+	offset := 0
+	query := r.URL.Query()
+
+	if lStr := query.Get("limit"); lStr != "" {
+		fmt.Sscanf(lStr, "%d", &limit)
+	}
+	if oStr := query.Get("offset"); oStr != "" {
+		fmt.Sscanf(oStr, "%d", &offset)
+	}
+
+	// Ensure offset is not negative or beyond total
+	if offset < 0 {
+		offset = 0
+	}
+	if offset >= totalItems {
+		offset = totalItems
+	}
+
+	// Calculate end index with bounds
+	end := offset + limit
+	if end > totalItems {
+		end = totalItems
+	}
+
+	// Slice the media items for the current page
+	pageItems := mediaItems[offset:end]
+
+	// Convert to response format
+	mediaResponses := make([]MediaShareItem, len(pageItems))
+	for i, m := range pageItems {
+		mediaResponses[i] = MediaShareItem{
+			ID:        m.ID,
+			Filename:  m.Filename,
+			Path:      m.Path,
+			MediaType: string(m.MediaType),
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(struct {
+		Media      []MediaShareItem `json:"media"`
+		TotalItems int             `json:"totalItems"`
+	}{
+		Media:      mediaResponses,
+		TotalItems: totalItems,
+	})
+}
+
 // handleGetPublicShareMediaOriginal handles GET /public/shares/media/{token}/original — Stream original file via public link.
 // Also serves album media when ?path=<media_path> query parameter is provided.
 func (s *Server) handleGetPublicShareMediaOriginal(w http.ResponseWriter, r *http.Request) {
@@ -704,23 +815,21 @@ func (s *Server) handleGetPublicShareMediaThumb(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	// Calculate thumbnail path (same logic as handleGetThumbnail)
-	relPath := filepath.Clean(media.Path)
-	ext := filepath.Ext(relPath)
-
-	var thumbRelPath string
-	if media.MediaType == domain.MediaTypeVideo {
-		cleanPath := strings.TrimPrefix(media.Path, "storage/")
-		basePart := strings.TrimSuffix(cleanPath, ext)
-		basePart = strings.Replace(basePart, "/.videos/", "/", 1)
-		thumbRelPath = basePart + ".webp"
-	} else {
-		cleanPath := strings.TrimPrefix(media.Path, "storage/")
-		basePart := strings.TrimSuffix(cleanPath, ext)
-		thumbRelPath = basePart + "_thumb.webp"
+	// Calculate thumbnail path - strip user ID from path since thumbnails are stored without it
+	cleanPath := strings.TrimPrefix(media.Path, "storage/")
+	parts := strings.SplitN(cleanPath, string(filepath.Separator), 2)
+	if len(parts) >= 2 {
+		cleanPath = parts[1]
 	}
+	ext := filepath.Ext(cleanPath)
 
-	fullThumbPath := filepath.Join(s.thumbRoot, ".thumbnails", thumbRelPath)
+	thumbRelPath := s.storageService.GetThumbnailRelativePath(
+		string(media.MediaType),
+		cleanPath,
+		ext,
+	)
+
+	fullThumbPath := filepath.Join(s.thumbRoot, thumbRelPath)
 
 	if _, err := os.Stat(fullThumbPath); os.IsNotExist(err) {
 		log.Printf("[WARN] handleGetPublicShareMediaThumb: Thumbnail NOT FOUND at %s. Attempting fallback to original.", fullThumbPath)
@@ -883,23 +992,21 @@ func (s *Server) serveAlbumMediaThumb(w http.ResponseWriter, r *http.Request, to
 		return
 	}
 
-	// Calculate thumbnail path (same logic as handleGetThumbnail)
-	relPath := filepath.Clean(media.Path)
-	ext := filepath.Ext(relPath)
-
-	var thumbRelPath string
-	if media.MediaType == domain.MediaTypeVideo {
-		cleanPath := strings.TrimPrefix(media.Path, "storage/")
-		basePart := strings.TrimSuffix(cleanPath, ext)
-		basePart = strings.Replace(basePart, "/.videos/", "/", 1)
-		thumbRelPath = basePart + ".webp"
-	} else {
-		cleanPath := strings.TrimPrefix(media.Path, "storage/")
-		basePart := strings.TrimSuffix(cleanPath, ext)
-		thumbRelPath = basePart + "_thumb.webp"
+	// Calculate thumbnail path - strip user ID from path since thumbnails are stored without it
+	cleanPath := strings.TrimPrefix(media.Path, "storage/")
+	parts := strings.SplitN(cleanPath, string(filepath.Separator), 2)
+	if len(parts) >= 2 {
+		cleanPath = parts[1]
 	}
+	ext := filepath.Ext(cleanPath)
 
-	fullThumbPath := filepath.Join(s.thumbRoot, ".thumbnails", thumbRelPath)
+	thumbRelPath := s.storageService.GetThumbnailRelativePath(
+		string(media.MediaType),
+		cleanPath,
+		ext,
+	)
+
+	fullThumbPath := filepath.Join(s.thumbRoot, thumbRelPath)
 
 	if _, err := os.Stat(fullThumbPath); os.IsNotExist(err) {
 		log.Printf("[WARN] serveAlbumMediaThumb: Thumbnail NOT FOUND at %s. Attempting fallback to original.", fullThumbPath)

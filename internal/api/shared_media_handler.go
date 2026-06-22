@@ -12,8 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"steadyphoto/internal/domain"
-
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
@@ -84,6 +82,7 @@ type SharedAlbumMediaItem struct {
 }
 
 // handleGetSharedMedia returns metadata for a single media item shared with the current user.
+// It checks both media_shares and album_shares to find the media item.
 func (s *Server) handleGetSharedMedia(w http.ResponseWriter, r *http.Request) {
 	startTime := logRequest(r, "handleGetSharedMedia")
 
@@ -106,12 +105,18 @@ func (s *Server) handleGetSharedMedia(w http.ResponseWriter, r *http.Request) {
 
 	item, err := s.mediaShareRepo.GetSharedMediaByID(ctx, id, userID)
 	if err != nil {
-		logError("handleGetSharedMedia - GetSharedMediaByID", err, startTime)
-		http.Error(w, "Shared media not found or access denied", http.StatusNotFound)
-		return
+		// Try checking album shares as fallback
+		albumItem, err := s.mediaShareRepo.GetSharedMediaFromAlbum(ctx, id, userID)
+		if err != nil {
+			logError("handleGetSharedMedia - GetSharedMediaByID", err, startTime)
+			http.Error(w, "Shared media not found or access denied", http.StatusNotFound)
+			return
+		}
+		item = albumItem
+		logInfo("handleGetSharedMedia - Found via album share", fmt.Sprintf("ID=%s, filename=%s, userID=%s", idStr, item.Media.Filename, item.Media.UserID), startTime)
+	} else {
+		logInfo("handleGetSharedMedia - Found shared media", fmt.Sprintf("ID=%s, filename=%s, userID=%s", idStr, item.Media.Filename, item.Media.UserID), startTime)
 	}
-
-	logInfo("handleGetSharedMedia - Found shared media", fmt.Sprintf("ID=%s, filename=%s, userID=%s", idStr, item.Media.Filename, item.Media.UserID), startTime)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(SharedMediaFullResponse{
@@ -128,6 +133,7 @@ func (s *Server) handleGetSharedMedia(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleGetSharedMediaOriginal streams the actual file for a shared media item.
+// It checks both media_shares and album_shares to find the media item.
 func (s *Server) handleGetSharedMediaOriginal(w http.ResponseWriter, r *http.Request) {
 	startTime := logRequest(r, "handleGetSharedMediaOriginal")
 
@@ -150,9 +156,14 @@ func (s *Server) handleGetSharedMediaOriginal(w http.ResponseWriter, r *http.Req
 
 	item, err := s.mediaShareRepo.GetSharedMediaByID(ctx, id, userID)
 	if err != nil {
-		logError("handleGetSharedMediaOriginal - GetSharedMediaByID", err, startTime)
-		http.Error(w, "Shared media not found or access denied", http.StatusNotFound)
-		return
+		// Try checking album shares as fallback
+		albumItem, err := s.mediaShareRepo.GetSharedMediaFromAlbum(ctx, id, userID)
+		if err != nil {
+			logError("handleGetSharedMediaOriginal - GetSharedMediaByID", err, startTime)
+			http.Error(w, "Shared media not found or access denied", http.StatusNotFound)
+			return
+		}
+		item = albumItem
 	}
 
 	targetPath := item.Media.Path
@@ -178,6 +189,7 @@ func (s *Server) handleGetSharedMediaOriginal(w http.ResponseWriter, r *http.Req
 }
 
 // handleGetSharedMediaThumb streams the thumbnail for a shared media item.
+// It checks both media_shares and album_shares to find the media item.
 func (s *Server) handleGetSharedMediaThumb(w http.ResponseWriter, r *http.Request) {
 	startTime := logRequest(r, "handleGetSharedMediaThumb")
 
@@ -200,27 +212,33 @@ func (s *Server) handleGetSharedMediaThumb(w http.ResponseWriter, r *http.Reques
 
 	item, err := s.mediaShareRepo.GetSharedMediaByID(ctx, id, userID)
 	if err != nil {
-		logError("handleGetSharedMediaThumb - GetSharedMediaByID", err, startTime)
-		http.Error(w, "Shared media not found or access denied", http.StatusNotFound)
-		return
+		// Try checking album shares as fallback
+		albumItem, err := s.mediaShareRepo.GetSharedMediaFromAlbum(ctx, id, userID)
+		if err != nil {
+			logError("handleGetSharedMediaThumb - GetSharedMediaByID", err, startTime)
+			http.Error(w, "Shared media not found or access denied", http.StatusNotFound)
+			return
+		}
+		item = albumItem
 	}
 
 	relPath := filepath.Clean(item.Media.Path)
-	ext := filepath.Ext(relPath)
 
-	var thumbRelPath string
-	if item.Media.MediaType == domain.MediaTypeVideo {
-		cleanPath := strings.TrimPrefix(item.Media.Path, "storage/")
-		basePart := strings.TrimSuffix(cleanPath, ext)
-		basePart = strings.Replace(basePart, "/.videos/", "/", 1)
-		thumbRelPath = basePart + ".webp"
-	} else {
-		cleanPath := strings.TrimPrefix(item.Media.Path, "storage/")
-		basePart := strings.TrimSuffix(cleanPath, ext)
-		thumbRelPath = basePart + "_thumb.webp"
+	// Calculate thumbnail path - strip user ID from path since thumbnails are stored without it
+	cleanPath := strings.TrimPrefix(relPath, "storage/")
+	parts := strings.SplitN(cleanPath, string(filepath.Separator), 2)
+	if len(parts) >= 2 {
+		cleanPath = parts[1]
 	}
+	ext := filepath.Ext(cleanPath)
 
-	fullThumbPath := filepath.Join(s.thumbRoot, ".thumbnails", thumbRelPath)
+	thumbRelPath := s.storageService.GetThumbnailRelativePath(
+		string(item.Media.MediaType),
+		cleanPath,
+		ext,
+	)
+
+	fullThumbPath := filepath.Join(s.thumbRoot, thumbRelPath)
 
 	if _, err := os.Stat(fullThumbPath); os.IsNotExist(err) {
 		logInfo("handleGetSharedMediaThumb - Thumbnail NOT FOUND", fmt.Sprintf("Attempting fallback to original from %s", fullThumbPath), startTime)

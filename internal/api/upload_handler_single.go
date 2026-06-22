@@ -991,8 +991,14 @@ func (h *MediaUploadHandlerSingle) HandleDelete(w http.ResponseWriter, r *http.R
 	}
 
 	// Delete thumbnail separately (it's optional and may not exist)
-	ext := filepath.Ext(media.Filename)
-	if thumbRelPath := h.storageService.GetThumbnailRelativePath(string(media.MediaType), media.Filename, ext); thumbRelPath != "" {
+	// Strip user ID from path since thumbnails are stored without it
+	cleanPath := strings.TrimPrefix(media.Path, "storage/")
+	parts := strings.SplitN(cleanPath, string(filepath.Separator), 2)
+	if len(parts) >= 2 {
+		cleanPath = parts[1]
+	}
+	ext := filepath.Ext(cleanPath)
+	if thumbRelPath := h.storageService.GetThumbnailRelativePath(string(media.MediaType), cleanPath, ext); thumbRelPath != "" {
 		h.storageService.DeleteFileSilently(thumbRelPath) // Ignore error for thumbnails
 	}
 

@@ -346,6 +346,9 @@ export class ShareModalComponent implements OnInit, OnDestroy {
   shareMessage = '';
   createdPublicLink?: PublicShareLinkResponse;
 
+  // User to user sharing state
+  isSharingUserToUser = false;
+
   private searchTimeout: any;
   private shareSubscription?: Subscription;
   

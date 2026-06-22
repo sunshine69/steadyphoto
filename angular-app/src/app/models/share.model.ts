@@ -20,6 +20,7 @@ export interface SharedAlbumItem {
   name: string;
   description?: string;
   sharerUserId: string;
+  thumbnail: string | null;
 }
 
 // Public share link response after creation

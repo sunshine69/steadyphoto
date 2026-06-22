@@ -259,7 +259,14 @@ func (s *Server) routes() {
 					}
 
 					// Delete thumbnail separately (it's optional and may not exist)
-					if thumbRelPath := s.storageService.GetThumbnailRelativePath(string(media.MediaType), media.Filename, filepath.Ext(media.Path)); thumbRelPath != "" {
+					// Strip user ID from path since thumbnails are stored without it
+					cleanPath := strings.TrimPrefix(media.Path, "storage/")
+					parts := strings.SplitN(cleanPath, string(filepath.Separator), 2)
+					if len(parts) >= 2 {
+						cleanPath = parts[1]
+					}
+					ext := filepath.Ext(cleanPath)
+					if thumbRelPath := s.storageService.GetThumbnailRelativePath(string(media.MediaType), cleanPath, ext); thumbRelPath != "" {
 						s.storageService.DeleteFileSilently(thumbRelPath) // Ignore error for thumbnails
 					}
 
@@ -326,6 +333,8 @@ func (s *Server) routes() {
 					mediaPath := r.URL.Query().Get("path")
 					s.serveAlbumMediaThumb(w, r, tokenStr, mediaPath)
 				})
+				// Paginated album media endpoint
+				public.Get("/public/shares/album/{token}/media", sharesHandler.handleGetPublicShareAlbumMedia)
 			})
 		})
 	})
@@ -886,23 +895,21 @@ func (s *Server) handleGetThumbnail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Calculate thumbnail path
-	relPath := filepath.Clean(media.Path)
-	ext := filepath.Ext(relPath)
-
-	var thumbRelPath string
-	if media.MediaType == domain.MediaTypeVideo {
-		cleanPath := strings.TrimPrefix(media.Path, "storage/")
-		basePart := strings.TrimSuffix(cleanPath, ext)
-		basePart = strings.Replace(basePart, "/.videos/", "/", 1)
-		thumbRelPath = basePart + ".webp"
-	} else {
-		cleanPath := strings.TrimPrefix(media.Path, "storage/")
-		basePart := strings.TrimSuffix(cleanPath, ext)
-		thumbRelPath = basePart + "_thumb.webp"
+	// Calculate thumbnail path - strip user ID from path since thumbnails are stored without it
+	cleanPath := strings.TrimPrefix(media.Path, "storage/")
+	parts := strings.SplitN(cleanPath, string(filepath.Separator), 2)
+	if len(parts) >= 2 {
+		cleanPath = parts[1]
 	}
+	ext := filepath.Ext(cleanPath)
 
-	fullThumbPath := filepath.Join(s.thumbRoot, ".thumbnails", thumbRelPath)
+	thumbRelPath := s.storageService.GetThumbnailRelativePath(
+		string(media.MediaType),
+		cleanPath,
+		ext,
+	)
+
+	fullThumbPath := filepath.Join(s.thumbRoot, thumbRelPath)
 
 	// Check if file exists before serving
 	if _, err := os.Stat(fullThumbPath); os.IsNotExist(err) {
@@ -1057,14 +1064,19 @@ func (s *Server) getThumbnailRelativePath(media *domain.Media) string {
 	relPath := filepath.Clean(media.Path)
 	ext := filepath.Ext(relPath)
 
+	// Strip user ID from path since thumbnails are stored without it
+	cleanPath := strings.TrimPrefix(relPath, "storage/")
+	parts := strings.SplitN(cleanPath, string(filepath.Separator), 2)
+	if len(parts) >= 2 {
+		cleanPath = parts[1]
+	}
+
 	if media.MediaType == domain.MediaTypeVideo {
-		cleanPath := strings.TrimPrefix(media.Path, "storage/")
 		basePart := strings.TrimSuffix(cleanPath, ext)
 		basePart = strings.Replace(basePart, "/.videos/", "/", 1)
 		return basePart + ".webp"
 	}
 
-	cleanPath := strings.TrimPrefix(media.Path, "storage/")
 	basePart := strings.TrimSuffix(cleanPath, ext)
 	return basePart + "_thumb.webp"
 }

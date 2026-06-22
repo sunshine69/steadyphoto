@@ -130,6 +130,9 @@ type MediaShareRepository interface {
 	// Get media in a shared album for a user (incoming shares)
 	ListMediaInSharedAlbum(ctx context.Context, albumID uuid.UUID, shareeUserID uuid.UUID, limit int, offset int) ([]*MediaWithSharerInfo, int, error)
 
+	// Get media by ID that may be in a shared album (for individual media detail/thumb requests)
+	GetSharedMediaFromAlbum(ctx context.Context, mediaID uuid.UUID, shareeUserID uuid.UUID) (*MediaWithSharerInfo, error)
+
 	// Get media items in an outgoing share group (shares made BY the current user).
 	GetOutgoingShareGroupMediaIDs(ctx context.Context, shareID uuid.UUID) ([]uuid.UUID, error)
 }
@@ -180,8 +183,10 @@ type MediaWithSharerInfo struct {
 
 // AlbumWithSharerInfo is an Album enriched with sharer's info for API responses
 type AlbumWithSharerInfo struct {
-	Album        *Album `json:"-"` // The base album metadata
-	SharerUserID uuid.UUID `db:"sharer_user_id" json:"sharerUserId"`
+	Album          *Album `json:"-"` // The base album metadata
+	SharerUserID   uuid.UUID `db:"sharer_user_id" json:"sharerUserId"`
+	FirstPhotoPath *string `db:"first_photo_path" json:"-"` // First photo path for thumbnail generation
+	FirstMediaID   uuid.UUID `db:"first_media_id" json:"-"`  // First media item ID for thumbnail URL
 }
 
 // PublicShareWithSharerInfo is a Media enriched with public share info for API responses

@@ -179,18 +179,30 @@ func (r *PostgresMediaShareRepository) ListSharedAlbums(ctx context.Context, sha
 	}
 
 	query := `
-		SELECT a.*, s.sharer_user_id
+		SELECT a.*, s.sharer_user_id,
+		       fp.id AS first_media_id,
+		       fp.path AS first_photo_path
 		FROM album_shares albs
 		JOIN shares s ON albs.share_id = s.id
 		JOIN albums a ON albs.album_id = a.id
+		LEFT JOIN LATERAL (
+		    SELECT m.id, m.path
+		    FROM album_photos ap
+		    JOIN media m ON m.id = ap.media_id AND m.deleted_at IS NULL
+		    WHERE ap.album_id = a.id
+		    ORDER BY ap.position ASC
+		    LIMIT 1
+		) fp ON TRUE
 		WHERE s.sharee_user_id = $1
 		ORDER BY a.created_at DESC
 		LIMIT $2 OFFSET $3
 	`
 
 	var results []struct {
-		domain.Album `db:",inline"`
-		SharerUserID uuid.UUID `db:"sharer_user_id" json:"-"`
+		domain.Album       `db:",inline"`
+		SharerUserID       uuid.UUID `db:"sharer_user_id" json:"-"`
+		FirstPhotoPath     *string   `db:"first_photo_path" json:"-"`
+		FirstMediaID       uuid.UUID `db:"first_media_id" json:"-"`
 	}
 
 	err = r.db.SelectContext(ctx, &results, query, shareeUserID, limit, offset)
@@ -201,8 +213,10 @@ func (r *PostgresMediaShareRepository) ListSharedAlbums(ctx context.Context, sha
 	items := make([]*domain.AlbumWithSharerInfo, len(results))
 	for i, r := range results {
 		items[i] = &domain.AlbumWithSharerInfo{
-			Album:        &r.Album,
-			SharerUserID: r.SharerUserID,
+			Album:          &r.Album,
+			SharerUserID:   r.SharerUserID,
+			FirstPhotoPath: r.FirstPhotoPath,
+			FirstMediaID:   r.FirstMediaID,
 		}
 	}
 
@@ -212,16 +226,28 @@ func (r *PostgresMediaShareRepository) ListSharedAlbums(ctx context.Context, sha
 // GetSharedAlbumByID returns a single album that has been shared with the given user.
 func (r *PostgresMediaShareRepository) GetSharedAlbumByID(ctx context.Context, albumID uuid.UUID, shareeUserID uuid.UUID) (*domain.AlbumWithSharerInfo, error) {
 	query := `
-		SELECT a.*, s.sharer_user_id
+		SELECT a.*, s.sharer_user_id,
+		       fp.id AS first_media_id,
+		       fp.path AS first_photo_path
 		FROM album_shares albs
 		JOIN shares s ON albs.share_id = s.id
 		JOIN albums a ON albs.album_id = a.id
+		LEFT JOIN LATERAL (
+		    SELECT m.id, m.path
+		    FROM album_photos ap
+		    JOIN media m ON m.id = ap.media_id AND m.deleted_at IS NULL
+		    WHERE ap.album_id = a.id
+		    ORDER BY ap.position ASC
+		    LIMIT 1
+		) fp ON TRUE
 		WHERE albs.album_id = $1 AND s.sharee_user_id = $2
 	`
 
 	var result struct {
-		domain.Album `db:",inline"`
-		SharerUserID uuid.UUID `db:"sharer_user_id" json:"-"`
+		domain.Album       `db:",inline"`
+		SharerUserID       uuid.UUID `db:"sharer_user_id" json:"-"`
+		FirstPhotoPath     *string   `db:"first_photo_path" json:"-"`
+		FirstMediaID       uuid.UUID `db:"first_media_id" json:"-"`
 	}
 
 	err := r.db.GetContext(ctx, &result, query, albumID, shareeUserID)
@@ -230,8 +256,10 @@ func (r *PostgresMediaShareRepository) GetSharedAlbumByID(ctx context.Context, a
 	}
 
 	return &domain.AlbumWithSharerInfo{
-		Album:        &result.Album,
-		SharerUserID: result.SharerUserID,
+		Album:          &result.Album,
+		SharerUserID:   result.SharerUserID,
+		FirstPhotoPath: result.FirstPhotoPath,
+		FirstMediaID:   result.FirstMediaID,
 	}, nil
 }
 
@@ -242,7 +270,9 @@ func (r *PostgresMediaShareRepository) ListMediaInSharedAlbum(ctx context.Contex
 		SELECT COUNT(*) FROM album_photos ap
 		JOIN albums a ON a.id = ap.album_id
 		JOIN media m ON m.id = ap.media_id AND m.deleted_at IS NULL
-		WHERE ap.album_id = $1 AND a.user_id = $2
+		JOIN album_shares albs ON albs.album_id = a.id
+		JOIN shares s ON albs.share_id = s.id
+		WHERE ap.album_id = $1 AND s.sharee_user_id = $2
 	`
 	err := r.db.GetContext(ctx, &totalItems, countQuery, albumID, shareeUserID)
 	if err != nil {
@@ -250,12 +280,13 @@ func (r *PostgresMediaShareRepository) ListMediaInSharedAlbum(ctx context.Contex
 	}
 
 	query := `
-		SELECT m.*, s.sharer_user_id
+		SELECT m.*
 		FROM album_photos ap
 		JOIN albums a ON a.id = ap.album_id
 		JOIN media m ON m.id = ap.media_id AND m.deleted_at IS NULL
-		JOIN shares s ON 1=1 -- We don't need share info for this query, just use it to verify access via album_shares
-		WHERE ap.album_id = $1 AND a.user_id = $2
+		JOIN album_shares albs ON albs.album_id = a.id
+		JOIN shares s ON albs.share_id = s.id
+		WHERE ap.album_id = $1 AND s.sharee_user_id = $2
 		ORDER BY ap.position ASC, m.captured_at DESC
 		LIMIT $3 OFFSET $4
 	`
@@ -278,6 +309,37 @@ func (r *PostgresMediaShareRepository) ListMediaInSharedAlbum(ctx context.Contex
 	}
 
 	return items, totalItems, nil
+}
+
+// GetSharedMediaFromAlbum returns a single media item that is in a shared album for the given user.
+// This is used as a fallback when GetSharedMediaByID fails because the media is shared via an album,
+// not directly as a media share.
+func (r *PostgresMediaShareRepository) GetSharedMediaFromAlbum(ctx context.Context, mediaID uuid.UUID, shareeUserID uuid.UUID) (*domain.MediaWithSharerInfo, error) {
+	query := `
+		SELECT m.*, s.sharer_user_id
+		FROM album_photos ap
+		JOIN albums a ON a.id = ap.album_id
+		JOIN media m ON m.id = ap.media_id AND m.deleted_at IS NULL
+		JOIN album_shares albs ON albs.album_id = a.id
+		JOIN shares s ON albs.share_id = s.id
+		WHERE ap.media_id = $1 AND s.sharee_user_id = $2
+		LIMIT 1
+	`
+
+	var result struct {
+		domain.Media `db:",inline"`
+		SharerUserID uuid.UUID `db:"sharer_user_id" json:"-"`
+	}
+
+	err := r.db.GetContext(ctx, &result, query, mediaID, shareeUserID)
+	if err != nil {
+		return nil, fmt.Errorf("shared media from album not found: %w", err)
+	}
+
+	return &domain.MediaWithSharerInfo{
+		Media:        &result.Media,
+		SharerUserID: result.SharerUserID,
+	}, nil
 }
 
 // GetOutgoingShareGroupMediaIDs returns the media IDs in an outgoing share group (shares made BY a user).

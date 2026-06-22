@@ -226,8 +226,12 @@ func (h *Handler) ServeThumbnailFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	fmt.Printf("[DEBUG] h.mediaRepo.GetByID Output - %v\n", media)
-	// Calculate thumbnail path
+	// Calculate thumbnail path - strip user ID from path since thumbnails are stored without it
 	cleanPath := strings.TrimPrefix(media.Path, "storage/")
+	parts := strings.SplitN(cleanPath, string(filepath.Separator), 2)
+	if len(parts) >= 2 {
+		cleanPath = parts[1]
+	}
 	extClean := filepath.Ext(cleanPath)
 	basePart := strings.TrimSuffix(cleanPath, extClean)
 
@@ -241,10 +245,8 @@ func (h *Handler) ServeThumbnailFile(w http.ResponseWriter, r *http.Request) {
 		thumbRelPath = basePart + "_thumb.webp"
 	}
 
-	// Construct the absolute-ish path within the storage directory structure
-	// Since we already have a clean relative path (starting with YYYY/...),
-	// joining it with storage/.thumbnails results in storage/.thumbnails/YYYY/...
-	fullThumbPath := filepath.Join(h.thumbRoot, ".thumbnails", thumbRelPath)
+	// Construct the thumbnail path - h.thumbRoot already points to the thumbnails directory
+	fullThumbPath := filepath.Join(h.thumbRoot, thumbRelPath)
 
 	// Check if the calculated thumbnail exists
 	if _, err := os.Stat(fullThumbPath); os.IsNotExist(err) {

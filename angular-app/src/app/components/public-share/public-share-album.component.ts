@@ -100,8 +100,8 @@ import { environment } from '../../../environments/environment';
               <li class="list-group-item">
                 <span class="text-muted">Photos:</span> {{ totalAlbumPhotos }}
               </li>
-              <li class="list-group-item" *ngIf="albumData?.created_at">
-                <span class="text-muted">Created:</span> {{ albumData.created_at | date:'fullDate' }}
+              <li class="list-group-item" *ngIf="albumData?.createdAt">
+                <span class="text-muted">Created:</span> {{ albumData.createdAt | date:'fullDate' }}
               </li>
             </ul>
           </div>
@@ -203,19 +203,29 @@ export class PublicShareAlbumComponent implements OnInit {
     // Try to fetch without password first, if it fails with 403 try with password modal
     this.http.get<any>(`${environment.apiBaseUrl}/public/shares/album/${token}`).subscribe({
       next: (response) => {
-        const albumData = response?.Album || response;
+        console.log('=== PUBLIC SHARE DEBUG ===');
+        console.log('Full response:', JSON.stringify(response, null, 2));
+        // Backend returns SharedAlbumWithMedia directly (not wrapped in Album)
+        const albumData = response;
+        console.log('Album data:', JSON.stringify(albumData, null, 2));
         this.albumData = albumData;
         this.albumName = albumData.name || 'Untitled Album';
         this.albumDescription = albumData.description;
         
         // Load album media if present in the response
         const mediaItems = albumData.media_items || [];
+        console.log('Media items from album data:', mediaItems);
+        console.log('Media items type:', typeof mediaItems, Array.isArray(mediaItems));
+        console.log('Media items length:', mediaItems.length);
         if (Array.isArray(mediaItems) && mediaItems.length > 0) {
           this.photos = mediaItems.map((p: any) => this.normalizePhoto(p));
           this.totalAlbumPhotos = albumData.totalItems || mediaItems.length;
           this.loading = false;
+          console.log('Loaded photos from album data:', this.photos);
+          console.log('Photos length:', this.photos.length);
         } else {
           // Fetch media via pagination endpoint if not in response
+          console.log('No media items found, calling fetchMedia');
           this.fetchMedia(token);
         }
       },
@@ -250,15 +260,16 @@ export class PublicShareAlbumComponent implements OnInit {
       headers: { 'Accept': 'application/json' }
     }).subscribe({
       next: (response) => {
-        const albumData = response?.Album || response;
+        // Backend returns SharedAlbumWithMedia directly (not wrapped in Album)
+        const albumData = response;
         this.albumData = albumData;
         this.albumName = albumData.name || 'Untitled Album';
         this.albumDescription = albumData.description;
         
         // Load album media if present in the response
-        if (albumData.media && Array.isArray(albumData.media)) {
-          this.photos = albumData.media.map((p: any) => this.normalizePhoto(p));
-          this.totalAlbumPhotos = albumData.totalItems || albumData.media.length;
+        if (albumData.media_items && Array.isArray(albumData.media_items)) {
+          this.photos = albumData.media_items.map((p: any) => this.normalizePhoto(p));
+          this.totalAlbumPhotos = albumData.totalItems || albumData.media_items.length;
           this.loading = false;
         } else {
           // Fetch media via pagination endpoint if not in response
@@ -283,11 +294,10 @@ export class PublicShareAlbumComponent implements OnInit {
   }
 
   private fetchMedia(token: string): void {
-    // Need to get the album ID first from the response, then fetch media via pagination endpoint
-    if (!this.albumData?.id) return;
+    if (!token) return;
     
     this.loading = true;
-    const url = `${environment.apiBaseUrl}/albums/${this.albumData.id}/media?limit=${this.albumLimit}&offset=${this.albumOffset}`;
+    const url = `${environment.apiBaseUrl}/public/shares/album/${token}/media?limit=${this.albumLimit}&offset=${this.albumOffset}`;
     
     this.http.get<any>(url).subscribe({
       next: (response) => {
@@ -300,7 +310,7 @@ export class PublicShareAlbumComponent implements OnInit {
         this.loading = false;
       },
       error: (err: any) => {
-        console.error('Error loading album media', err);
+        console.error('Error loading album media via public endpoint', err);
         this.loading = false;
       }
     });
@@ -308,6 +318,7 @@ export class PublicShareAlbumComponent implements OnInit {
 
   private normalizePhoto(p: any): any {
     const id = p.ID ?? p.id ?? '';
+    const path = p.Path ?? p.path ?? '';
 
     let mediaType: string | undefined;
     const rawMediaType = p.MediaType || p.mediaType || p.media_type;
@@ -318,8 +329,8 @@ export class PublicShareAlbumComponent implements OnInit {
 
     return {
       id: id,
-      path: '',
-      thumbnailUrl: this.getThumbnailUrl(p.path),
+      path: path,
+      thumbnailUrl: this.getThumbnailUrl(id, path),
       filename: p.Filename ?? p.filename ?? '',
       captured_at: p.CapturedAt ?? p.captured_at ?? '',
       width: p.Width ?? p.width,
@@ -345,20 +356,24 @@ export class PublicShareAlbumComponent implements OnInit {
     };
   }
 
- private getThumbnailUrl(path: string): string {
+  getThumbnailUrl(id: string, path: string): string {
+    if (!id || !path) return '';
     const token = this.route.snapshot.paramMap.get('token');
-    if (!token || !path) return '';
-    return `${environment.apiBaseUrl}/public/shares/media/${token}/thumb?path=${encodeURIComponent(path)}`;
+    if (!token) return '';
+    // Use the album media thumbnail endpoint with the share token and media path
+    return `${environment.apiBaseUrl}/public/shares/album/${token}/media/thumb?path=${encodeURIComponent(path)}`;
   }
+
   changeAlbumPage(dir: number): void {
     const newOffset = this.albumOffset + (dir * this.albumLimit);
     
     if (newOffset < 0 || newOffset >= this.totalAlbumPhotos) return;
     
-    // For public shares, we need to fetch from the album media endpoint
-    if (!this.albumData?.id) return;
+    // For public shares, use the album media endpoint
+    const token = this.route.snapshot.paramMap.get('token');
+    if (!token) return;
     
-    const url = `${environment.apiBaseUrl}/albums/${this.albumData.id}/media?limit=${this.albumLimit}&offset=${newOffset}`;
+    const url = `${environment.apiBaseUrl}/public/shares/album/${token}/media?limit=${this.albumLimit}&offset=${newOffset}`;
     
     this.loading = true;
     this.http.get<any>(url).subscribe({
@@ -380,9 +395,10 @@ export class PublicShareAlbumComponent implements OnInit {
     if (this.albumJumpInput && this.albumJumpInput >= 1 && this.albumJumpInput <= this.totalAlbumPages) {
       const targetOffset = (this.albumJumpInput - 1) * this.albumLimit;
       
-      if (!this.albumData?.id) return;
+      const token = this.route.snapshot.paramMap.get('token');
+      if (!token) return;
       
-      const url = `${environment.apiBaseUrl}/albums/${this.albumData.id}/media?limit=${this.albumLimit}&offset=${targetOffset}`;
+      const url = `${environment.apiBaseUrl}/public/shares/album/${token}/media?limit=${this.albumLimit}&offset=${targetOffset}`;
       
       this.loading = true;
       this.http.get<any>(url).subscribe({
@@ -403,7 +419,7 @@ export class PublicShareAlbumComponent implements OnInit {
 
   onPhotoClick(id: string): void { 
     const ids = this.photos.map(p => p.id).join(',');
-    this.router.navigate(['/photos', id], { queryParams: { albumIds: ids } }); 
+    this.router.navigate(['/photos', id], { queryParams: { albumIds: ids, source: 'shared' } }); 
   }
 
   goBack(): void { 

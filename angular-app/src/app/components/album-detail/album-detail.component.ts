@@ -400,8 +400,8 @@ export class AlbumDetailComponent implements OnInit, OnDestroy {
     
     this.http.get<any>(url).subscribe({
       next: (response) => {
-        const rawPhotos: any[] = response.media || [];
-        const totalItems = response.totalItems || 0;
+        const rawPhotos: any[] = response.items || response.media || [];
+        const totalItems = response.total ?? response.totalItems ?? 0;
         
         this.photos = rawPhotos.map((p: any) => this.normalizePhoto(p, isShared));
         this.totalAlbumPhotos = totalItems;
