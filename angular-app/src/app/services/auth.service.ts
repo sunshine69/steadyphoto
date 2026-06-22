@@ -15,6 +15,7 @@ export interface AuthResponse {
 export interface CurrentUser {
   id: string;
   email: string;
+  username?: string;
   role: string;
   status: string;
 }
@@ -41,6 +42,10 @@ export class AuthService {
   /** Observable for auth state changes */
   private _isAuthenticatedSubject = new BehaviorSubject<boolean>(false);
   isAuthenticated$ = this._isAuthenticatedSubject.asObservable();
+
+  /** Observable for admin status */
+  private _isAdminSubject = new BehaviorSubject<boolean>(false);
+  isAdmin$ = this._isAdminSubject.asObservable();
 
   /** Gets the current user's profile information. */
   getProfile(): Observable<any> {
@@ -103,6 +108,8 @@ export class AuthService {
           };
           localStorage.setItem('currentUser', JSON.stringify(currentUser));
           
+          // Set the current user and admin status via the BehaviorSubject
+          this.setCurrentUser(currentUser);
           this.setAuthenticated(true);
         }),
         catchError(err => {
@@ -146,6 +153,10 @@ export class AuthService {
         finalize(() => {
           // Reset the flag after logout completes (success or error) — allows future 401s to refresh again
           this._isLoggingOutSubject.next(false);
+          
+          // Always clear local auth state on logout (success or error)
+          this.clearUser();
+          this.setAuthenticated(false);
         })
       );
   }
@@ -234,6 +245,11 @@ export class AuthService {
     this._isAuthenticatedSubject.next(status);
   }
 
+  /** Sets the admin status based on the current user's role. */
+  setAdminStatus(isAdmin: boolean): void {
+    this._isAdminSubject.next(isAdmin);
+  }
+
   /** Initializes auth state by checking if the user has a valid session cookie. */
   initializeAuth(): void {
     this.getProfile().subscribe({
@@ -256,19 +272,23 @@ export class AuthService {
       error: (err) => {
         console.warn('AuthService: Session invalid on page load', err);
         this.setAuthenticated(false);
+        // Clear localStorage to prevent stale data on page reload
+        this.clearUser();
       }
     });
   }
 
-  private _currentUser = new BehaviorSubject<User | null>(null);
+  private _currentUser = new BehaviorSubject<CurrentUser | null>(null);
   currentUser$ = this._currentUser.asObservable();
 
-  setCurrentUser(user: User): void {
+  setCurrentUser(user: CurrentUser): void {
     localStorage.setItem('username', user.username || '');
     this._currentUser.next(user);
+    // Update admin status based on role
+    this.setAdminStatus(user.role === 'admin');
   }
 
-  getCurrentUser(): User | null {
+  getCurrentUser(): CurrentUser | null {
     return this._currentUser.value;
   }
 
@@ -297,6 +317,7 @@ export class AuthService {
 
   clearUser(): void {
     this._currentUser.next(null);
+    this.setAdminStatus(false);
     // Clear ALL local storage items to prevent data contamination between users
     localStorage.removeItem('username');
     localStorage.removeItem('email');

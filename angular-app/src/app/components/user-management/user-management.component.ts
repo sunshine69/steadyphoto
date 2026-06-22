@@ -1,6 +1,8 @@
 import { Component, OnInit, OnDestroy, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Subscription } from 'rxjs';
+import { AuthService } from '../../services/auth.service';
 import { UserManagementService, User } from '../../services/user-management.service';
 
 @Component({
@@ -465,6 +467,8 @@ export class UserManagementComponent implements OnInit, OnDestroy {
   selectedStatus = '';
   isAdmin = false;
 
+  private isAdminSubscription?: Subscription;
+
   // Track pending changes for each user
   pendingStatus: { [key: string]: string } = {};
   pendingRole: { [key: string]: string } = {};
@@ -475,18 +479,13 @@ export class UserManagementComponent implements OnInit, OnDestroy {
   isBulkUpdating = false;
 
   private userManagementService = inject(UserManagementService);
+  private authService = inject(AuthService);
 
   ngOnInit(): void {
-    // Check if current user is admin (you might want to get this from auth service)
-    const currentUser = localStorage.getItem('currentUser');
-    if (currentUser) {
-      try {
-        const user = JSON.parse(currentUser);
-        this.isAdmin = user.role === 'admin';
-      } catch (e) {
-        console.error('Failed to parse current user', e);
-      }
-    }
+    // Subscribe to admin status changes — ensures isAdmin updates dynamically on login/logout
+    this.isAdminSubscription = this.authService.isAdmin$.subscribe(isAdmin => {
+      this.isAdmin = isAdmin;
+    });
   }
 
   open(): void {
@@ -760,5 +759,6 @@ export class UserManagementComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.close();
+    this.isAdminSubscription?.unsubscribe();
   }
 }
