@@ -355,7 +355,7 @@ func (h *ShareHandler) handleListSharedAlbums(w http.ResponseWriter, r *http.Req
 	for i, item := range items {
 		var thumbnail *string
 		if item.FirstMediaID != uuid.Nil {
-			thumbURL := "/api/v1/media/" + item.FirstMediaID.String() + "/thumb"
+			thumbURL := "/api/v1/media/shared/" + item.FirstMediaID.String() + "/thumb"
 			thumbnail = &thumbURL
 		}
 		response.Items[i] = SharedAlbumResponse{
