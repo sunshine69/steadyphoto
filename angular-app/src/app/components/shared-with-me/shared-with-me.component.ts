@@ -338,12 +338,12 @@ export class SharedWithMeComponent implements OnInit {
   activeTab: 'media' | 'albums' = 'media';
   
   // Shared media items (photos/videos)
-  sharedMedia: Array<SharedMediaItem & { sharerName?: string; thumbnailUrl?: string; sharedAt?: string; isFavorite?: boolean }> = [];
+  sharedMedia: Array<SharedMediaItem & { sharerName?: string; sharedAt?: string; isFavorite?: boolean; mediaCount?: number; thumbnailUrl?: string | null }> = [];
   hasMoreMedia = false;
   private mediaOffset = 0;
 
   // Shared albums
-  sharedAlbums: Array<SharedAlbumItem & { sharerName?: string; thumbnailUrl?: string; mediaCount?: number; sharedAt?: string; isFavorite?: boolean; description?: string }> = [];
+  sharedAlbums: Array<SharedAlbumItem & { sharerName?: string; mediaCount?: number; sharedAt?: string; isFavorite?: boolean; description?: string }> = [];
   hasMoreAlbums = false;
   private albumOffset = 0;
 
@@ -405,9 +405,9 @@ export class SharedWithMeComponent implements OnInit {
         const items = response.items || [];
         items.forEach((item: SharedAlbumItem) => {
           // Map the thumbnail from the API response
-          const albumItem: SharedAlbumItem & { sharerName?: string; thumbnailUrl?: string; mediaCount?: number; sharedAt?: string; isFavorite?: boolean; description?: string } = {
+          const albumItem: SharedAlbumItem & { sharerName?: string; mediaCount?: number; sharedAt?: string; isFavorite?: boolean; description?: string } = {
             ...item,
-            thumbnailUrl: (item.thumbnail || undefined) as string | undefined
+            thumbnailUrl: item.thumbnailUrl || undefined
           };
           this.sharedAlbums.push(albumItem);
         });
@@ -486,12 +486,6 @@ export class SharedWithMeComponent implements OnInit {
         console.error('Failed to load thumbnail for shared media:', err, mediaId);
       }
     });
-  }
-
-  // Load thumbnail for a shared album using the dedicated shared-album endpoint
-  private loadAlbumThumbnail(albumId: string): void {
-    // Try to get album cover from backend (if an API exists) or generate based on media types
-    console.log('Loading thumbnail for shared album:', albumId);
   }
 
   // Toggle favorite status for a shared item (optional feature)

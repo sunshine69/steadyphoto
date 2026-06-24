@@ -63,6 +63,7 @@ type SharedAlbumFullResponse struct {
 	Description  *string    `json:"description,omitempty"`
 	UserID       uuid.UUID  `json:"userId"`
 	CreatedAt    time.Time  `json:"createdAt"`
+	ThumbnailURL *string    `json:"thumbnailUrl,omitempty"`
 	SharerUserID uuid.UUID  `json:"sharerUserId"`
 }
 
@@ -74,11 +75,12 @@ type SharedAlbumMediaResponse struct {
 }
 
 type SharedAlbumMediaItem struct {
-	ID         uuid.UUID `json:"id"`
-	Filename   string    `json:"filename"`
-	Path       string    `json:"path"`
-	MediaType  string    `json:"mediaType"`
-	CapturedAt time.Time `json:"capturedAt"`
+	ID           uuid.UUID `json:"id"`
+	Filename     string    `json:"filename"`
+	Path         string    `json:"path"`
+	MediaType    string    `json:"mediaType"`
+	CapturedAt   time.Time `json:"capturedAt"`
+	ThumbnailURL *string   `json:"thumbnailUrl,omitempty"`
 }
 
 // handleGetSharedMedia returns metadata for a single media item shared with the current user.
@@ -297,12 +299,20 @@ func (s *Server) handleGetSharedAlbum(w http.ResponseWriter, r *http.Request) {
 	logInfo("handleGetSharedAlbum - Found shared album", fmt.Sprintf("ID=%s, name=%s", idStr, item.Album.Name), startTime)
 
 	w.Header().Set("Content-Type", "application/json")
+
+	var thumbnailURL *string
+	if item.FirstMediaID != uuid.Nil {
+		thumbURL := "/api/v1/media/shared/" + item.FirstMediaID.String() + "/thumb"
+		thumbnailURL = &thumbURL
+	}
+
 	json.NewEncoder(w).Encode(SharedAlbumFullResponse{
 		ID:           item.Album.ID,
 		Name:         item.Album.Name,
 		Description:  item.Album.Description,
 		UserID:       item.Album.UserID,
 		CreatedAt:    item.Album.CreatedAt,
+		ThumbnailURL: thumbnailURL,
 		SharerUserID: item.SharerUserID,
 	})
 
@@ -356,12 +366,18 @@ func (s *Server) handleListSharedAlbumMedia(w http.ResponseWriter, r *http.Reque
 
 	respItems := make([]SharedAlbumMediaItem, 0, len(items))
 	for _, item := range items {
+		var thumbnailURL *string
+		if item.Media.ID != uuid.Nil {
+			thumbURL := "/api/v1/media/shared/" + item.Media.ID.String() + "/thumb"
+			thumbnailURL = &thumbURL
+		}
 		respItems = append(respItems, SharedAlbumMediaItem{
-			ID:         item.Media.ID,
-			Filename:   item.Media.Filename,
-			Path:       item.Media.Path,
-			MediaType:  string(item.Media.MediaType),
-			CapturedAt: item.Media.CapturedAt,
+			ID:           item.Media.ID,
+			Filename:     item.Media.Filename,
+			Path:         item.Media.Path,
+			MediaType:    string(item.Media.MediaType),
+			CapturedAt:   item.Media.CapturedAt,
+			ThumbnailURL: thumbnailURL,
 		})
 	}
 

@@ -71,7 +71,7 @@ type SharedAlbumResponse struct {
 	Name         string      `json:"name"`
 	Description  *string     `json:"description,omitempty"`
 	SharerUserID uuid.UUID   `json:"sharerUserId"`
-	Thumbnail    *string     `json:"thumbnail,omitempty"` // First photo thumbnail path
+	ThumbnailURL *string     `json:"thumbnailUrl,omitempty"` // First photo thumbnail path
 }
 
 // CreatePublicShareRequest represents the request body for creating a public share link.
@@ -118,10 +118,11 @@ type SharedAlbumWithMedia struct {
 
 // MediaShareItem represents a media item in a shared album.
 type MediaShareItem struct {
-	ID        uuid.UUID `json:"id"`
-	Filename  string    `json:"filename"`
-	Path      string    `json:"path"`
-	MediaType string    `json:"mediaType"`
+	ID           uuid.UUID  `json:"id"`
+	Filename     string     `json:"filename"`
+	Path         string     `json:"path"`
+	MediaType    string     `json:"mediaType"`
+	ThumbnailURL *string    `json:"thumbnailUrl,omitempty"`
 }
 
 // handleCreateShare handles POST /api/v1/shares — Create a share.
@@ -363,7 +364,7 @@ func (h *ShareHandler) handleListSharedAlbums(w http.ResponseWriter, r *http.Req
 			Name:         item.Album.Name,
 			Description:  item.Album.Description,
 			SharerUserID: item.SharerUserID,
-			Thumbnail:    thumbnail,
+			ThumbnailURL: thumbnail,
 		}
 	}
 
@@ -630,11 +631,17 @@ func (h *ShareHandler) handleGetPublicShareAlbum(w http.ResponseWriter, r *http.
 	// Include media items in the response so Angular doesn't need to make additional requests
 	mediaResponses := make([]MediaShareItem, len(albumItem.MediaItems))
 	for i, m := range albumItem.MediaItems {
+		var thumbnailURL *string
+		if m.ID != uuid.Nil {
+			thumbURL := "/api/v1/media/shared/" + m.ID.String() + "/thumb"
+			thumbnailURL = &thumbURL
+		}
 		mediaResponses[i] = MediaShareItem{
-			ID:        m.ID,
-			Filename:  m.Filename,
-			Path:      m.Path,
-			MediaType: string(m.MediaType),
+			ID:           m.ID,
+			Filename:     m.Filename,
+			Path:         m.Path,
+			MediaType:    string(m.MediaType),
+			ThumbnailURL: thumbnailURL,
 		}
 	}
 
@@ -735,11 +742,17 @@ func (h *ShareHandler) handleGetPublicShareAlbumMedia(w http.ResponseWriter, r *
 	// Convert to response format
 	mediaResponses := make([]MediaShareItem, len(pageItems))
 	for i, m := range pageItems {
+		var thumbnailURL *string
+		if m.ID != uuid.Nil {
+			thumbURL := "/api/v1/media/shared/" + m.ID.String() + "/thumb"
+			thumbnailURL = &thumbURL
+		}
 		mediaResponses[i] = MediaShareItem{
-			ID:        m.ID,
-			Filename:  m.Filename,
-			Path:      m.Path,
-			MediaType: string(m.MediaType),
+			ID:           m.ID,
+			Filename:     m.Filename,
+			Path:         m.Path,
+			MediaType:    string(m.MediaType),
+			ThumbnailURL: thumbnailURL,
 		}
 	}
 

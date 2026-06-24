@@ -10,6 +10,7 @@ export interface Share {
 export interface SharedMediaItem {
   id: string;
   filename: string;
+  thumbnailUrl?: string | null;
   mediaType: 'photo' | 'video';
   sharerUserId: string;
 }
@@ -20,7 +21,7 @@ export interface SharedAlbumItem {
   name: string;
   description?: string;
   sharerUserId: string;
-  thumbnail: string | null;
+  thumbnailUrl?: string | null;
 }
 
 // Public share link response after creation
