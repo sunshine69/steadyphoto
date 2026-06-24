@@ -211,6 +211,7 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
     
     // Check if navigating from shared media (source=shared query param)
     const isSharedMedia = this.route.snapshot.queryParams['source'] === 'shared';
+    const shareToken = this.route.snapshot.queryParams['shareToken'];
     
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log(`🔍 [DEBUG] PhotoDetailComponent.ngOnInit`);
@@ -218,15 +219,29 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
     console.log(`   Query params:`, this.route.snapshot.queryParams);
     
     if (id) {
-      // Use getSharedMedia() for shared access, or getMedia() for ownership check
-      const fetch$ = isSharedMedia 
-        ? this.photoService.getSharedMedia(id)
-        : this.photoService.getMedia(id);
+      let fetch$: any;
+      let apiCall: string;
       
-      console.log(`   API call: ${isSharedMedia ? 'GET /media/shared/' + id : 'GET /media/' + id}`);
+      if (isSharedMedia && shareToken) {
+        // Use public share endpoint (no auth required)
+        const mediaPath = this.route.snapshot.queryParams['mediaPath'] || '';
+        fetch$ = this.photoService.getPublicShareMedia(shareToken, mediaPath);
+        apiCall = `GET /public/shares/album/${shareToken}/media?path=${mediaPath}`;
+        console.log(`   API call (public share): ${apiCall}`);
+      } else if (isSharedMedia) {
+        // Use authenticated shared media endpoint
+        fetch$ = this.photoService.getSharedMedia(id);
+        apiCall = `GET /media/shared/${id}`;
+        console.log(`   API call (authenticated shared): ${apiCall}`);
+      } else {
+        // Use ownership endpoint
+        fetch$ = this.photoService.getMedia(id);
+        apiCall = `GET /media/${id}`;
+        console.log(`   API call (ownership): ${apiCall}`);
+      }
       
       this.subscription = fetch$.subscribe({
-        next: (photo) => {
+        next: (photo: any) => {
           console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
           console.log(`🟢 [DEBUG] PhotoDetailComponent photo loaded successfully!`);
           console.log(`   ID: ${photo.id}`);
@@ -237,7 +252,7 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
           console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
           this.photo = photo;
         },
-        error: (err) => {
+        error: (err: any) => {
           console.error('❌ [DEBUG] PhotoDetailComponent Error fetching media', err);
           console.error('   Status:', err.status);
           console.error('   URL:', err.url || 'N/A');
@@ -260,7 +275,16 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
     if (!this.photo) return '';
     
     const isShared = this.route.snapshot.queryParams['source'] === 'shared';
+    const shareToken = this.route.snapshot.queryParams['shareToken'];
+    
+    if (isShared && shareToken) {
+      // Use public share thumbnail endpoint
+      const mediaPath = this.route.snapshot.queryParams['mediaPath'] || '';
+      return this.photoService.getPublicShareThumbnailUrl(shareToken, mediaPath);
+    }
+    
     if (isShared && this.photo.id) {
+      // Use authenticated shared media thumbnail endpoint
       return `${this.photoService['API_BASE_URL']}/media/shared/${this.photo.id}/thumb`;
     }
     
@@ -273,7 +297,16 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
     if (!this.photo) return '';
     
     const isShared = this.route.snapshot.queryParams['source'] === 'shared';
+    const shareToken = this.route.snapshot.queryParams['shareToken'];
+    
+    if (isShared && shareToken) {
+      // Use public share original endpoint
+      const mediaPath = this.route.snapshot.queryParams['mediaPath'] || '';
+      return this.photoService.getPublicShareOriginalUrl(shareToken, mediaPath);
+    }
+    
     if (isShared && this.photo.id) {
+      // Use authenticated shared media original endpoint
       return `${this.photoService['API_BASE_URL']}/media/shared/${this.photo.id}/original`;
     }
     
@@ -285,7 +318,16 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
     if (!this.photo) return '';
     
     const isShared = this.route.snapshot.queryParams['source'] === 'shared';
+    const shareToken = this.route.snapshot.queryParams['shareToken'];
+    
+    if (isShared && shareToken) {
+      // Use public share original endpoint for download
+      const mediaPath = this.route.snapshot.queryParams['mediaPath'] || '';
+      return this.photoService.getPublicShareOriginalUrl(shareToken, mediaPath);
+    }
+    
     if (isShared && this.photo.id) {
+      // Use authenticated shared media original endpoint for download
       return `${this.photoService['API_BASE_URL']}/media/shared/${this.photo.id}/original`;
     }
     
@@ -361,18 +403,26 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
 
     // Check if viewing from a shared album (source=shared query param + albumIds present)
     const isSharedMedia = this.route.snapshot.queryParams['source'] === 'shared';
+    const shareToken = this.route.snapshot.queryParams['shareToken'];
     const albumIdsParam = this.route.snapshot.queryParams['albumIds'];
+    const albumMediaPaths = this.route.snapshot.queryParams['mediaPaths'];
     
     let mediaItems: MediaItem[];
     
     if (albumIdsParam) {
-      // We came from an album - fetch actual photo details to get correct media types
+      // We came from an album - build media items from album IDs
       const albumPhotoIds: string[] = albumIdsParam.split(',').map((id: string) => id.trim()).filter(Boolean);
+      const albumMediaPathsArray: string[] = albumMediaPaths ? albumMediaPaths.split(',').map((p: string) => p.trim()) : [];
       
       import('rxjs').then(({ forkJoin, of, catchError }) => {
+        // For authenticated shared media, we need to fetch details to get media type
         const requests$ = albumPhotoIds.map(id => 
-          isSharedMedia 
+          isSharedMedia && !shareToken
             ? this.photoService.getSharedMedia(id).pipe(
+                catchError(() => of(null)) // Skip failed fetches gracefully
+              )
+            : isSharedMedia && shareToken
+            ? this.photoService.getPublicShareMedia(shareToken, albumMediaPathsArray[albumPhotoIds.indexOf(id)] || '').pipe(
                 catchError(() => of(null)) // Skip failed fetches gracefully
               )
             : this.photoService.getMedia(id).pipe(
@@ -382,9 +432,11 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
         
         forkJoin(requests$).subscribe({
           next: (photos) => {
-            mediaItems = photos.filter((p): p is Photo => p !== null).map(p => ({
+            mediaItems = photos.filter((p): p is Photo => p !== null).map((p, index) => ({
               id: p.id,
-              path: isSharedMedia 
+              path: (isSharedMedia && shareToken)
+                ? `${this.photoService['API_BASE_URL']}/public/shares/album/${shareToken}/media/original?path=${encodeURIComponent(albumMediaPathsArray[index] || '')}`
+                : isSharedMedia
                 ? `${this.photoService['API_BASE_URL']}/media/shared/${p.id}/original`
                 : `${this.photoService['API_BASE_URL']}/media/${p.id}/original`,
               filename: p.filename || '',
@@ -408,7 +460,32 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
       });
     } else {
       // No album context - fetch all gallery items using the appropriate endpoint based on shared context
-      if (isSharedMedia) {
+      if (isSharedMedia && shareToken) {
+        // Use public share endpoint (no auth required)
+        this.photoService.listPublicShareMedia(shareToken, 100, 0).subscribe({
+          next: (response: any) => {
+            mediaItems = response.media.map((p: any) => ({
+              id: p.ID || p.id,
+              path: `${this.photoService['API_BASE_URL']}/public/shares/album/${shareToken}/media/original?path=${encodeURIComponent(p.Path || p.path || '')}`,
+              filename: p.Filename || p.filename || '',
+              mediaType: (p.MediaType || p.mediaType || 'photo')
+            }));
+
+            const startIndex = mediaItems.findIndex(item => item.id === this.photo?.id);
+            
+            if (startIndex !== -1 && mediaItems.length > 0) {
+              this.presentationService.open(mediaItems, startIndex);
+              this.router.navigate(['/presentation']);
+            } else {
+              alert('No items available for presentation.');
+            }
+          },
+          error: (err) => {
+            console.error('Failed to load public share media for presentation', err);
+            alert('Failed to start presentation mode.');
+          }
+        });
+      } else if (isSharedMedia) {
         this.photoService.listSharedMedia(100, 0).subscribe({
           next: (response: any) => {
             mediaItems = response.items.map((p: any) => ({

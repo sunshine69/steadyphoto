@@ -356,7 +356,7 @@ func (h *ShareHandler) handleListSharedAlbums(w http.ResponseWriter, r *http.Req
 	for i, item := range items {
 		var thumbnail *string
 		if item.FirstMediaID != uuid.Nil {
-			thumbURL := "/api/v1/media/shared/" + item.FirstMediaID.String() + "/thumb"
+			thumbURL := "/media/shared/" + item.FirstMediaID.String() + "/thumb"
 			thumbnail = &thumbURL
 		}
 		response.Items[i] = SharedAlbumResponse{
@@ -633,7 +633,7 @@ func (h *ShareHandler) handleGetPublicShareAlbum(w http.ResponseWriter, r *http.
 	for i, m := range albumItem.MediaItems {
 		var thumbnailURL *string
 		if m.ID != uuid.Nil {
-			thumbURL := "/api/v1/media/shared/" + m.ID.String() + "/thumb"
+			thumbURL := "/media/shared/" + m.ID.String() + "/thumb"
 			thumbnailURL = &thumbURL
 		}
 		mediaResponses[i] = MediaShareItem{
@@ -744,7 +744,7 @@ func (h *ShareHandler) handleGetPublicShareAlbumMedia(w http.ResponseWriter, r *
 	for i, m := range pageItems {
 		var thumbnailURL *string
 		if m.ID != uuid.Nil {
-			thumbURL := "/api/v1/media/shared/" + m.ID.String() + "/thumb"
+			thumbURL := "/media/shared/" + m.ID.String() + "/thumb"
 			thumbnailURL = &thumbURL
 		}
 		mediaResponses[i] = MediaShareItem{

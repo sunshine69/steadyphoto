@@ -1,8 +1,11 @@
-import { Component, inject, OnInit } from '@angular/core';
+import { Component, inject, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule, Router } from '@angular/router';
 import { AlbumService } from '../../services/album.service';
+import { ShareService } from '../../services/share.service';
 import { Album } from '../../models/album.model';
+import { SharedAlbumItem } from '../../models/share.model';
+import { Subscription } from 'rxjs';
 
 @Component({
   selector: 'app-album-list',
@@ -10,82 +13,140 @@ import { Album } from '../../models/album.model';
   imports: [CommonModule, RouterModule],
   template: `
     <div class="container mt-4">
-      <!-- Header with title and create button -->
-      <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2 class="mb-0">My Albums</h2>
+      <!-- Tab navigation -->
+      <ul class="nav nav-tabs mb-4">
+        <li class="nav-item">
+          <a class="nav-link" [class.active]="activeTab === 'myAlbums'" (click)="setTab('myAlbums')">My Albums</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" [class.active]="activeTab === 'sharedAlbums'" (click)="setTab('sharedAlbums')">Shared Albums</a>
+        </li>
+      </ul>
 
-        <div class="d-flex gap-2">
-          <!-- Bulk delete button - only shown when albums are selected -->
-          <button *ngIf="selectedAlbums.length > 0" class="btn btn-danger btn-sm" (click)="openBulkDeleteModal()">
-            Delete Selected ({{ selectedAlbums.length }})
-          </button>
+      <!-- My Albums View -->
+      <div *ngIf="activeTab === 'myAlbums'">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+          <h2 class="mb-0">My Albums</h2>
 
-          <button class="btn btn-primary" (click)="openCreateAlbumModal()">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-plus-lg me-2" viewBox="0 0 16 16">
-              <path fill-rule="evenodd" d="M8 2a.5.5 0 0 1 .5.5v5h5a.5.5 0 0 1 0 1h-5v5a.5.5 0 0 1 -1 0v-5h-5a.5.5 0 0 1 0-1h5v-5A.5.5 0 0 1 8 2"/>
-            </svg> New Album
-          </button>
-        </div>
-
-      </div>
-
-      <!-- Albums grid -->
-      <div class="row" *ngIf="albums && albums.length > 0; else noAlbums">
-        <div class="col-md-4 col-lg-3 mb-4" *ngFor="let album of albums">
-          <div 
-            class="card h-100 shadow-sm album-card"
-            [class.selected]="isAlbumSelected(album)"
-            (click)="!deleting && navigateToAlbum(album)">
-
-            <!-- Delete button - only visible on hover -->
-            <button 
-              *ngIf="album.id"
-              class="btn btn-danger delete-btn" 
-              (click)="$event.stopPropagation(); openDeleteModal(album)"
-              title="Delete album">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="3 6 5 6 21 6"/>
-                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-              </svg>
+          <div class="d-flex gap-2">
+            <!-- Bulk delete button - only shown when albums are selected -->
+            <button *ngIf="selectedAlbums.length > 0" class="btn btn-danger btn-sm" (click)="openBulkDeleteModal()">
+              Delete Selected ({{ selectedAlbums.length }})
             </button>
 
-            <!-- Selection checkbox - visible on hover OR when selected -->
-            <div class="selection-checkbox" *ngIf="album.id">
-              <input 
-                type="checkbox" 
-                [checked]="isAlbumSelected(album)" 
-                (click)="$event.stopPropagation(); toggleSelection(album)"
-                title="Select album for bulk delete"
-              />
-            </div>
+            <button class="btn btn-primary" (click)="openCreateAlbumModal()">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-plus-lg me-2" viewBox="0 0 16 16">
+                <path fill-rule="evenodd" d="M8 2a.5.5 0 0 1 .5.5v5h5a.5.5 0 0 1 0 1h-5v5a.5.5 0 0 1 -1 0v-5h-5a.5.5 0 0 1 0-1h5v-5A.5.5 0 0 1 8 2"/>
+              </svg> New Album
+            </button>
+          </div>
+        </div>
 
-            <div class="card-body text-center d-flex flex-column justify-content-center align-items-center py-5">
-              <div class="album-icon mb-3">
-                <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" fill="currentColor" class="bi bi-collection text-primary" viewBox="0 0 16 16">
-                  <path d="M11 2H9v2h2V2zM5 2h2v2H5V2zM1 3.5A1.5 1.5 0 0 1 2.5 2h11a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 1 12.5v-9zm1.5-.5a.5.5 0 0 0-.5.5v9a.5.5 0 0 0 .5.5h11a.5.5 0 0 0 .5-.5v-9a.5.5 0 0 0-.5-.5h-11z"/>
+        <!-- Albums grid -->
+        <div class="row" *ngIf="albums && albums.length > 0; else noMyAlbums">
+          <div class="col-md-4 col-lg-3 mb-4" *ngFor="let album of albums">
+            <div 
+              class="card h-100 shadow-sm album-card"
+              [class.selected]="isAlbumSelected(album)"
+              (click)="!deleting && navigateToAlbum(album)">
+
+              <!-- Delete button - only visible on hover -->
+              <button 
+                *ngIf="album.id"
+                class="btn btn-danger delete-btn" 
+                (click)="$event.stopPropagation(); openDeleteModal(album)"
+                title="Delete album">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3 6 5 6 21 6"/>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
                 </svg>
+              </button>
+
+              <!-- Selection checkbox - visible on hover OR when selected -->
+              <div class="selection-checkbox" *ngIf="album.id">
+                <input 
+                  type="checkbox" 
+                  [checked]="isAlbumSelected(album)" 
+                  (click)="$event.stopPropagation(); toggleSelection(album)"
+                  title="Select album for bulk delete"
+                />
               </div>
-              <h5 class="card-title mb-1">{{ album.name }}</h5>
-              <p class="card-text text-muted small">Created {{ album.createdAt | date:'mediumDate' }}</p>
+
+              <div class="card-body text-center d-flex flex-column justify-content-center align-items-center py-5">
+                <div class="album-icon mb-3">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" fill="currentColor" class="bi bi-collection text-primary" viewBox="0 0 16 16">
+                    <path d="M11 2H9v2h2V2zM5 2h2v2H5V2zM1 3.5A1.5 1.5 0 0 1 2.5 2h11a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 1 12.5v-9zm1.5-.5a.5.5 0 0 0-.5.5v9a.5.5 0 0 0 .5.5h11a.5.5 0 0 0 .5-.5v-9a.5.5 0 0 0-.5-.5h-11z"/>
+                  </svg>
+                </div>
+                <h5 class="card-title mb-1">{{ album.name }}</h5>
+                <p class="card-text text-muted small">Created {{ album.createdAt | date:'mediumDate' }}</p>
+              </div>
             </div>
+          </div>
+        </div>
+
+        <!-- No albums template -->
+        <ng-template #noMyAlbums>
+          <div class="empty-state py-5 text-center border rounded bg-light" *ngIf="!loading">
+            <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" fill="currentColor" class="bi bi-images text-muted mb-3" viewBox="0 0 16 16">
+              <path d="M4.502 9a1.5 1.5 0 0 1 .5-.866 1.5 1.5 0 0 0-.798-2.403 1.5 1.5 0 0 0-1.17 1.95L3.37 6.5H.5A1.5 1.5 0 0 0 0 7.5v1A1.5 1.5 0 0 0 1.5 10h2.87l-.4-1.9a1.5 1.5 0 0 0-1.17-1.95 1.5 1.5 0 0 0-.5.866zm.5 3a1.5 1.5 0 0 1 .5-.866 1.5 1.5 0 0 0-.798-2.403 1.5 1.5 0 0 0-1.17 1.95L3.37 10.5H.5A1.5 1.5 0 0 0 0 11.5v1A1.5 1.5 0 0 0 1.5 13h2.87l-.4-1.9a1.5 1.5 0 0 0-1.17-1.95 1.5 1.5 0 0 0-.5.866zm4.5 0a1.5 1.5 0 0 1 .5-.866 1.5 1.5 0 0 0-.798-2.403 1.5 1.5 0 0 0-1.17 1.95L7.37 10.5H4.5A1.5 1.5 0 0 0 3 11.5v1A1.5 1.5 0 0 0 4.5 13h2.87l-.4-1.9a1.5 1.5 0 0 0-1.17-1.95 1.5 1.5 0 0 0-.5.866zm4.5 0a1.5 1.5 0 0 1 .5-.866 1.5 1.5 0 0 0-.798-2.403 1.5 1.5 0 0 0-1.17 1.95L11.37 10.5H8.5A1.5 1.5 0 0 0 7 11.5v1A1.5 1.5 0 0 0 8.5 13h2.87l-.4-1.9a1.5 1.5 0 0 0-1.17-1.95 1.5 1.5 0 0 0-.5.866z"/>
+            </svg>
+            <p class="lead">You haven't created any albums yet.</p>
+          </div>
+        </ng-template>
+
+        <!-- Loading spinner -->
+        <div *ngIf="loading" class="d-flex justify-content-center my-5">
+          <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
           </div>
         </div>
       </div>
 
-      <!-- No albums template -->
-      <ng-template #noAlbums>
-        <div class="empty-state py-5 text-center border rounded bg-light" *ngIf="!loading">
-          <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" fill="currentColor" class="bi bi-images text-muted mb-3" viewBox="0 0 16 16">
-            <path d="M4.502 9a1.5 1.5 0 0 1 .5-.866 1.5 1.5 0 0 0-.798-2.403 1.5 1.5 0 0 0-1.17 1.95L3.37 6.5H.5A1.5 1.5 0 0 0 0 7.5v1A1.5 1.5 0 0 0 1.5 10h2.87l-.4-1.9a1.5 1.5 0 0 0-1.17-1.95 1.5 1.5 0 0 0-.5.866zm.5 3a1.5 1.5 0 0 1 .5-.866 1.5 1.5 0 0 0-.798-2.403 1.5 1.5 0 0 0-1.17 1.95L3.37 10.5H.5A1.5 1.5 0 0 0 0 11.5v1A1.5 1.5 0 0 0 1.5 13h2.87l-.4-1.9a1.5 1.5 0 0 0-1.17-1.95 1.5 1.5 0 0 0-.5.866zm4.5 0a1.5 1.5 0 0 1 .5-.866 1.5 1.5 0 0 0-.798-2.403 1.5 1.5 0 0 0-1.17 1.95L7.37 10.5H4.5A1.5 1.5 0 0 0 3 11.5v1A1.5 1.5 0 0 0 4.5 13h2.87l-.4-1.9a1.5 1.5 0 0 0-1.17-1.95 1.5 1.5 0 0 0-.5.866zm4.5 0a1.5 1.5 0 0 1 .5-.866 1.5 1.5 0 0 0-.798-2.403 1.5 1.5 0 0 0-1.17 1.95L11.37 10.5H8.5A1.5 1.5 0 0 0 7 11.5v1A1.5 1.5 0 0 0 8.5 13h2.87l-.4-1.9a1.5 1.5 0 0 0-1.17-1.95 1.5 1.5 0 0 0-.5.866z"/>
-          </svg>
-          <p class="lead">You haven't created any albums yet.</p>
+      <!-- Shared Albums View -->
+      <div *ngIf="activeTab === 'sharedAlbums'">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+          <h2 class="mb-0">Shared Albums</h2>
         </div>
-      </ng-template>
 
-      <!-- Loading spinner -->
-      <div *ngIf="loading" class="d-flex justify-content-center my-5">
-        <div class="spinner-border text-primary" role="status">
-          <span class="visually-hidden">Loading...</span>
+        <!-- Shared albums grid -->
+        <div class="row" *ngIf="sharedAlbums && sharedAlbums.length > 0; else noSharedAlbums">
+          <div class="col-md-4 col-lg-3 mb-4" *ngFor="let album of sharedAlbums">
+            <div 
+              class="card h-100 shadow-sm album-card"
+              (click)="navigateToSharedAlbum(album)">
+              
+              <div class="card-body text-center d-flex flex-column justify-content-center align-items-center py-5">
+                <div class="album-icon mb-3">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" fill="currentColor" class="bi bi-collection-play text-success" viewBox="0 0 16 16">
+                    <path fill-rule="evenodd" d="M6.5 9.5a.5.5 0 0 0 0 1h5a.5.5 0 0 0 0-1h-5zM1.5 2a1.5 1.5 0 0 0-1.5 1.5v9a1.5 1.5 0 0 0 1.5 1.5h9a1.5 1.5 0 0 0 1.5-1.5v-9A1.5 1.5 0 0 0 10.5 1h-9zm-1 1.5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-9zm5.5 3a.5.5 0 0 0 0 1h5a.5.5 0 0 0 0-1h-5zm0 2a.5.5 0 0 0 0 1h5a.5.5 0 0 0 0-1h-5z"/>
+                    <path d="M5.5 4l4 2.5-4 2.5V4z"/>
+                  </svg>
+                </div>
+                <h5 class="card-title mb-1">{{ album.name }}</h5>
+                <p class="card-text text-muted small" *ngIf="album.description">{{ album.description }}</p>
+                <p class="card-text text-muted small" *ngIf="!album.description">Shared album</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- No shared albums template -->
+        <ng-template #noSharedAlbums>
+          <div class="empty-state py-5 text-center border rounded bg-light" *ngIf="!loadingSharedAlbums">
+            <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" fill="currentColor" class="bi bi-collection-play text-muted mb-3" viewBox="0 0 16 16">
+              <path fill-rule="evenodd" d="M6.5 9.5a.5.5 0 0 0 0 1h5a.5.5 0 0 0 0-1h-5zM1.5 2a1.5 1.5 0 0 0-1.5 1.5v9a1.5 1.5 0 0 0 1.5 1.5h9a1.5 1.5 0 0 0 1.5-1.5v-9A1.5 1.5 0 0 0 10.5 1h-9zm-1 1.5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-9zm5.5 3a.5.5 0 0 0 0 1h5a.5.5 0 0 0 0-1h-5zm0 2a.5.5 0 0 0 0 1h5a.5.5 0 0 0 0-1h-5z"/>
+              <path d="M5.5 4l4 2.5-4 2.5V4z"/>
+            </svg>
+            <p class="lead">No albums have been shared with you yet.</p>
+          </div>
+        </ng-template>
+
+        <!-- Loading spinner for shared albums -->
+        <div *ngIf="loadingSharedAlbums" class="d-flex justify-content-center my-5">
+          <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+          </div>
         </div>
       </div>
 
@@ -228,28 +289,48 @@ import { Album } from '../../models/album.model';
     }
   `]
 })
-export class AlbumListComponent implements OnInit {
+export class AlbumListComponent implements OnInit, OnDestroy {
   albums: Album[] = [];
+  sharedAlbums: SharedAlbumItem[] = [];
   loading = true;
+  loadingSharedAlbums = false;
+  activeTab: 'myAlbums' | 'sharedAlbums' = 'myAlbums';
   
   // Selection state for bulk delete
   selectedAlbums: Album[] = [];
 
-  // Delete modal state - must be inside component template to avoid DOM issues
+  // Delete modal state
   showDeleteModal = false;
   albumToDelete: Album | null = null;
   deleting = false;
 
+  // Subscriptions for cleanup
+  private subscriptions = new Subscription();
+
   private albumService = inject(AlbumService);
+  private shareService = inject(ShareService);
   public router = inject(Router);
 
   ngOnInit(): void {
     this.loadAlbums();
   }
 
+  ngOnDestroy(): void {
+    this.subscriptions.unsubscribe();
+  }
+
+  setTab(tab: 'myAlbums' | 'sharedAlbums'): void {
+    this.activeTab = tab;
+    
+    // Load shared albums when switching to that tab
+    if (tab === 'sharedAlbums') {
+      this.loadSharedAlbums();
+    }
+  }
+
   loadAlbums(): void {
     this.loading = true;
-    this.albumService.getAlbums().subscribe({
+    const sub = this.albumService.getAlbums().subscribe({
       next: (albums: Album[]) => {
         this.albums = albums;
         this.selectedAlbums = []; // Clear selection when loading
@@ -260,22 +341,44 @@ export class AlbumListComponent implements OnInit {
         this.loading = false;
       }
     });
+    this.subscriptions.add(sub);
+  }
+
+  loadSharedAlbums(): void {
+    this.loadingSharedAlbums = true;
+    const sub = this.shareService.listSharedAlbums(100, 0).subscribe({
+      next: (response) => {
+        this.sharedAlbums = response.items;
+        this.loadingSharedAlbums = false;
+      },
+      error: (err: any) => {
+        console.error('Error loading shared albums', err);
+        this.loadingSharedAlbums = false;
+      }
+    });
+    this.subscriptions.add(sub);
   }
 
   openCreateAlbumModal(): void {
     const name = prompt('Enter album name:');
     if (name) {
-      this.albumService.createAlbum({ name }).subscribe({
+      const sub = this.albumService.createAlbum({ name }).subscribe({
         next: () => this.loadAlbums(),
         error: (err: any) => alert('Failed to create album')
       });
+      this.subscriptions.add(sub);
     }
   }
 
-  // Navigation - clicking the card navigates to the album detail page
+  // Navigation
   navigateToAlbum(album: Album): void {
     if (!album.id) return;
     this.router.navigate(['/albums', album.id]);
+  }
+
+  navigateToSharedAlbum(album: SharedAlbumItem): void {
+    if (!album.id) return;
+    this.router.navigate(['/albums', album.id], { queryParams: { source: 'shared' } });
   }
 
   // Selection methods for bulk delete
@@ -298,7 +401,7 @@ export class AlbumListComponent implements OnInit {
 
   // Delete methods
   openDeleteModal(album: Album): void {
-    if (!album.id) return; // Ensure album has an ID
+    if (!album.id) return;
     
     if (this.selectedAlbums.length === 0) {
       // Single delete mode - no albums selected, just this one  

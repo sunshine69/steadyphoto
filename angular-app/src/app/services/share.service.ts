@@ -142,7 +142,15 @@ export class ShareService {
       .pipe(
         tap((res) => console.log(`${DEBUG_PREFIX} Shared media listed`, res)),
         map(response => ({
-          items: response?.items || [],
+          items: (response?.items || []).map((item: any) => {
+            const thumbnailUrl = item.thumbnailUrl
+              ? (item.thumbnailUrl.startsWith('/') ? `${this.API_BASE_URL}${item.thumbnailUrl}` : item.thumbnailUrl)
+              : null;
+            return {
+              ...item,
+              thumbnailUrl
+            };
+          }),
           total: response?.total || 0,
           limit: response?.limit || limit,
           offset: response?.offset || offset
@@ -162,7 +170,15 @@ export class ShareService {
       .pipe(
         tap((res) => console.log(`${DEBUG_PREFIX} Shared albums listed`, res)),
         map(response => ({
-          items: response?.items || [],
+          items: (response?.items || []).map((item: any) => {
+            const thumbnailUrl = item.thumbnailUrl
+              ? (item.thumbnailUrl.startsWith('/') ? `${this.API_BASE_URL}${item.thumbnailUrl}` : item.thumbnailUrl)
+              : null;
+            return {
+              ...item,
+              thumbnailUrl
+            };
+          }),
           total: response?.total || 0,
           limit: response?.limit || limit,
           offset: response?.offset || offset

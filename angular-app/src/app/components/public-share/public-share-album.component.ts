@@ -5,11 +5,12 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { PhotoService } from '../../services/photo.service';
 import { environment } from '../../../environments/environment';
+import { PhotoCardComponent } from '../photo-card/photo-card.component';
 
 @Component({
   selector: 'app-public-share-album',
   standalone: true,
-  imports: [CommonModule, RouterModule],
+  imports: [CommonModule, RouterModule, PhotoCardComponent],
   template: `
     <div class="container mt-4">
       <!-- Password Protection Modal -->
@@ -327,10 +328,23 @@ export class PublicShareAlbumComponent implements OnInit {
       mediaType = mt === 'video' ? 'video' : 'photo';
     }
 
+    // For public shares, always use the public share thumbnail endpoint (API returns authenticated endpoint)
+    const token = this.route.snapshot.paramMap.get('token');
+    let photoThumbUrl: string = '';
+    if (token && path) {
+      // Use public share thumbnail endpoint for public shares
+      photoThumbUrl = this.getThumbnailUrl(id, path);
+    } else if (p.thumbnailUrl || p.ThumbnailUrl) {
+      const rawThumb = p.thumbnailUrl || p.ThumbnailUrl;
+      photoThumbUrl = rawThumb.startsWith('http') ? rawThumb : (environment.mediaBaseUrl + rawThumb);
+    } else {
+      photoThumbUrl = this.getThumbnailUrl(id, path);
+    }
+
     return {
       id: id,
       path: path,
-      thumbnailUrl: this.getThumbnailUrl(id, path),
+      thumbnailUrl: photoThumbUrl,
       filename: p.Filename ?? p.filename ?? '',
       captured_at: p.CapturedAt ?? p.captured_at ?? '',
       width: p.Width ?? p.width,
@@ -418,8 +432,19 @@ export class PublicShareAlbumComponent implements OnInit {
   }
 
   onPhotoClick(id: string): void { 
+    const token = this.route.snapshot.paramMap.get('token');
+    const path = this.photos.find(p => p.id === id)?.path || '';
     const ids = this.photos.map(p => p.id).join(',');
-    this.router.navigate(['/photos', id], { queryParams: { albumIds: ids, source: 'shared' } }); 
+    const paths = this.photos.map(p => p.path || '').join(',');
+    if (token && path) {
+      // Use public share endpoint with token and media path
+      this.router.navigate(['/photos', id], { queryParams: { albumIds: ids, source: 'shared', shareToken: token, mediaPath: path, mediaPaths: paths } });
+    } else if (token) {
+      // Token but no path, fall back to authenticated shared media endpoint
+      this.router.navigate(['/photos', id], { queryParams: { albumIds: ids, source: 'shared', shareToken: token } });
+    } else {
+      this.router.navigate(['/photos', id], { queryParams: { albumIds: ids, source: 'shared' } });
+    }
   }
 
   goBack(): void { 

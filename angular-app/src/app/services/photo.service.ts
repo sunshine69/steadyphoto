@@ -33,7 +33,6 @@ export class PhotoService {
       }
     }
     
-        // Use /media/{id}/original for all files to support both photos and videos with Range requests
     const filePath = id ? `${this.API_BASE_URL}/media/${id}/original` : '';
     
     return {
@@ -155,6 +154,61 @@ export class PhotoService {
   }
 
   /**
+   * Fetches media detail for a public share using the album token and media path.
+   * This is the PUBLIC endpoint - no authentication required.
+   */
+  getPublicShareMedia(token: string, mediaPath: string): Observable<Photo> {
+    return this.http.get<any>(`${this.API_BASE_URL}/public/shares/album/${token}/media?path=${encodeURIComponent(mediaPath)}`)
+      .pipe(
+        map(response => this.normalizePublicShareMedia(response)),
+        catchError(this.handleError)
+      );
+  }
+
+  /**
+   * Fetches media detail for a public share using just the media ID (path).
+   * This is the PUBLIC endpoint - no authentication required.
+   */
+  getPublicShareMediaByPath(token: string, mediaPath: string): Observable<Photo> {
+    return this.http.get<any>(`${this.API_BASE_URL}/public/shares/album/${token}/media?path=${encodeURIComponent(mediaPath)}`)
+      .pipe(
+        map(response => this.normalizePublicShareMedia(response)),
+        catchError(this.handleError)
+      );
+  }
+
+  /**
+   * Fetches a paginated list of media items from a public share album.
+   * This is the PUBLIC endpoint - no authentication required.
+   */
+  listPublicShareMedia(token: string, limit: number = 20, offset: number = 0): Observable<any> {
+    return this.http.get<any>(`${this.API_BASE_URL}/public/shares/album/${token}/media?limit=${limit}&offset=${offset}`)
+      .pipe(
+        map(response => ({
+          media: response.media || [],
+          totalItems: response.totalItems || 0,
+          limit: response.limit || limit,
+          offset: response.offset || offset
+        })),
+        catchError(this.handleError)
+      );
+  }
+
+  /**
+   * Gets the thumbnail URL for a public share media item.
+   */
+  getPublicShareThumbnailUrl(token: string, mediaPath: string): string {
+    return `${this.API_BASE_URL}/public/shares/album/${token}/media/thumb?path=${encodeURIComponent(mediaPath)}`;
+  }
+
+  /**
+   * Gets the original file URL for a public share media item.
+   */
+  getPublicShareOriginalUrl(token: string, mediaPath: string): string {
+    return `${this.API_BASE_URL}/public/shares/album/${token}/media/original?path=${encodeURIComponent(mediaPath)}`;
+  }
+
+  /**
    * Fetches a shared album detail using /albums/shared/{id} endpoint.
    * This does NOT check ownership — it checks sharee access instead.
    */
@@ -214,7 +268,6 @@ export class PhotoService {
       }
     }
     
-    // Use /media/shared/{id}/original for serving shared media files
     const filePath = id ? `${this.API_BASE_URL}/media/shared/${id}/original` : '';
     
     return {
@@ -302,6 +355,64 @@ export class PhotoService {
       .pipe(
         catchError(this.handleError)
       );
+  }
+
+  /**
+   * Normalizes media data from the public share album media endpoint.
+   * Returns a Photo with thumbnailUrl and path pointing to the public share endpoints.
+   */
+  private normalizePublicShareMedia(p: any): Photo {
+    const id = p.ID ?? p.id ?? '';
+    const mediaPath = p.Path ?? p.path ?? '';
+    
+    // Determine media type
+    let mediaType: 'photo' | 'video' | undefined;
+    const rawMediaType = p.MediaType || p.mediaType || p.media_type;
+    if (rawMediaType) {
+      const mt = String(rawMediaType).toLowerCase();
+      if (mt === 'video') {
+        mediaType = 'video';
+      } else {
+        mediaType = 'photo';
+      }
+    }
+    
+    // Build URLs using the public share endpoints
+    const token = p.Token ?? p.token ?? '';
+    const filePath = mediaPath && token
+      ? `${this.API_BASE_URL}/public/shares/album/${token}/media/original?path=${encodeURIComponent(mediaPath)}`
+      : '';
+    
+    return {
+      id: id,
+      path: filePath,
+      thumbnailUrl: mediaPath && token
+        ? `${this.API_BASE_URL}/public/shares/album/${token}/media/thumb?path=${encodeURIComponent(mediaPath)}`
+        : '',
+      filename: p.Filename ?? p.filename ?? '',
+      captured_at: p.CapturedAt ?? p.captured_at ?? '',
+      width: p.Width ?? p.width,
+      height: p.Height ?? p.height,
+      size: p.Size ?? p.size,
+      type: p.Type ?? p.type,
+      mediaType: mediaType,
+      metadata: p.Metadata ? {
+        camera: p.Metadata.Camera,
+        iso: p.Metadata.Iso,
+        aperture: p.Metadata.Aperture,
+        focal_length: p.Metadata.FocalLength,
+        gps_lat: p.Metadata.GpsLat,
+        gps_lon: p.Metadata.GpsLon,
+      } : undefined,
+      videoMetadata: p.VideoMetadata ? {
+        duration: p.VideoMetadata.Duration ?? p.VideoMetadata.duration,
+        bitrate: p.VideoMetadata.Bitrate ?? p.VideoMetadata.bitrate,
+        video_codec: p.VideoMetadata.VideoCodec ?? p.VideoMetadata.video_codec,
+        audio_codec: p.VideoMetadata.AudioCodec ?? p.VideoMetadata.audio_codec,
+        frame_rate: p.VideoMetadata.FrameRate ?? p.VideoMetadata.frame_rate,
+      } : undefined,
+      tags: p.Tags ?? p.tags ?? ''
+    };
   }
 
   private handleError(error: HttpErrorResponse) {

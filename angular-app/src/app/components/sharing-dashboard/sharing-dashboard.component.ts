@@ -65,7 +65,7 @@ const DEBUG_PREFIX = '[Sharing Debug]';
               class="shared-photo-card"
               (click)="viewPhoto(item.id)">
               <div class="thumb-container">
-                <img [src]="getSharedMediaThumbUrl(item.id)" [alt]="item.filename" class="photo-thumb">
+                <img [src]="getSharedMediaThumbUrl(item.id)" [alt]="item.filename" class="photo-thumb" (error)="photoThumbError($event)">
                 <div class="share-badge">Shared with you</div>
               </div>
               <div class="card-info">
@@ -110,7 +110,7 @@ const DEBUG_PREFIX = '[Sharing Debug]';
               class="shared-album-card"
               (click)="viewAlbum(item.id)">
               <div class="thumb-container">
-                <img [src]="'assets/placeholder-album.jpg'" [alt]="item.name" class="album-thumb">
+                <img [src]="getSharedAlbumThumbUrl(item.id)" [alt]="item.name" class="album-thumb" (error)="albumThumbError($event)">
                 <div class="share-badge">Shared with you</div>
               </div>
               <div class="card-info">
@@ -553,6 +553,29 @@ export class SharingDashboardComponent implements OnInit, OnDestroy {
     window.location.href = redirectUrl; 
   }
 
+  /** Returns the thumbnail URL for a shared album. */
+  getSharedAlbumThumbUrl(albumId: string): string {
+    const album = this.sharedAlbums.find(a => a.id === albumId);
+    // Use the thumbnailUrl from the API response (pre-pended by ShareService)
+    if (album?.thumbnailUrl) {
+      return album.thumbnailUrl;
+    }
+    return '';
+  }
+
+  /** Handles image load error with a data URI fallback to prevent infinite 404 loops. */
+  albumThumbError(event: Event): void {
+    const img = event.target as HTMLImageElement;
+    const fallbackSvg = `data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200"><rect width="200" height="200" fill="%231e293b"/><text x="100" y="90" text-anchor="middle" fill="%239ca3af" font-size="14" font-family="sans-serif">Album</text><text x="100" y="115" text-anchor="middle" fill="%236366f1" font-size="24">📁</text></svg>`;
+    img.src = fallbackSvg;
+  }
+  /** Handles shared media photo load error with a data URI fallback to prevent infinite 404 loops. */
+  photoThumbError(event: Event): void {
+    const img = event.target as HTMLImageElement;
+    const fallbackSvg = `data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200"><rect width="200" height="200" fill="%231e293b"/><text x="100" y="90" text-anchor="middle" fill="%239ca3af" font-size="14" font-family="sans-serif">Photo</text><text x="100" y="115" text-anchor="middle" fill="%236366f1" font-size="24">📷</text></svg>`;
+    img.src = fallbackSvg;
+  }
+
   copyLink(share: any): void {
     const url = this.getShareableUrl(share);
     if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -606,8 +629,12 @@ export class SharingDashboardComponent implements OnInit, OnDestroy {
 
   /** Returns the thumbnail URL for a shared media item. */
   getSharedMediaThumbUrl(mediaId: string): string {
-    const baseUrl = environment.apiBaseUrl;
-    return `${baseUrl}/media/shared/${mediaId}/thumb`;
+    const media = this.sharedMediaItems.find(m => m.id === mediaId);
+    // Use the thumbnailUrl from the API response (pre-pended by ShareService)
+    if (media?.thumbnailUrl) {
+      return media.thumbnailUrl;
+    }
+    return '';
   }
 
   getShareableUrl(share: any): string {

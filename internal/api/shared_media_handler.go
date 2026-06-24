@@ -1,6 +1,5 @@
 package api
 
-// SharedMediaFullResponse includes path info so the frontend can generate thumbnails/serve files
 import (
 	"encoding/json"
 	"fmt"
@@ -16,37 +15,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// logRequest logs a request with its path and user agent, returning the current time for duration tracking.
-func logRequest(r *http.Request, label string) time.Time {
-	start := time.Now()
-	log.Printf("[INFO] [%s] %s %s from %s", label, r.Method, r.URL.Path, r.RemoteAddr)
-	return start
-}
-
-// logResponse logs the response status and duration.
-func logResponse(label string, startTime time.Time) {
-	duration := time.Since(startTime).String()
-	fmt.Printf("[INFO] [%s] Response sent in %s\n", label, duration)
-}
-
-// logUnauthorized logs an unauthorized access attempt with IP address.
-func logUnauthorized(r *http.Request, label string) {
-	log.Printf("[WARN] [%s] Unauthorized request - no user in context. IP: %s", label, r.RemoteAddr)
-}
-
-// logError logs an error with its label and duration.
-func logError(label string, err error, startTime time.Time) {
-	duration := time.Since(startTime).String()
-	log.Printf("[ERROR] [%s] %v — took %v", label, err, duration)
-}
-
-// logInfo logs an info message with its label and duration.
-func logInfo(label string, msg string, startTime time.Time) {
-	duration := time.Since(startTime).String()
-	log.Printf("[INFO] [%s] %s — took %v", label, msg, duration)
-}
-
-
+// SharedMediaFullResponse includes path info so the frontend can generate thumbnails/serve files
 type SharedMediaFullResponse struct {
 	ID           uuid.UUID `json:"id"`
 	UserID       uuid.UUID `json:"userId"`
@@ -81,6 +50,44 @@ type SharedAlbumMediaItem struct {
 	MediaType    string    `json:"mediaType"`
 	CapturedAt   time.Time `json:"capturedAt"`
 	ThumbnailURL *string   `json:"thumbnailUrl,omitempty"`
+}
+
+// SharedAlbumsListResponse is the response for listing shared albums.
+type SharedAlbumsListResponse struct {
+	Items  []SharedAlbumFullResponse `json:"items"`
+	Total  int                       `json:"total"`
+	Limit  int                       `json:"limit"`
+	Offset int                       `json:"offset"`
+}
+
+// logRequest logs a request with its path and user agent, returning the current time for duration tracking.
+func logRequest(r *http.Request, label string) time.Time {
+	start := time.Now()
+	log.Printf("[INFO] [%s] %s %s from %s", label, r.Method, r.URL.Path, r.RemoteAddr)
+	return start
+}
+
+// logResponse logs the response status and duration.
+func logResponse(label string, startTime time.Time) {
+	duration := time.Since(startTime).String()
+	fmt.Printf("[INFO] [%s] Response sent in %s\n", label, duration)
+}
+
+// logUnauthorized logs an unauthorized access attempt with IP address.
+func logUnauthorized(r *http.Request, label string) {
+	log.Printf("[WARN] [%s] Unauthorized request - no user in context. IP: %s", label, r.RemoteAddr)
+}
+
+// logError logs an error with its label and duration.
+func logError(label string, err error, startTime time.Time) {
+	duration := time.Since(startTime).String()
+	log.Printf("[ERROR] [%s] %v — took %v", label, err, duration)
+}
+
+// logInfo logs an info message with its label and duration.
+func logInfo(label string, msg string, startTime time.Time) {
+	duration := time.Since(startTime).String()
+	log.Printf("[INFO] [%s] %s — took %v", label, msg, duration)
 }
 
 // handleGetSharedMedia returns metadata for a single media item shared with the current user.
@@ -302,7 +309,7 @@ func (s *Server) handleGetSharedAlbum(w http.ResponseWriter, r *http.Request) {
 
 	var thumbnailURL *string
 	if item.FirstMediaID != uuid.Nil {
-		thumbURL := "/api/v1/media/shared/" + item.FirstMediaID.String() + "/thumb"
+		thumbURL := "/media/shared/" + item.FirstMediaID.String() + "/thumb"
 		thumbnailURL = &thumbURL
 	}
 
@@ -368,7 +375,7 @@ func (s *Server) handleListSharedAlbumMedia(w http.ResponseWriter, r *http.Reque
 	for _, item := range items {
 		var thumbnailURL *string
 		if item.Media.ID != uuid.Nil {
-			thumbURL := "/api/v1/media/shared/" + item.Media.ID.String() + "/thumb"
+			thumbURL := "/media/shared/" + item.Media.ID.String() + "/thumb"
 			thumbnailURL = &thumbURL
 		}
 		respItems = append(respItems, SharedAlbumMediaItem{
@@ -390,4 +397,70 @@ func (s *Server) handleListSharedAlbumMedia(w http.ResponseWriter, r *http.Reque
 	})
 
 	logResponse("handleListSharedAlbumMedia", startTime)
+}
+
+// handleListSharedAlbums returns a paginated list of albums shared with the current user.
+func (s *Server) handleListSharedAlbums(w http.ResponseWriter, r *http.Request) {
+	startTime := logRequest(r, "handleListSharedAlbums")
+
+	ctx := r.Context()
+
+	userID, ok := GetUserIDFromContext(ctx)
+	if !ok {
+		logUnauthorized(r, "handleListSharedAlbums")
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	limit := 20
+	offset := 0
+	if lStr := r.URL.Query().Get("limit"); lStr != "" {
+		if l, e := strconv.Atoi(lStr); e == nil && l > 0 {
+			limit = l
+		}
+	}
+	if oStr := r.URL.Query().Get("offset"); oStr != "" {
+		if o, e := strconv.Atoi(oStr); e == nil && o >= 0 {
+			offset = o
+		}
+	}
+
+	logInfo("handleListSharedAlbums - Query params", fmt.Sprintf("limit=%d, offset=%d", limit, offset), startTime)
+
+	items, totalItems, err := s.mediaShareRepo.ListSharedAlbums(ctx, userID, limit, offset)
+	if err != nil {
+		logError("handleListSharedAlbums - ListSharedAlbums", err, startTime)
+		http.Error(w, "Failed to list shared albums: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	logInfo("handleListSharedAlbums - Found items", fmt.Sprintf("%d items (total=%d)", len(items), totalItems), startTime)
+
+	respItems := make([]SharedAlbumFullResponse, 0, len(items))
+	for _, item := range items {
+		var thumbnailURL *string
+		if item.FirstMediaID != uuid.Nil {
+			thumbURL := "/media/shared/" + item.FirstMediaID.String() + "/thumb"
+			thumbnailURL = &thumbURL
+		}
+		respItems = append(respItems, SharedAlbumFullResponse{
+			ID:           item.Album.ID,
+			Name:         item.Album.Name,
+			Description:  item.Album.Description,
+			UserID:       item.Album.UserID,
+			CreatedAt:    item.Album.CreatedAt,
+			ThumbnailURL: thumbnailURL,
+			SharerUserID: item.SharerUserID,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(SharedAlbumsListResponse{
+		Items:  respItems,
+		Total:  totalItems,
+		Limit:  limit,
+		Offset: offset,
+	})
+
+	logResponse("handleListSharedAlbums", startTime)
 }
