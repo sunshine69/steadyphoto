@@ -382,10 +382,7 @@ export class SharedWithMeComponent implements OnInit {
         this.hasMoreMedia = this.mediaOffset + 20 < response.total;
         this.isLoading = false;
 
-        if (this.activeTab === 'media') {
-          // Fetch thumbnail URLs for each item in the background
-          items.forEach((item: SharedMediaItem) => this.loadItemThumbnail(item.id));
-        }
+
       },
       error: (err) => {
         console.error('Failed to load shared media:', err);
@@ -430,9 +427,6 @@ export class SharedWithMeComponent implements OnInit {
     this.loadSharedAlbums();
   }
 
-  // Load thumbnail for a shared media item - delegated to the implementation below with real API call
-
-  // Load thumbnail for a shared album - delegated to the implementation below with real API call
 
   // Get fallback thumbnail URL when image fails to load
   getFallbackThumbnail(): string {
@@ -469,23 +463,6 @@ export class SharedWithMeComponent implements OnInit {
     // Navigate using Angular Router with a query param so AlbumDetailComponent knows
     // to use the shared-album endpoint instead of ownership-checking endpoint
     this.router.navigate(['/albums', item.id], { queryParams: { source: 'shared' } });
-  }
-
-  // Load thumbnail for a shared media item using the dedicated shared-media endpoint
-  private loadItemThumbnail(mediaId: string): void {
-    this.shareService.getSharedMediaThumbnailUrl(mediaId).subscribe({
-      next: (thumbUrl) => {
-        if (thumbUrl) {
-          const item = this.sharedMedia.find(i => i.id === mediaId);
-          if (item) {
-            item.thumbnailUrl = thumbUrl;
-          }
-        }
-      },
-      error: (err) => {
-        console.error('Failed to load thumbnail for shared media:', err, mediaId);
-      }
-    });
   }
 
   // Toggle favorite status for a shared item (optional feature)

@@ -24,6 +24,7 @@ type SharedMediaFullResponse struct {
 	MediaType    string    `json:"mediaType"`
 	CapturedAt   time.Time `json:"capturedAt"`
 	SharerUserID uuid.UUID `json:"sharerUserId"`
+	ThumbnailURL *string   `json:"thumbnailUrl,omitempty"` // Thumbnail URL for shared media
 }
 
 type SharedAlbumFullResponse struct {
@@ -128,6 +129,13 @@ func (s *Server) handleGetSharedMedia(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+
+	var thumbnailURL *string
+	if item.Media.ID != uuid.Nil {
+		thumbURL := "/media/shared/" + item.Media.ID.String() + "/thumb"
+		thumbnailURL = &thumbURL
+	}
+
 	json.NewEncoder(w).Encode(SharedMediaFullResponse{
 		ID:           item.Media.ID,
 		UserID:       item.Media.UserID,
@@ -136,6 +144,7 @@ func (s *Server) handleGetSharedMedia(w http.ResponseWriter, r *http.Request) {
 		MediaType:    string(item.Media.MediaType),
 		CapturedAt:   item.Media.CapturedAt,
 		SharerUserID: item.SharerUserID,
+		ThumbnailURL: thumbnailURL,
 	})
 
 	logResponse("handleGetSharedMedia", startTime)

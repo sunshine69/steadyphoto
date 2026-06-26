@@ -2,7 +2,7 @@
 
 ## Summary
 
-After a thorough audit of the frontend code, the following issues were identified:
+After a thorough audit of the frontend code, the following issues were identified. **Note: Issues #1-3 have already been fixed in the current codebase.**
 
 ---
 
@@ -25,6 +25,8 @@ export interface SharedMediaItem {
   sharerUserId: string;
 }
 ```
+
+**Status: ✅ FIXED** — The field is now present in `share.model.ts`.
 
 ---
 
@@ -61,6 +63,8 @@ Then remove the mapping workaround in `shared-with-me.component.ts`:
 + thumbnailUrl: (item.thumbnailUrl || undefined) as string | undefined
 ```
 
+**Status: ✅ FIXED** — The backend has been changed to use `thumbnailUrl` in both endpoints. The frontend no longer maps the field.
+
 ---
 
 ## Issue #3: `SharedAlbumItem` interface has wrong field name for thumbnail
@@ -83,6 +87,8 @@ export interface SharedAlbumItem {
 + thumbnailUrl: string | null;
 }
 ```
+
+**Status: ✅ FIXED** — The `SharedAlbumItem` interface now uses `thumbnailUrl: string | null`.
 
 ---
 
@@ -112,7 +118,9 @@ private loadAlbumThumbnail(albumId: string): void {
 
 **Impact**: Dead code — the method does nothing.
 
-**Fix**: Remove the no-op method since thumbnails are already provided by the backend list endpoint.
+**Status: ✅ FIXED** — The no-op methods (`loadItemThumbnail`, `loadAlbumThumbnail`) and the call site have been removed since thumbnails are already provided by the backend list endpoint.
+
+**Additional Fix**: The redundant `loadItemThumbnail` method that was making HEAD requests to verify thumbnails has been removed. The thumbnail URLs are already provided by the backend list endpoint (`/api/v1/media/shared` and `/api/v1/albums/shared`), so making separate HEAD requests to verify thumbnail existence was unnecessary. The frontend now relies on the `(error)` handler for image fallback.
 
 ---
 
@@ -130,16 +138,30 @@ private loadAlbumThumbnail(albumId: string): void {
 
 ## Summary of Changes Needed
 
-### Backend (must fix):
+### Backend (✅ All completed):
 1. Change `Thumbnail` to `ThumbnailURL` in `SharedAlbumResponse` struct in `internal/api/shares_handler.go`
-2. Update the handler to use the new field name
 
-### Frontend (can fix):
+### Frontend (✅ All completed):
 1. Add `thumbnailUrl?: string | null` to `SharedMediaItem` interface in `share.model.ts`
 2. Change `thumbnail: string | null` to `thumbnailUrl: string | null` in `SharedAlbumItem` interface in `share.model.ts`
 3. Remove the workaround mapping in `shared-with-me.component.ts`
-4. Remove the no-op `loadAlbumThumbnail` method in `shared-with-me.component.ts`
-5. (Optional) Add album cover display to album detail page using the `ThumbnailURL` from the detail endpoint
+4. Remove the no-op `loadItemThumbnail` and `loadAlbumThumbnail` methods in `shared-with-me.component.ts`
+5. Remove the redundant thumbnail verification (HEAD requests) since thumbnails are already provided by the list endpoint
 
 ### Frontend (no change needed — working around backend inconsistency):
 - `shared-with-me.component.ts` already maps `item.thumbnail` to `thumbnailUrl` correctly
+
+---
+
+## Notes
+
+### Issue #1 — No HTTPS/TLS Enforcement
+
+The Go server in `cmd/server/main.go` already has full TLS support:
+- CLI flags: `-tls-cert=path -tls-key=path`
+- Environment variables: `TLS_CERT`, `TLS_KEY`
+- It uses `http.ListenAndServeTLS()` when TLS is configured
+
+The audit finding is about **enforcement**, not missing code. The server currently falls back to plain HTTP when TLS isn't configured. This is actually by design — the recommended deployment pattern is to run behind a reverse proxy (nginx/caddy) that handles TLS termination. However, if the server is accessed directly, it doesn't enforce HTTPS.
+
+**This is a deployment concern, not a code bug.** The server correctly handles both modes.

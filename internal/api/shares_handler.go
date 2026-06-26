@@ -63,6 +63,7 @@ type SharedMediaResponse struct {
 	Path         string      `json:"path"`
 	MediaType    string      `json:"mediaType"`
 	SharerUserID uuid.UUID   `json:"sharerUserId"`
+	ThumbnailURL *string     `json:"thumbnailUrl,omitempty"` // Thumbnail URL for shared media
 }
 
 // SharedAlbumResponse represents a shared album for the API response.
@@ -300,12 +301,18 @@ func (h *ShareHandler) handleListSharedMedia(w http.ResponseWriter, r *http.Requ
 	}
 
 	for i, item := range items {
+		var thumbnailURL *string
+		if item.Media.ID != uuid.Nil {
+			thumbURL := "/media/shared/" + item.Media.ID.String() + "/thumb"
+			thumbnailURL = &thumbURL
+		}
 		response.Items[i] = SharedMediaResponse{
 			ID:           item.Media.ID,
 			Filename:     item.Media.Filename,
 			Path:         item.Media.Path,
 			MediaType:    string(item.Media.MediaType),
 			SharerUserID: item.SharerUserID,
+			ThumbnailURL: thumbnailURL,
 		}
 	}
 
