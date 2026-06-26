@@ -316,26 +316,27 @@ func (s *Server) routes() {
 	
 			})
 
-			// Public share viewing endpoints (no authentication required - outside protected group)
-			r.Group(func(public chi.Router) {
-				public.Get("/public/shares/media/{token}", sharesHandler.handleGetPublicShareMedia)
-				public.Get("/public/shares/album/{token}", sharesHandler.handleGetPublicShareAlbum)
-				public.Get("/public/shares/media/{token}/original", s.handleGetPublicShareMediaOriginal)
-				public.Get("/public/shares/media/{token}/thumb", s.handleGetPublicShareMediaThumb)
-				// Album media serving endpoints - serve by token (each item in album has its own share record)
-				public.Get("/public/shares/album/{token}/media/original", func(w http.ResponseWriter, r *http.Request) {
-					tokenStr := chi.URLParam(r, "token")
-					mediaPath := r.URL.Query().Get("path")
-					s.serveAlbumMediaOriginal(w, r, tokenStr, mediaPath)
-				})
-				public.Get("/public/shares/album/{token}/media/thumb", func(w http.ResponseWriter, r *http.Request) {
-					tokenStr := chi.URLParam(r, "token")
-					mediaPath := r.URL.Query().Get("path")
-					s.serveAlbumMediaThumb(w, r, tokenStr, mediaPath)
-				})
-				// Paginated album media endpoint
-				public.Get("/public/shares/album/{token}/media", sharesHandler.handleGetPublicShareAlbumMedia)
+		})
+
+		// Public share viewing endpoints (no authentication required - OUTSIDE protected group)
+		r.Route("/public", func(public chi.Router) {
+			public.Get("/shares/media/{token}", sharesHandler.handleGetPublicShareMedia)
+			public.Get("/shares/album/{token}", sharesHandler.handleGetPublicShareAlbum)
+			public.Get("/shares/media/{token}/original", s.handleGetPublicShareMediaOriginal)
+			public.Get("/shares/media/{token}/thumb", s.handleGetPublicShareMediaThumb)
+			// Album media serving endpoints - serve by token (each item in album has its own share record)
+			public.Get("/shares/album/{token}/media/original", func(w http.ResponseWriter, r *http.Request) {
+				tokenStr := chi.URLParam(r, "token")
+				mediaPath := r.URL.Query().Get("path")
+				s.serveAlbumMediaOriginal(w, r, tokenStr, mediaPath)
 			})
+			public.Get("/shares/album/{token}/media/thumb", func(w http.ResponseWriter, r *http.Request) {
+				tokenStr := chi.URLParam(r, "token")
+				mediaPath := r.URL.Query().Get("path")
+				s.serveAlbumMediaThumb(w, r, tokenStr, mediaPath)
+			})
+			// Paginated album media endpoint
+			public.Get("/shares/album/{token}/media", sharesHandler.handleGetPublicShareAlbumMedia)
 		})
 	})
 

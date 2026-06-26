@@ -1,4 +1,4 @@
-import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { catchError, map, Observable, throwError } from 'rxjs';
 import { Photo, ListPhotosResponse } from '../models/photo.model';
@@ -158,7 +158,12 @@ export class PhotoService {
    * This is the PUBLIC endpoint - no authentication required.
    */
   getPublicShareMedia(token: string, mediaPath: string): Observable<Photo> {
-    return this.http.get<any>(`${this.API_BASE_URL}/public/shares/album/${token}/media?path=${encodeURIComponent(mediaPath)}`)
+    const password = sessionStorage.getItem(`share_password_${token}`);
+    let params = new HttpParams().set('path', encodeURIComponent(mediaPath));
+    if (password) {
+      params = params.set('password', password);
+    }
+    return this.http.get<any>(`${this.API_BASE_URL}/public/shares/album/${token}/media`, { params: params })
       .pipe(
         map(response => this.normalizePublicShareMedia(response)),
         catchError(this.handleError)
@@ -170,7 +175,12 @@ export class PhotoService {
    * This is the PUBLIC endpoint - no authentication required.
    */
   getPublicShareMediaByPath(token: string, mediaPath: string): Observable<Photo> {
-    return this.http.get<any>(`${this.API_BASE_URL}/public/shares/album/${token}/media?path=${encodeURIComponent(mediaPath)}`)
+    const password = sessionStorage.getItem(`share_password_${token}`);
+    let params = new HttpParams().set('path', encodeURIComponent(mediaPath));
+    if (password) {
+      params = params.set('password', password);
+    }
+    return this.http.get<any>(`${this.API_BASE_URL}/public/shares/album/${token}/media`, { params: params })
       .pipe(
         map(response => this.normalizePublicShareMedia(response)),
         catchError(this.handleError)
@@ -181,8 +191,12 @@ export class PhotoService {
    * Fetches a paginated list of media items from a public share album.
    * This is the PUBLIC endpoint - no authentication required.
    */
-  listPublicShareMedia(token: string, limit: number = 20, offset: number = 0): Observable<any> {
-    return this.http.get<any>(`${this.API_BASE_URL}/public/shares/album/${token}/media?limit=${limit}&offset=${offset}`)
+  listPublicShareMedia(token: string, limit: number = 20, offset: number = 0, password?: string | null): Observable<any> {
+    let url = `${this.API_BASE_URL}/public/shares/album/${token}/media?limit=${limit}&offset=${offset}`;
+    if (password) {
+      url += `&password=${encodeURIComponent(password)}`;
+    }
+    return this.http.get<any>(url)
       .pipe(
         map(response => ({
           media: response.media || [],
@@ -198,14 +212,24 @@ export class PhotoService {
    * Gets the thumbnail URL for a public share media item.
    */
   getPublicShareThumbnailUrl(token: string, mediaPath: string): string {
-    return `${this.API_BASE_URL}/public/shares/album/${token}/media/thumb?path=${encodeURIComponent(mediaPath)}`;
+    const password = sessionStorage.getItem(`share_password_${token}`);
+    let url = `${this.API_BASE_URL}/public/shares/album/${token}/media/thumb?path=${encodeURIComponent(mediaPath)}`;
+    if (password) {
+      url += `&password=${encodeURIComponent(password)}`;
+    }
+    return url;
   }
 
   /**
    * Gets the original file URL for a public share media item.
    */
   getPublicShareOriginalUrl(token: string, mediaPath: string): string {
-    return `${this.API_BASE_URL}/public/shares/album/${token}/media/original?path=${encodeURIComponent(mediaPath)}`;
+    const password = sessionStorage.getItem(`share_password_${token}`);
+    let url = `${this.API_BASE_URL}/public/shares/album/${token}/media/original?path=${encodeURIComponent(mediaPath)}`;
+    if (password) {
+      url += `&password=${encodeURIComponent(password)}`;
+    }
+    return url;
   }
 
   /**
@@ -379,15 +403,17 @@ export class PhotoService {
     
     // Build URLs using the public share endpoints
     const token = p.Token ?? p.token ?? '';
+    const password = sessionStorage.getItem(`share_password_${token}`);
+    
     const filePath = mediaPath && token
-      ? `${this.API_BASE_URL}/public/shares/album/${token}/media/original?path=${encodeURIComponent(mediaPath)}`
+      ? this.buildPublicShareUrl(token, mediaPath, 'original', password)
       : '';
     
     return {
       id: id,
       path: filePath,
       thumbnailUrl: mediaPath && token
-        ? `${this.API_BASE_URL}/public/shares/album/${token}/media/thumb?path=${encodeURIComponent(mediaPath)}`
+        ? this.buildPublicShareUrl(token, mediaPath, 'thumb', password)
         : '',
       filename: p.Filename ?? p.filename ?? '',
       captured_at: p.CapturedAt ?? p.captured_at ?? '',
@@ -415,6 +441,13 @@ export class PhotoService {
     };
   }
 
+  private buildPublicShareUrl(token: string, mediaPath: string, type: 'thumb' | 'original', password?: string | null): string {
+    let url = `${this.API_BASE_URL}/public/shares/album/${token}/media/${type}?path=${encodeURIComponent(mediaPath)}`;
+    if (password) {
+      url += `&password=${encodeURIComponent(password)}`;
+    }
+    return url;
+  }
   private handleError(error: HttpErrorResponse) {
     console.error('API Error:', error);
     return throwError(() => new Error(error.message || 'An error occurred'));

@@ -23,14 +23,23 @@ export const authGuard: CanActivateFn = (route, state) => {
   console.log('🔑 Authenticated?', authService.isAuthenticated());
 
   // Check if this is a shared resource access attempt via query param
-  const isSharedResource = requestedPath.includes('source=shared');
+  const isSharedResource = route.queryParamMap.get('source') === 'shared';
   
   // Detect if this is a shared resource access attempt (legacy param detection)
   const isSharedPhoto = requestedPath.includes('/photos/') && route.paramMap.has('id');
   const isSharedAlbum = requestedPath.includes('/albums/') && route.paramMap.has('id');
   
+  // Check if this is a presentation mode route with shareToken in the query params
+  const isPresentationMode = requestedPath.includes('/presentation') && route.queryParamMap.has('shareToken');
+  
   if (isSharedResource) {
     console.log('🔗 Shared resource access detected via query param, allowing access');
+    console.groupEnd();
+    return true;
+  }
+  
+  if (isPresentationMode) {
+    console.log('🖥️ Presentation mode with shareToken detected, allowing access');
     console.groupEnd();
     return true;
   }

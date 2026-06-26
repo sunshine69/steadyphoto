@@ -1,5 +1,6 @@
-import { Component, OnInit, OnDestroy, HostListener } from '@angular/core';
+import { Component, OnInit, OnDestroy, HostListener, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { ActivatedRoute } from '@angular/router';
 import { PresentationService, MediaItem } from '../../services/presentation.service';
 import { PhotoService } from '../../services/photo.service';
 
@@ -167,6 +168,8 @@ export class PresentationComponent implements OnInit, OnDestroy {
   items: MediaItem[] = [];
   currentIndex: number = 0;
 
+  private route = inject(ActivatedRoute);
+
   constructor(
     private presentationService: PresentationService,
     private photoService: PhotoService
@@ -189,16 +192,54 @@ export class PresentationComponent implements OnInit, OnDestroy {
   }
 
   loadGalleryItems(): void {
-    // Fetch a reasonable amount of items for the slideshow
-    this.photoService.listMedia(50, 0).subscribe({
-      next: (response) => {
-        this.items = response.photos;
-        this.currentIndex = 0;
-      },
-      error: (err) => {
-        console.error('Failed to load media for presentation', err);
-      }
-    });
+    // Check if we're in public share presentation mode
+    const shareToken = this.route.snapshot.queryParamMap.get('shareToken');
+    const isSharedMedia = this.route.snapshot.queryParamMap.get('source') === 'shared';
+    
+    if (shareToken) {
+      // Fetch from public share endpoint (no auth required)
+      this.photoService.listPublicShareMedia(shareToken, 50, 0).subscribe({
+        next: (response: any) => {
+          this.items = response.media.map((p: any) => ({
+            id: p.ID || p.id,
+            path: `${this.photoService['API_BASE_URL']}/public/shares/album/${shareToken}/media/original?path=${encodeURIComponent(p.Path || p.path || '')}`,
+            filename: p.Filename || p.filename || '',
+            mediaType: (p.MediaType || p.mediaType || 'photo')
+          }));
+          this.currentIndex = 0;
+        },
+        error: (err) => {
+          console.error('Failed to load public share media for presentation', err);
+        }
+      });
+    } else if (isSharedMedia) {
+      // Fetch from authenticated shared media endpoint
+      this.photoService.listSharedMedia(50, 0).subscribe({
+        next: (response: any) => {
+          this.items = response.items.map((p: any) => ({
+            id: p.id || p.ID,
+            path: `${this.photoService['API_BASE_URL']}/media/shared/${(p.id || p.ID)}/original`,
+            filename: p.filename || '',
+            mediaType: (p.mediaType || 'photo')
+          }));
+          this.currentIndex = 0;
+        },
+        error: (err) => {
+          console.error('Failed to load shared media for presentation', err);
+        }
+      });
+    } else {
+      // Fetch from authenticated endpoint
+      this.photoService.listMedia(50, 0).subscribe({
+        next: (response) => {
+          this.items = response.photos;
+          this.currentIndex = 0;
+        },
+        error: (err) => {
+          console.error('Failed to load media for presentation', err);
+        }
+      });
+    }
   }
 
   get currentItem(): MediaItem | undefined {

@@ -395,6 +395,12 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
   }
 
   goBack(): void {
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('🔙 [DEBUG] PhotoDetailComponent.goBack() called');
+    console.log('   Query params:', this.route.snapshot.queryParams);
+    console.log('   Will navigate back to:', document.referrer);
+    console.log('   History length:', window.history.length);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     window.history.back();
   }
 
@@ -447,7 +453,7 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
             
             if (startIndex !== -1 && mediaItems.length > 0) {
               this.presentationService.open(mediaItems, startIndex);
-              this.router.navigate(['/presentation']);
+              this.router.navigate(['/presentation'], { queryParams: { shareToken } });
             } else {
               alert('No items available for presentation.');
             }
@@ -475,7 +481,7 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
             
             if (startIndex !== -1 && mediaItems.length > 0) {
               this.presentationService.open(mediaItems, startIndex);
-              this.router.navigate(['/presentation']);
+              this.router.navigate(['/presentation'], { queryParams: { shareToken } });
             } else {
               alert('No items available for presentation.');
             }
@@ -499,7 +505,7 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
             
             if (startIndex !== -1 && mediaItems.length > 0) {
               this.presentationService.open(mediaItems, startIndex);
-              this.router.navigate(['/presentation']);
+              this.router.navigate(['/presentation'], { queryParams: { source: 'shared' } });
             } else {
               alert('No items available for presentation.');
             }

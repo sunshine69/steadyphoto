@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -640,7 +641,7 @@ func (h *ShareHandler) handleGetPublicShareAlbum(w http.ResponseWriter, r *http.
 	for i, m := range albumItem.MediaItems {
 		var thumbnailURL *string
 		if m.ID != uuid.Nil {
-			thumbURL := "/media/shared/" + m.ID.String() + "/thumb"
+			thumbURL := "/public/shares/album/" + tokenStr + "/media/thumb?path=" + url.QueryEscape(m.Path)
 			thumbnailURL = &thumbURL
 		}
 		mediaResponses[i] = MediaShareItem{
@@ -751,7 +752,7 @@ func (h *ShareHandler) handleGetPublicShareAlbumMedia(w http.ResponseWriter, r *
 	for i, m := range pageItems {
 		var thumbnailURL *string
 		if m.ID != uuid.Nil {
-			thumbURL := "/media/shared/" + m.ID.String() + "/thumb"
+			thumbURL := "/public/shares/album/" + tokenStr + "/media/thumb?path=" + url.QueryEscape(m.Path)
 			thumbnailURL = &thumbURL
 		}
 		mediaResponses[i] = MediaShareItem{
