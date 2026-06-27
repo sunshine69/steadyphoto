@@ -231,14 +231,24 @@ func (m *UploadSessionManager) GetUploadTempDir() string {
 	return m.storageService.GetUploadTempDir()
 }
 
+// CleanupChunks removes all chunk temp files for a session.
+func (m *UploadSessionManager) CleanupChunks(sessionID string, totalChunks int) {
+	tempDir := m.GetUploadTempDir()
+	for i := 0; i < totalChunks; i++ {
+		chunkPath := filepath.Join(tempDir, sessionID+fmt.Sprintf("_%d.tmp", i))
+		os.Remove(chunkPath) // Ignore errors — file may already be deleted
+	}
+}
+
 // DeleteSession removes a session after completion or abort.
 func (m *UploadSessionManager) DeleteSession(sessionID string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	session := m.sessions[sessionID]
-	if session != nil && session.tempPath != "" {
+	if session != nil {
 		os.Remove(session.tempPath) // Clean up temp file
+		m.CleanupChunks(sessionID, session.TotalChunks) // Clean up chunk files
 	}
 	delete(m.sessions, sessionID)
 }
@@ -253,6 +263,7 @@ func (m *UploadSessionManager) CleanupExpiredSessions() int {
 	for id, session := range m.sessions {
 		if session.CreatedAt.Before(now) {
 			os.Remove(session.tempPath) // Clean up temp file
+			m.CleanupChunks(id, session.TotalChunks) // Clean up chunk files
 			delete(m.sessions, id)
 			count++
 		}
