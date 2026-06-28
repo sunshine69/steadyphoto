@@ -198,13 +198,14 @@ export class PresentationComponent implements OnInit, OnDestroy {
     
     if (shareToken) {
       // Fetch from public share endpoint (no auth required)
+      // listPublicShareMedia already normalizes items with proper URLs and password
       this.photoService.listPublicShareMedia(shareToken, 50, 0).subscribe({
         next: (response: any) => {
           this.items = response.media.map((p: any) => ({
-            id: p.ID || p.id,
-            path: `${this.photoService['API_BASE_URL']}/public/shares/album/${shareToken}/media/original?path=${encodeURIComponent(p.Path || p.path || '')}`,
-            filename: p.Filename || p.filename || '',
-            mediaType: (p.MediaType || p.mediaType || 'photo')
+            id: p.id,
+            path: p.path,
+            filename: p.filename,
+            mediaType: p.mediaType
           }));
           this.currentIndex = 0;
         },

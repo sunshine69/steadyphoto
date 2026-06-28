@@ -441,7 +441,7 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
             mediaItems = photos.filter((p): p is Photo => p !== null).map((p, index) => ({
               id: p.id,
               path: (isSharedMedia && shareToken)
-                ? `${this.photoService['API_BASE_URL']}/public/shares/album/${shareToken}/media/original?path=${encodeURIComponent(albumMediaPathsArray[index] || '')}`
+                ? this.photoService.getPublicShareOriginalUrl(shareToken, albumMediaPathsArray[index] || '')
                 : isSharedMedia
                 ? `${this.photoService['API_BASE_URL']}/media/shared/${p.id}/original`
                 : `${this.photoService['API_BASE_URL']}/media/${p.id}/original`,
@@ -472,7 +472,7 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
           next: (response: any) => {
             mediaItems = response.media.map((p: any) => ({
               id: p.ID || p.id,
-              path: `${this.photoService['API_BASE_URL']}/public/shares/album/${shareToken}/media/original?path=${encodeURIComponent(p.Path || p.path || '')}`,
+              path: `${this.photoService.getPublicShareOriginalUrl(shareToken, p.Path || p.path || '')}`,
               filename: p.Filename || p.filename || '',
               mediaType: (p.MediaType || p.mediaType || 'photo')
             }));

@@ -165,7 +165,7 @@ export class PhotoService {
     }
     return this.http.get<any>(`${this.API_BASE_URL}/public/shares/album/${token}/media`, { params: params })
       .pipe(
-        map(response => this.normalizePublicShareMedia(response)),
+        map(response => this.normalizePublicShareMedia(response, token)),
         catchError(this.handleError)
       );
   }
@@ -182,7 +182,7 @@ export class PhotoService {
     }
     return this.http.get<any>(`${this.API_BASE_URL}/public/shares/album/${token}/media`, { params: params })
       .pipe(
-        map(response => this.normalizePublicShareMedia(response)),
+        map(response => this.normalizePublicShareMedia(response, token)),
         catchError(this.handleError)
       );
   }
@@ -192,14 +192,15 @@ export class PhotoService {
    * This is the PUBLIC endpoint - no authentication required.
    */
   listPublicShareMedia(token: string, limit: number = 20, offset: number = 0, password?: string | null): Observable<any> {
+    const resolvedPassword = password ?? sessionStorage.getItem(`share_password_${token}`);
     let url = `${this.API_BASE_URL}/public/shares/album/${token}/media?limit=${limit}&offset=${offset}`;
-    if (password) {
-      url += `&password=${encodeURIComponent(password)}`;
+    if (resolvedPassword) {
+      url += `&password=${encodeURIComponent(resolvedPassword)}`;
     }
     return this.http.get<any>(url)
       .pipe(
         map(response => ({
-          media: response.media || [],
+          media: (response.media || []).map((p: any) => this.normalizePublicShareMedia(p, token)),
           totalItems: response.totalItems || 0,
           limit: response.limit || limit,
           offset: response.offset || offset
@@ -385,7 +386,7 @@ export class PhotoService {
    * Normalizes media data from the public share album media endpoint.
    * Returns a Photo with thumbnailUrl and path pointing to the public share endpoints.
    */
-  private normalizePublicShareMedia(p: any): Photo {
+  normalizePublicShareMedia(p: any, token?: string): Photo {
     const id = p.ID ?? p.id ?? '';
     const mediaPath = p.Path ?? p.path ?? '';
     
@@ -401,19 +402,19 @@ export class PhotoService {
       }
     }
     
-    // Build URLs using the public share endpoints
-    const token = p.Token ?? p.token ?? '';
-    const password = sessionStorage.getItem(`share_password_${token}`);
+    // Use the token parameter (passed from the caller), falling back to response
+    const resolveToken = token ?? '';
+    const password = sessionStorage.getItem(`share_password_${resolveToken}`);
     
-    const filePath = mediaPath && token
-      ? this.buildPublicShareUrl(token, mediaPath, 'original', password)
+    const filePath = mediaPath && resolveToken
+      ? this.buildPublicShareUrl(resolveToken, mediaPath, 'original', password)
       : '';
     
     return {
       id: id,
       path: filePath,
-      thumbnailUrl: mediaPath && token
-        ? this.buildPublicShareUrl(token, mediaPath, 'thumb', password)
+      thumbnailUrl: mediaPath && resolveToken
+        ? this.buildPublicShareUrl(resolveToken, mediaPath, 'thumb', password)
         : '',
       filename: p.Filename ?? p.filename ?? '',
       captured_at: p.CapturedAt ?? p.captured_at ?? '',
