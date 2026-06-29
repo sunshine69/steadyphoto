@@ -24,6 +24,7 @@ class SettingsRepository(private val context: Context) {
         // Sync control key
         private val AUTO_SYNC_ENABLED_KEY = booleanPreferencesKey("auto_sync_enabled")
         private val FALLBACK_SYNC_INTERVAL_KEY = intPreferencesKey("fallback_sync_interval_minutes")
+        private val LAST_SYNC_TIMESTAMP_KEY = longPreferencesKey("last_sync_timestamp")
     }
 
     /**
@@ -116,6 +117,21 @@ class SettingsRepository(private val context: Context) {
             preferences[FALLBACK_SYNC_INTERVAL_KEY] = minutes
         }
     }
+
+    /**
+     * Set the last successful sync timestamp.
+     */
+    suspend fun setLastSyncTimestamp(timestamp: Long) {
+        context.settingsDataStore.edit { preferences ->
+            preferences[LAST_SYNC_TIMESTAMP_KEY] = timestamp
+        }
+    }
+
+    /**
+     * Get the last successful sync timestamp.
+     */
+    fun getLastSyncTimestampFlow(): Flow<Long> = context.settingsDataStore.data
+        .map { it[LAST_SYNC_TIMESTAMP_KEY] ?: 0L }
 }
 
 /**

@@ -49,4 +49,7 @@ interface MediaItemDao {
 
     @Query("DELETE FROM media_items WHERE id IN (:idsToDelete)")
     suspend fun deleteByMediaIds(idsToDelete: List<Long>): Int
+
+    @Query("SELECT MAX(createdAt) FROM media_items")
+    suspend fun getMaxCreatedAt(): Long?
 }
