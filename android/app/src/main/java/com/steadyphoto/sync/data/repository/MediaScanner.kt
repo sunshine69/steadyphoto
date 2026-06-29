@@ -45,9 +45,8 @@ class MediaScanner(
         totalScanned += videoResult.totalScanned
         newItemsInserted += videoResult.newItemsInserted
 
-        // 2. Perform the broad "Files" scan if requested OR if no new items were found.
-        // This helps catch newly added files that MediaStore hasn't indexed yet.
-        if (forceFullScan || newItemsInserted == 0) {
+        // 2. Perform the broad "Files" scan if requested (fallback mechanism).
+        if (forceFullScan) {
             Log.d(TAG, "Running broad Files provider scan as fallback")
             
             val unifiedCursor = contentResolver.query(
