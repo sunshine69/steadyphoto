@@ -102,6 +102,7 @@ type PublicShareListResponse struct {
 	SharerUserID      uuid.UUID     `json:"sharerUserId"`
 	ResourceType      string        `json:"resourceType"`
 	ResourceID        uuid.UUID     `json:"-"` // Not exposed in response
+	ResourceName      string        `json:"resourceName"`
 	PasswordProtected bool          `json:"password_protected"`
 	ExpiresAt         *time.Time    `json:"expires_at"`
 	CreatedAt         time.Time     `json:"created_at"`
@@ -512,12 +513,28 @@ func (h *ShareHandler) handleListPublicShares(w http.ResponseWriter, r *http.Req
 
 	response := make([]PublicShareListResponse, len(list))
 	for i, ps := range list {
+		// Fetch the resource name for display purposes
+		resourceName := ""
+		switch ps.ResourceType {
+		case "media":
+			media, err := h.mediaRepo.GetByID(ctx, ps.ResourceID, &userID)
+			if err == nil && media != nil {
+				resourceName = media.Filename
+			}
+		case "album":
+			album, err := h.albumRepo.GetByID(ctx, ps.ResourceID, userID)
+			if err == nil && album != nil {
+				resourceName = album.Name
+			}
+		}
+
 		response[i] = PublicShareListResponse{
 			ID:                ps.ID,
 			Token:             ps.Token,
 			SharerUserID:      ps.SharerUserID,
 			ResourceType:      ps.ResourceType,
 			ResourceID:        ps.ResourceID,
+			ResourceName:      resourceName,
 			PasswordProtected: ps.PasswordProtected,
 			ExpiresAt:         ps.ExpiresAt,
 			CreatedAt:         ps.CreatedAt,

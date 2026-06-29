@@ -166,7 +166,7 @@ const DEBUG_PREFIX = '[Sharing Debug]';
               class="share-link-card">
               
               <div class="share-info">
-                <p class="filename">{{ share.resourceType === 'media' ? '📷 Photo' : '📁 Album' }}: {{ getResourceTitle(share) }}</p>
+                <p class="filename">{{ share.resourceType === 'media' ? '📷 Photo' : '📁 Album' }}: {{ share.resourceName }}</p>
                 <p class="link-url" [title]="getShareableUrl(share)">
                   {{ getShortUrl(getShareableUrl(share)) }}
                 </p>
