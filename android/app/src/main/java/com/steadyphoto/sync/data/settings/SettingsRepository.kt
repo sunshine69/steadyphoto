@@ -23,6 +23,7 @@ class SettingsRepository(private val context: Context) {
         
         // Sync control key
         private val AUTO_SYNC_ENABLED_KEY = booleanPreferencesKey("auto_sync_enabled")
+        private val FALLBACK_SYNC_INTERVAL_KEY = intPreferencesKey("fallback_sync_interval_minutes")
     }
 
     /**
@@ -57,7 +58,8 @@ class SettingsRepository(private val context: Context) {
         }
         .map { preferences ->
             SyncControlSettings(
-                autoSyncEnabled = preferences[AUTO_SYNC_ENABLED_KEY] ?: true
+                autoSyncEnabled = preferences[AUTO_SYNC_ENABLED_KEY] ?: true,
+                fallbackSyncIntervalMinutes = preferences[FALLBACK_SYNC_INTERVAL_KEY] ?: 30
             )
         }
 
@@ -105,6 +107,15 @@ class SettingsRepository(private val context: Context) {
             preferences[AUTO_SYNC_ENABLED_KEY] = enabled
         }
     }
+
+    /**
+     * Set the fallback sync interval in minutes.
+     */
+    suspend fun setFallbackSyncInterval(minutes: Int) {
+        context.settingsDataStore.edit { preferences ->
+            preferences[FALLBACK_SYNC_INTERVAL_KEY] = minutes
+        }
+    }
 }
 
 /**
@@ -143,9 +154,13 @@ enum class PreferredNetworkType(val value: String) {
  * Represents sync control settings.
  */
 data class SyncControlSettings(
-    val autoSyncEnabled: Boolean
+    val autoSyncEnabled: Boolean,
+    val fallbackSyncIntervalMinutes: Int
 ) {
     companion object {
-        fun default(): SyncControlSettings = SyncControlSettings(autoSyncEnabled = true)
+        fun default(): SyncControlSettings = SyncControlSettings(
+            autoSyncEnabled = true,
+            fallbackSyncIntervalMinutes = 30
+        )
     }
 }

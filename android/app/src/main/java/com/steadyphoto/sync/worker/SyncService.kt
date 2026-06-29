@@ -57,11 +57,7 @@ class SyncService : Service(), KoinComponent {
         const val ACTION_START_SYNC = "com.steadyphoto.sync.ACTION_START_SYNC"
         const val ACTION_STOP_SYNC = "com.steadyphoto.sync.ACTION_STOP_SYNC"
 
-        // Periodic sync interval as fallback (5 minutes) - FileObserver handles real-time
-        private const val PERIODIC_SYNC_INTERVAL_MS = 300_000L
-        
         // Max consecutive failed upload attempts before giving up and stopping the service.
-        // Prevents infinite battery drain when uploads keep failing.
         private const val MAX_CONSECUTIVE_UPLOAD_FAILURES = 3
 
         fun newIntent(context: Context): Intent {
@@ -181,7 +177,8 @@ class SyncService : Service(), KoinComponent {
                     }
                     
                     // Only delay between actual work cycles. If there was work, wait and check again.
-                    delay(PERIODIC_SYNC_INTERVAL_MS)
+                    val syncControl = container.settingsRepository.syncControlFlow.first()
+                    delay(syncControl.fallbackSyncIntervalMinutes * 60_000L)
                 }
             }
         }
