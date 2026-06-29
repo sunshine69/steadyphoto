@@ -30,18 +30,18 @@ class MediaScanner(
     /**
      * Scan the device for new media files and add them to the database if not already present.
      */
-    suspend fun scanForNewMedia(forceFullScan: Boolean = false): MediaScanResult {
+    suspend fun scanForNewMedia(forceFullScan: Boolean = false, lastSyncTimestamp: Long = 0L): MediaScanResult {
         var totalScanned = 0
         var newItemsInserted = 0
 
-        // 1. ALWAYS perform the reliable, type-specific scans first. 
-        Log.d(TAG, "Running standard MediaStore scan (Images & Video)")
+        // 1. ALWAYS perform the reliable, type-specific scans first using timestamp filtering if provided.
+        Log.d(TAG, "Running standard MediaStore scan (Images & Video). Last sync: $lastSyncTimestamp")
         
-        val imageResult = scanMediaType(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, IMAGE_MIME_TYPES)
+        val imageResult = scanMediaType(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, IMAGE_MIME_TYPES, lastSyncTimestamp)
         totalScanned += imageResult.totalScanned
         newItemsInserted += imageResult.newItemsInserted
         
-        val videoResult = scanMediaType(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, VIDEO_MIME_TYPES)
+        val videoResult = scanMediaType(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, VIDEO_MIME_TYPES, lastSyncTimestamp)
         totalScanned += videoResult.totalScanned
         newItemsInserted += videoResult.newItemsInserted
 
@@ -158,19 +158,23 @@ class MediaScanner(
                                    existing.uploadStatus == com.steadyphoto.sync.data.local.entity.UploadStatus.UPLOADING)
     }
 
-    private suspend fun scanMediaType(uri: android.net.Uri, mimeTypes: Array<String>): MediaScanResult {
+    private suspend fun scanMediaType(uri: android.net.Uri, mimeTypes: Array<String>, lastSyncTimestamp: Long = 0L): MediaScanResult {
         var totalScanned = 0
         var newItemsInserted = 0
         
         val mimeTypeColumn = MediaStore.MediaColumns.MIME_TYPE
         val idColumnName = MediaStore.MediaColumns._ID
+        val dateAddedColumn = MediaStore.MediaColumns.DATE_ADDED
 
         val mimeTypeSelection = "$mimeTypeColumn IN (${mimeTypes.joinToString(",") { "'$it'" }})"
+        // Filter by timestamp if provided to enable incremental scanning (Immich-style)
+        val timeSelection = if (lastSyncTimestamp > 0L) " AND $dateAddedColumn > $lastSyncTimestamp" else ""
+        val finalSelection = "$mimeTypeSelection AND ${MediaStore.MediaColumns.SIZE} > 0$timeSelection"
         
         contentResolver.query(
             uri,
             arrayOf(idColumnName, MediaStore.MediaColumns.DISPLAY_NAME, mimeTypeColumn, MediaStore.MediaColumns.SIZE),
-            mimeTypeSelection + " AND ${MediaStore.MediaColumns.SIZE} > 0",
+            finalSelection,
             null,
             null
         )?.use { cursor ->

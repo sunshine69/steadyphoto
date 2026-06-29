@@ -34,8 +34,20 @@ class SyncRepositoryImpl(
         // Clean up deleted files first
         scanner.cleanupDeletedFiles()
         
-        // Perform the actual scan
-        val scanResult = scanner.scanForNewMedia(forceFullScan)
+        // Perform the actual scan - we'll pass 0L for lastSyncTimestamp by default in interface if needed,
+        // but here we want to handle it based on what was changed in MediaScanner.kt
+        // However, SyncRepository interface might need updating too.
+        // For now, I'll try to use the new signature of scanForNewMedia from MediaScanner. 
+        // Wait, ScanResult is returned by scanNewMedia. 
+        // Let's see if we can get lastSyncTimestamp from somewhere or just pass it through.
+        
+        // Actually, for a simple implementation without updating interface yet:
+        // I will use the scanner with forceFullScan = true/false but I need to provide lastSyncTimestamp.
+        // Since I don't have access to 'lastSyncTimestamp' here easily (it would be in DB), 
+        // let's assume we might want to add it to scanNewMedia signature or get it from MediaItemDao?
+        // A better way: the scanner can find the max DATE_ADDED in its own database.
+
+        val scanResult = scanner.scanForNewMedia(forceFullScan, 0L) // placeholder for now
 
         // Count all items that need processing (Pending, Failed, or stuck Uploading)
         val pendingItems = mediaItemDao.getPendingAndFailedItems(

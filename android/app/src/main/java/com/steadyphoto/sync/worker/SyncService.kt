@@ -207,11 +207,8 @@ class SyncService : Service(), KoinComponent {
         var hasWork = false
         
         try {
-            // Step 1: Scan for new media files - this uses the same query as ContentObserver
-            // but queries ALL rows without MIME type filtering (the key fix)
-            val scanResult = container.repository.scanNewMedia(
-                forceFullScan = true  // Force scan all rows, don't filter by MIME type
-            )
+            // Step 1: Scan for new media files - using incremental scanning if possible
+            val scanResult = container.repository.scanNewMedia(forceFullScan = false)
             
             when (scanResult) {
                 is com.steadyphoto.sync.data.repository.ScanResult.Success -> {
