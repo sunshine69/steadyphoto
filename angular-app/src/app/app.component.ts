@@ -14,7 +14,7 @@ import { ShareModalComponent } from './components/share-modal/share-modal.compon
 import { ShareTriggerService } from './services/share-trigger.service';
 
 import { SearchService, SearchScope } from './services/search.service';
-import { Subscription } from 'rxjs';
+import { Subject, Subscription, debounceTime, distinctUntilChanged } from 'rxjs';
 
 @Component({
   selector: 'app-root',
@@ -52,12 +52,13 @@ import { Subscription } from 'rxjs';
               class="search-input"
               [(ngModel)]="searchTerm"
               (keyup)="onKeyUp($event)"
+              (ngModelChange)="onSearchInputChanged()"
             />
             <button *ngIf="searchTerm" class="clear-search-btn" (click)="clearSearch()">×</button>
           </div>
 
           <div class="header-actions">
-<!-- Upload Button -->
+            <!-- Upload Button -->
             <button class="icon-btn upload-trigger" title="Upload Media" (click)="uploadTrigger.open()">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -229,6 +230,14 @@ import { Subscription } from 'rxjs';
       color: #e5e7eb;
     }
 
+    .loading-indicator {
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      padding: 4px 8px;
+    }
+
     .header-actions {
       display: flex;
       align-items: center;
@@ -280,9 +289,12 @@ import { Subscription } from 'rxjs';
 export class AppComponent implements OnInit, OnDestroy {
   searchTerm = '';
   selectedScope: SearchScope = 'all';
-  private searchTimeout?: any;
   isAdmin = false;
   avatarInitial = 'U';
+
+  // RxJS Subject for debounced search input
+  private searchInput$ = new Subject<string>();
+  private searchSubscription?: Subscription;
 
   public uploadTrigger = inject(UploadTriggerService);
   public shareTrigger = inject(ShareTriggerService);
@@ -298,51 +310,37 @@ export class AppComponent implements OnInit, OnDestroy {
   ) {}
 
   onKeyUp(event: KeyboardEvent): void {
-    // Only trigger search on Enter key or when typing stops (debounce)
     if (event.key === 'Enter') {
-      this.performSearch();
+      // On Enter: trigger immediate search by emitting current value
+      this.searchInput$.next(this.searchTerm);
     } else {
-      // Debounce for regular typing
-      this.onSearch();
-    }
-  }
-
-  onSearch(): void {
-    // Clear any existing timeout to debounce rapid typing
-    if (this.searchTimeout) {
-      clearTimeout(this.searchTimeout);
-    }
-    
-    // Wait 300ms after user stops typing before searching
-    this.searchTimeout = setTimeout(() => {
-      this.performSearch();
-    }, 300);
-  }
-
-  private performSearch(): void {
-    this.searchService.setSearchTerm(this.searchTerm);
-    this.searchService.setSearchScope(this.selectedScope);
-  }
-
-  clearSearch(): void {
-    this.searchTerm = '';
-    this.selectedScope = 'all';
-    this.searchService.setSearchTerm('');
-    this.searchService.setSearchScope('all');
-    if (this.searchTimeout) {
-      clearTimeout(this.searchTimeout);
+      // For regular typing: emit to Subject for debounced processing
+      this.searchInput$.next(this.searchTerm);
     }
   }
 
   ngOnInit(): void {
+    // Set up the RxJS search pipeline
+    this.searchSubscription = this.searchInput$
+      .pipe(
+        debounceTime(500),
+        distinctUntilChanged((prev, curr) => prev === curr && prev !== '')
+      )
+      .subscribe({
+        next: (term: string) => {
+          if (term.trim()) {
+            this.searchService.setSearchTerm(term);
+            this.searchService.setSearchScope(this.selectedScope);
+          }
+        }
+      });
+    
     // Listen for presentation mode close events from child components
     window.addEventListener('presentationModeClosed', this.handlePresentationClose.bind(this));
     
     // Listen for upload complete event to refresh gallery
     window.addEventListener('media-upload-complete', () => {
       console.log('Upload completed, refreshing media list...');
-      // Trigger a reload of the photo service data if needed
-      // This could be adapted based on how your app handles state updates
     });
 
     // Subscribe to auth state changes to keep isAdmin and avatarInitial reactive
@@ -375,6 +373,28 @@ export class AppComponent implements OnInit, OnDestroy {
     }
   }
 
+  onSearch(): void {
+    // When scope changes, immediately trigger search with current term
+    if (this.searchTerm.trim()) {
+      this.searchService.setSearchTerm(this.searchTerm);
+      this.searchService.setSearchScope(this.selectedScope);
+    }
+  }
+
+  onSearchInputChanged(): void {
+    // If user manually clears the input (backspace/delete), trigger clearSearch
+    if (!this.searchTerm?.trim()) {
+      this.clearSearch();
+    }
+  }
+
+  clearSearch(): void {
+    this.searchTerm = '';
+    this.selectedScope = 'all';
+    this.searchService.setSearchTerm('');
+    this.searchService.setSearchScope('all');
+  }
+
   openUserManagement(): void {
     if (!this.isAdmin) {
       alert('You do not have permission to access User Management.');
@@ -388,6 +408,8 @@ export class AppComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     window.removeEventListener('presentationModeClosed', this.handlePresentationClose.bind(this));
+    this.searchSubscription?.unsubscribe();
+    this.authSubscription?.unsubscribe();
   }
 
   openShareModal(itemId?: string, itemType: 'media' | 'album' = 'media'): void {

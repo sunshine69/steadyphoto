@@ -20,8 +20,8 @@ go build -o scanner.exe cmd/scanner/main.go
 
 rm -rf storage/* ;  ./scanner.exe -u ${ADMIN_EMAIL} -p ${ADMIN_PASSWORD}  -source /mnt/doc/tmp/testimg
 
-# ./scanner.exe -source /mnt/doc/Videos/AI-Video -storage storage -email admin@steadyphoto.com
-#./scanner.exe -source /mnt/doc/Diana\ Place\ 5/ -storage storage
+./scanner.exe -source /mnt/doc/Videos/AI-Video -u ${ADMIN_EMAIL} -p ${ADMIN_PASSWORD}
+./scanner.exe -source /mnt/doc/Diana\ Place\ 5/ -u ${ADMIN_EMAIL} -p ${ADMIN_PASSWORD}
 
 #go build -o worker.exe cmd/worker/main.go
 #./worker.exe > worker.log 2>&1 &

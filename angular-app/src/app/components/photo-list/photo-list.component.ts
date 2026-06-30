@@ -4,7 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
 import { PhotoService } from '../../services/photo.service';
 import { GalleryStateService } from '../../services/gallery-state.service';
-import { SearchService, SearchScope } from '../../services/search.service';
+import { SearchService, SearchScope, SearchResponse } from '../../services/search.service';
 import { Photo, ListPhotosResponse } from '../../models/photo.model';
 import { Router, RouterModule, ActivatedRoute } from '@angular/router';
 import { PhotoCardComponent } from '../photo-card/photo-card.component';
@@ -138,6 +138,7 @@ import { Album } from '../../models/album.model';
       <div class="empty-state" *ngIf="!loading && (!photos || photos.length === 0)">
         <p *ngIf="!currentSearchTerm && !activeTagFilter">No photos found. Start by importing your photo library.</p>
         <p *ngIf="currentSearchTerm && activeTagFilter">No items match search "{{currentSearchTerm}}" and tag "#{{activeTagFilter}}"</p>
+        <p *ngIf="currentSearchTerm && !activeTagFilter">No items match search "{{currentSearchTerm}}"</p>
       </div>
       
       <!-- Photo Grid -->
@@ -254,9 +255,9 @@ export class PhotoListComponent implements OnInit, OnDestroy {
   // Tag input for wizard dialog
   tagInput = '';
 
-  private subscription?: Subscription;
-  private searchSubscription?: Subscription;
-  private routeSub?: Subscription;
+  private subscription: Subscription | null = null;
+  private searchSubscription: Subscription | null = null;
+  private routeSub: Subscription | null = null;
   private readonly SCROLL_KEY = 'photo_list_scroll_pos';
 
   constructor(
@@ -275,7 +276,13 @@ export class PhotoListComponent implements OnInit, OnDestroy {
     this.currentPage = savedPage;
     this.offset = (savedPage - 1) * this.limit;
     
+    // Subscribe to search service changes
     this.searchSubscription = this.searchService.searchTerm$.subscribe(term => {
+      // Reset to page 1 when search is cleared (transitioning from search to full list)
+      if (term === '' && this.currentSearchTerm !== '') {
+        this.currentPage = 1;
+        this.offset = 0;
+      }
       this.currentSearchTerm = term;
       this.loadPhotos();
     });
@@ -527,66 +534,70 @@ export class PhotoListComponent implements OnInit, OnDestroy {
     return album ? album.name : id;
   }
 
+  /**
+   * Load photos from the backend.
+   * - If there's a search term, use server-side search via SearchService
+   * - Otherwise, use the standard list endpoint
+   */
   loadPhotos(): void {
     if (!this.photoService) { this.loading = false; return; }
     this.loading = true;
-    const request$ = this.currentSearchTerm.trim() !== '' 
-      ? this.photoService.listMedia(this.limit, this.offset)  // Use listMedia for search to include videos in 'all' scope
-      : this.photoService.listMedia(this.limit, this.offset);
 
-    this.subscription = request$.subscribe({
-      next: (response: ListPhotosResponse) => {
-        let allMedia = response.photos;
-        
-        // Apply tag filter from URL if present
-        if (this.activeTagFilter) {
-          const tagLower = this.activeTagFilter.toLowerCase();
-          allMedia = allMedia.filter(p => this.getTagsForPhoto(p).some(t => t.toLowerCase().includes(tagLower)));
-        }
-        
-        // Apply search term based on scope
-        if (this.currentSearchTerm.trim() !== '') {
-          const term = this.currentSearchTerm.toLowerCase();
-          
-          switch (this.searchScope) {
-            case 'name':
-              allMedia = allMedia.filter(p => p.filename.toLowerCase().includes(term));
-              break;
-              
-            case 'tags':
-              allMedia = allMedia.filter(p => 
-                this.getTagsForPhoto(p).some(t => t.toLowerCase().includes(term))
-              );
-              break;
-              
-            case 'all':
-            default:
-              // Search tags first, then filename - combine results (deduplicate)
-              const tagMatches = new Set<string>();
-              const nameMatches = new Set<string>();
-              
-              allMedia.forEach(p => {
-                if (this.getTagsForPhoto(p).some(t => t.toLowerCase().includes(term))) {
-                  tagMatches.add(p.id);
-                }
-                if (p.filename.toLowerCase().includes(term)) {
-                  nameMatches.add(p.id);
-                }
-              });
-              
-              // Combine: photos matching tags OR filename
-              const combinedIds = new Set([...tagMatches, ...nameMatches]);
-              allMedia = allMedia.filter(p => combinedIds.has(p.id));
-              break;
+    let request$: Subscription | null = null;
+
+    if (this.currentSearchTerm.trim() !== '') {
+      // Use server-side search
+      request$ = this.searchService.searchMedia(
+        this.currentSearchTerm,
+        this.searchScope,
+        this.limit,
+        this.offset
+      ).subscribe({
+        next: (response: SearchResponse) => {
+          let allMedia = response.results;
+
+          // Apply tag filter from URL if present (client-side filter on top of search results)
+          if (this.activeTagFilter) {
+            const tagLower = this.activeTagFilter.toLowerCase();
+            allMedia = allMedia.filter(p => this.getTagsForPhoto(p).some(t => t.toLowerCase().includes(tagLower)));
           }
+
+          this.photos = allMedia;
+          this.totalPhotos = response.total;
+          this.loading = false;
+        },
+        error: () => {
+          this.photos = [];
+          this.totalPhotos = 0;
+          this.loading = false;
         }
-        
-        this.photos = allMedia;
-        this.totalPhotos = response.total;
-        this.loading = false;
-      },
-      error: () => { this.photos = []; this.totalPhotos = 0; this.loading = false; }
-    });
+      });
+    } else {
+      // No search term - use standard list endpoint
+      request$ = this.photoService.listMedia(this.limit, this.offset).subscribe({
+        next: (response: ListPhotosResponse) => {
+          let allMedia = response.photos;
+
+          // Apply tag filter from URL if present
+          if (this.activeTagFilter) {
+            const tagLower = this.activeTagFilter.toLowerCase();
+            allMedia = allMedia.filter(p => this.getTagsForPhoto(p).some(t => t.toLowerCase().includes(tagLower)));
+          }
+
+          this.photos = allMedia;
+          this.totalPhotos = response.total;
+          this.loading = false;
+        },
+        error: () => {
+          this.photos = [];
+          this.totalPhotos = 0;
+          this.loading = false;
+        }
+      });
+    }
+
+    // Store the subscription so we can clean it up
+    this.subscription = request$;
   }
 
   getTagsForPhoto(photo: Photo): string[] {

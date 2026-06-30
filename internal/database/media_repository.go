@@ -135,7 +135,7 @@ func (r *PostgresMediaRepository) List(ctx context.Context, limit, offset int, u
 	}
 
 	listQuery += fmt.Sprintf(` ORDER BY captured_at DESC LIMIT $%d OFFSET $%d`, len(argsList)+1, len(argsList)+2)
-	argsList = append(argsList, limit, offset)
+	argsList = append(argsList, int64(limit), int64(offset))
 
 	err = r.db.SelectContext(ctx, &mediaList, listQuery, argsList...)
 	if err != nil {
@@ -171,7 +171,7 @@ func (r *PostgresMediaRepository) ListByType(ctx context.Context, mediaType doma
 	}
 
 	listQuery += fmt.Sprintf(` ORDER BY captured_at DESC LIMIT $%d OFFSET $%d`, len(argsList)+1, len(argsList)+2)
-	argsList = append(argsList, limit, offset)
+	argsList = append(argsList, int64(limit), int64(offset))
 
 	err = r.db.SelectContext(ctx, &mediaList, listQuery, argsList...)
 	if err != nil {
@@ -181,6 +181,96 @@ func (r *PostgresMediaRepository) ListByType(ctx context.Context, mediaType doma
 	return mediaList, total, nil
 }
 
+
+// Search searches for media by query string with optional scope and pagination
+func (r *PostgresMediaRepository) Search(ctx context.Context, query string, scope string, limit int, offset int, userID *uuid.UUID) ([]*domain.Media, int, error) {
+	var mediaList []*domain.Media
+	var total int
+
+	// Start with base query
+	queryStr := `SELECT COUNT(*) FROM media WHERE deleted_at IS NULL`
+	args := []interface{}{}
+	argIdx := 1
+
+	if userID != nil {
+		queryStr += fmt.Sprintf(" AND user_id = $%d", argIdx)
+		args = append(args, *userID)
+		argIdx++
+	}
+
+	// Add search conditions based on scope
+	if query != "" {
+		switch scope {
+		case "name":
+			queryStr += fmt.Sprintf(" AND LOWER(filename) LIKE $%d", argIdx)
+			args = append(args, "%"+query+"%")
+			argIdx++
+		case "tags":
+			queryStr += fmt.Sprintf(" AND tags LIKE $%d", argIdx)
+			args = append(args, "%"+query+"%")
+			argIdx++
+		case "all":
+			queryStr += fmt.Sprintf(" AND (LOWER(filename) LIKE $%d OR tags LIKE $%d)", argIdx, argIdx+1)
+			args = append(args, "%"+query+"%", "%"+query+"%")
+			argIdx += 2
+		default:
+			// Default to searching both name and tags
+			queryStr += fmt.Sprintf(" AND (LOWER(filename) LIKE $%d OR tags LIKE $%d)", argIdx, argIdx+1)
+			args = append(args, "%"+query+"%", "%"+query+"%")
+			argIdx += 2
+		}
+	}
+
+	// Execute count query
+	err := r.db.GetContext(ctx, &total, queryStr, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Build the list query
+	listQuery := `SELECT * FROM media WHERE deleted_at IS NULL`
+	listArgs := []interface{}{}
+	listArgIdx := 1
+
+	if userID != nil {
+		listQuery += fmt.Sprintf(" AND user_id = $%d", listArgIdx)
+		listArgs = append(listArgs, *userID)
+		listArgIdx++
+	}
+
+	if query != "" {
+		switch scope {
+		case "name":
+			listQuery += fmt.Sprintf(" AND LOWER(filename) LIKE $%d", listArgIdx)
+			listArgs = append(listArgs, "%"+query+"%")
+			listArgIdx++
+		case "tags":
+			listQuery += fmt.Sprintf(" AND tags LIKE $%d", listArgIdx)
+			listArgs = append(listArgs, "%"+query+"%")
+			listArgIdx++
+		case "all":
+			listQuery += fmt.Sprintf(" AND (LOWER(filename) LIKE $%d OR tags LIKE $%d)", listArgIdx, listArgIdx+1)
+			listArgs = append(listArgs, "%"+query+"%", "%"+query+"%")
+			listArgIdx += 2
+		default:
+			listQuery += fmt.Sprintf(" AND (LOWER(filename) LIKE $%d OR tags LIKE $%d)", listArgIdx, listArgIdx+1)
+			listArgs = append(listArgs, "%"+query+"%", "%"+query+"%")
+			listArgIdx += 2
+		}
+	}
+
+	// Append limit/offset, then use their final positions in the query
+	listArgs = append(listArgs, int64(limit), int64(offset))
+	listQuery += fmt.Sprintf(" ORDER BY captured_at DESC LIMIT $%d OFFSET $%d", len(listArgs)-1, len(listArgs))
+
+	// Execute list query
+	err = r.db.SelectContext(ctx, &mediaList, listQuery, listArgs...)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return mediaList, total, nil
+}
 func (r *PostgresMediaRepository) SearchByTags(ctx context.Context, tags string, userID *uuid.UUID) ([]*domain.Media, error) {
 	var mediaList []*domain.Media
 	query := `SELECT * FROM media WHERE deleted_at IS NULL AND tags LIKE $1`

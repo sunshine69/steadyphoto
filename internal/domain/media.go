@@ -169,6 +169,10 @@ type MediaRepository interface {
 	ListByType(ctx context.Context, mediaType MediaType, limit, offset int, userID *uuid.UUID) ([]*Media, int, error)
 	SearchByTags(ctx context.Context, tags string, userID *uuid.UUID) ([]*Media, error)
 
+	// Search performs a full-text search across filename, tags, metadata, and path
+	// with pagination support. scope: "all" | "name" | "tags"
+	Search(ctx context.Context, query string, scope string, limit, offset int, userID *uuid.UUID) ([]*Media, int, error)
+
 	// Trash operations for soft-delete and permanent delete functionality
 	ListTrashed(ctx context.Context, limit, offset int, userID uuid.UUID) ([]*Media, int, error)
 	GetTrashedMedia(ctx context.Context, id uuid.UUID, userID uuid.UUID) (*Media, error)

@@ -517,32 +517,6 @@ func (s *Server) handleGetPhotoFile(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, absPath)
 }
 
-// handleSearchMedia searches for media by tags and returns matching items.
-func (s *Server) handleSearchMedia(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	userID, ok := GetUserIDFromContext(ctx)
-	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	tagQuery := r.URL.Query().Get("tag")
-	if tagQuery == "" {
-		http.Error(w, "Missing 'tag' query parameter", http.StatusBadRequest)
-		return
-	}
-
-	matchingMedia, err := s.mediaRepo.SearchByTags(ctx, tagQuery, &userID)
-	if err != nil {
-		log.Printf("[ERROR] handleSearchMedia - search by tags: %v", err)
-		http.Error(w, "Failed to search media: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(matchingMedia)
-}
 
 // handleListMedia returns a paginated list of media items (photos + videos) (now user-scoped)
 func (s *Server) handleListMedia(w http.ResponseWriter, r *http.Request) {
