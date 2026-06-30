@@ -691,13 +691,25 @@ func (h *MediaUploadHandlerSingle) HandleComplete(w http.ResponseWriter, r *http
 
 	log.Printf("[INFO] UploadHandlerComplete: Assembling chunks for session %s (totalChunks=%d)", uploadID, session.TotalChunks)
 
+	// Declare assembledFile before the defer function so the closure can reference it
+	var assembledFile *os.File
+
+	// Ensure cleanup of temp files on any exit path (success or failure)
+	defer func() {
+		if assembledFile != nil {
+			assembledFile.Close()
+			os.Remove(assembledFile.Name())
+		}
+		h.sessionManager.CleanupChunks(uploadID, session.TotalChunks)
+	}()
+
 	// Read and combine all chunk temp files in order
 	tempDir := h.sessionManager.GetUploadTempDir()
 	var combinedWriter io.Writer
 	hasher := sha256.New()
 
 	// Create a temporary file to hold the assembled content
-	assembledFile, err := os.CreateTemp("", "assembled-*.tmp")
+	assembledFile, err = os.CreateTemp("", "assembled-*.tmp")
 	if err != nil {
 		log.Printf("[ERROR] UploadHandlerComplete: Failed to create temp file for assembly: %v", err)
 		w.Header().Set("Content-Type", "application/json")
@@ -742,11 +754,13 @@ func (h *MediaUploadHandlerSingle) HandleComplete(w http.ResponseWriter, r *http
 		log.Printf("[DEBUG] UploadHandlerComplete: Wrote %d bytes for chunk %d (total assembled so far)", n, i)
 	}
 
-	assembledFile.Close() // Flush all data before reading back
-
+	// Seek to the beginning of the assembled file while it's still open (before closing).
+	// NOTE: Do NOT close the file before seeking — os.File.Seek on a closed file returns os.ErrClosed.
 	if _, err := assembledFile.Seek(0, io.SeekStart); err != nil {
 		log.Printf("[ERROR] UploadHandlerComplete: Failed to seek in assembled file for %s: %v", uploadID, err)
-		os.Remove(assembledFile.Name())
+		assembledFile.Close()
+		os.Remove(assembledFile.Name()) // Clean up temp file
+		h.sessionManager.CleanupChunks(uploadID, session.TotalChunks) // Clean up chunk files
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": false,
@@ -883,11 +897,6 @@ func (h *MediaUploadHandlerSingle) HandleComplete(w http.ResponseWriter, r *http
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
 
-	// Clean up all chunk temp files and session from memory
-	for i := 0; i < session.TotalChunks; i++ {
-		chunkPath := filepath.Join(tempDir, uploadID+fmt.Sprintf("_%d.tmp", i))
-		os.Remove(chunkPath) // Remove each chunk file after successful assembly
-	}
 	h.sessionManager.DeleteSession(uploadID)
 
 	log.Printf("[INFO] UploadHandlerComplete: Successfully assembled '%s' (ID=%s)", session.Filename, meta.ID)

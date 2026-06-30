@@ -39,11 +39,13 @@ func printVersionBuildInfo() {
 	fmt.Printf("Version: %s\nBuild time: %s\n", version, buildTime)
 }
 
+
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "version" {
 		printVersionBuildInfo()
 		os.Exit(0)
 	}
+
 	// Command-line flags (override env vars if supplied)
 	tlsCertPath := flag.String("tls-cert", "", "(CLI override) Path to TLS certificate file (PEM). If provided along with -tls-key, starts HTTPS server.")
 	tlsKeyPath := flag.String("tls-key", "", "(CLI override) Path to TLS private key file (PEM). If provided along with -tls-cert, starts HTTPS server.")
@@ -167,6 +169,9 @@ Command-Line Flags (override env vars):
                     Overrides $TLS_CERT if both CLI flag and env var are provided.
   -tls-key=path     Path to TLS private key file (PEM). If both -tls-cert and -tls-key are set, starts HTTPS server.
                     Overrides $TLS_KEY if both CLI flag and env var are provided.
+
+Sub-commands:
+  version           Show version and build information.
 
 HTTPS/TLS Modes:
   - Direct HTTPS: Set either environment variables ($TLS_CERT + $TLS_KEY) OR command-line flags (-tls-cert + -tls-key).

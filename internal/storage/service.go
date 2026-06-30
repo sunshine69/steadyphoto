@@ -1,7 +1,9 @@
 package storage
 
 import (
+	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -138,4 +140,90 @@ func (s *StorageService) GetThumbnailRelativePath(mediaType string, filename str
 	cleanPath := strings.TrimPrefix(filename, "storage/")
 	basePart := strings.TrimSuffix(cleanPath, ext)
 	return basePart + "_thumb.webp"
+}
+
+// CleanupOrphanedChunks safely removes chunk temp files that don't belong to any active session.
+// This function loads the session registry and only deletes files that are truly orphaned.
+// Returns the number of files removed.
+func (s *StorageService) CleanupOrphanedChunks() int {
+	tempDir := s.GetUploadTempDir()
+
+	// Load active sessions to know which chunks are still in use
+	activeSessions := s.loadActiveSessions(tempDir)
+
+	entries, err := os.ReadDir(tempDir)
+	if err != nil {
+		log.Printf("[ERROR] StorageService: Failed to read upload temp dir %s: %v", tempDir, err)
+		return 0
+	}
+
+	removed := 0
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		if strings.HasSuffix(entry.Name(), ".tmp") {
+			// Extract session ID from filename (format: {sessionID}.tmp or {sessionID}_{chunkIndex}.tmp)
+			sessionID := extractSessionIDFromFilename(entry.Name())
+			
+			// Skip if this file belongs to an active session
+			if activeSessions[sessionID] {
+				log.Printf("[INFO] StorageService: Skipping chunk file %s (belongs to active session %s)", entry.Name(), sessionID)
+				continue
+			}
+
+			filePath := filepath.Join(tempDir, entry.Name())
+			if err := os.Remove(filePath); err != nil {
+				log.Printf("[WARN] StorageService: Failed to remove orphaned chunk %s: %v", filePath, err)
+			} else {
+				log.Printf("[INFO] StorageService: Removed orphaned chunk file: %s", filePath)
+				removed++
+			}
+		}
+	}
+
+	return removed
+}
+
+// loadActiveSessions loads session IDs from the .sessions.json file in the storage root directory
+func (s *StorageService) loadActiveSessions(tempDir string) map[string]bool {
+	activeSessions := make(map[string]bool)
+	// Sessions are stored in the storage root, not in the upload temp directory
+	sessionFile := filepath.Join(s.baseDir, ".sessions.json")
+
+	data, err := os.ReadFile(sessionFile)
+	if err != nil {
+		log.Printf("[INFO] StorageService: No session file found at %s: %v", sessionFile, err)
+		return activeSessions
+	}
+
+	// Parse sessions JSON (format: map[string]*UploadSession)
+	var sessions map[string]map[string]interface{}
+	if err := json.Unmarshal(data, &sessions); err != nil {
+		log.Printf("[ERROR] StorageService: Failed to parse session file: %v", err)
+		return activeSessions
+	}
+
+	// Extract session IDs
+	for sessionID := range sessions {
+		activeSessions[sessionID] = true
+	}
+
+	log.Printf("[INFO] StorageService: Loaded %d active sessions from %s", len(activeSessions), sessionFile)
+	return activeSessions
+}
+
+// extractSessionIDFromFilename extracts the session ID from a .tmp filename
+// Format: {sessionID}.tmp or {sessionID}_{chunkIndex}.tmp
+func extractSessionIDFromFilename(filename string) string {
+	// Remove .tmp suffix
+	name := strings.TrimSuffix(filename, ".tmp")
+	
+	// Check if it has chunk index (contains underscore)
+	if idx := strings.LastIndex(name, "_"); idx != -1 {
+		return name[:idx]
+	}
+	
+	// No chunk index, the whole name is the session ID
+	return name
 }

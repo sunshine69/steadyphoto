@@ -68,6 +68,7 @@ func NewServer(
 		publicAccessRepo: publicAccessRepo,
 	}
 	s.routes()
+	s.startCleanupGoroutine()
 	return s
 }
 
@@ -349,6 +350,30 @@ func (s *Server) routes() {
 		http.ServeFile(w, r, "./ui/index.html")
 	})
 }
+
+// startCleanupGoroutine starts a background goroutine that periodically cleans up expired upload sessions and orphaned chunk files
+func (s *Server) startCleanupGoroutine() {
+	go func() {
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+
+		log.Printf("[INFO] UploadSessionManager: Cleanup goroutine started")
+
+		for range ticker.C {
+			cleaned := s.sessionManager.CleanupExpiredSessions()
+			if cleaned > 0 {
+				log.Printf("[INFO] UploadSessionManager: Cleaned up %d expired sessions", cleaned)
+			}
+
+			// Also clean orphaned chunks (sessions lost during crash)
+			removed := s.storageService.CleanupOrphanedChunks()
+			if removed > 0 {
+				log.Printf("[INFO] StorageService: Cleaned up %d orphaned chunk files", removed)
+			}
+		}
+	}()
+}
+
 
 // handleListPhotos returns a paginated list of photos only (now user-scoped)
 func (s *Server) handleListPhotos(w http.ResponseWriter, r *http.Request) {
