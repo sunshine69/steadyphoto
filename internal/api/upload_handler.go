@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -20,6 +21,69 @@ import (
 
 	"github.com/google/uuid"
 )
+
+// errorLog is the file handle for the backend error log
+var errorLog *os.File
+
+// initErrorLog initializes the error log file for writing errors
+func initErrorLog() error {
+	var err error
+	errorLog, err = os.OpenFile("backend-errors.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open backend error log: %w", err)
+	}
+	return nil
+}
+
+// logBackendError writes an error entry to the backend-errors.log file
+func logBackendError(prefix string, err error) {
+	if errorLog == nil {
+		// Fallback to stderr if log file isn't initialized
+		log.Printf("[%s] %v", prefix, err)
+		return
+	}
+
+	entry := fmt.Sprintf("%s | %s | %s\n",
+		time.Now().Format(time.RFC3339),
+		runtime.Version(),
+		err,
+	)
+
+	if _, writeErr := errorLog.WriteString(entry); writeErr != nil {
+		log.Printf("[ERROR] Failed to write to backend error log: %v", writeErr)
+	}
+}
+
+// closeErrorLog closes the error log file handle
+func closeErrorLog() {
+	if errorLog != nil {
+		errorLog.Close()
+	}
+}
+
+// detectClientSource identifies the upload client from the User-Agent header
+func detectClientSource(r *http.Request) domain.ClientSource {
+	userAgent := r.Header.Get("User-Agent")
+	if userAgent == "" {
+		return domain.ClientSourceUnknown
+	}
+
+	// Check for specific clients
+	if strings.Contains(userAgent, "Android") || strings.Contains(userAgent, "Android App") {
+		return domain.ClientSourceAndroid
+	}
+	if strings.Contains(userAgent, "ImmichMigrate") || strings.Contains(userAgent, "immich-migrate") {
+		return domain.ClientSourceImmichMigrate
+	}
+	if strings.Contains(userAgent, "Web") || strings.Contains(userAgent, "Mozilla") {
+		return domain.ClientSourceWeb
+	}
+	if strings.Contains(userAgent, "iOS") || strings.Contains(userAgent, "iPhone") || strings.Contains(userAgent, "iPad") {
+		return domain.ClientSourceiOS
+	}
+
+	return domain.ClientSourceUnknown
+}
 
 // MediaUploadHandler handles media upload requests for Web and Mobile clients.
 type MediaUploadHandler struct {
@@ -51,6 +115,7 @@ func (h *MediaUploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	err := r.ParseMultipartForm(32 << 20)
 	if err != nil {
 		log.Printf("[ERROR] UploadHandler: Failed to parse form: %v", err)
+		logBackendError("[PARSE]", err)
 		http.Error(w, "Invalid form data. Ensure you are sending multipart/form-data.", http.StatusBadRequest)
 		return
 	}
@@ -208,10 +273,12 @@ func (h *MediaUploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 			mediaType = domain.MediaTypeVideo
 		}
 
+		clientSource := detectClientSource(r)
 		meta := &domain.Media{
-			ID: uuid.New(), UserID: userID, Filename: header.Filename, MediaType: mediaType, Path: relPathFromRoot, SizeBytes: n, Hash: hash, CapturedAt: time.Now(),
+			ID: uuid.New(), UserID: userID, Filename: header.Filename, MediaType: mediaType, Path: relPathFromRoot, SizeBytes: n, Hash: hash, CapturedAt: time.Now(), ClientSource: clientSource,
 		}
 
+		log.Printf("[INFO] UploadHandler: Detected client source '%s' for '%s'", clientSource, header.Filename)
 		log.Printf("[DEBUG] UploadHandler: Inserting record into DB for '%s'...", meta.ID)
 
 		if err := h.mediaRepo.Create(ctx, meta); err != nil {

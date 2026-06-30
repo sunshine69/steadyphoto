@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -33,6 +34,45 @@ var (
 	// Maximum number of retries for rate-limited requests before giving up.
 	maxRateLimitRetries = 5
 )
+
+// logFile is the file handle for the error log
+var logFile *os.File
+
+// initLogFile initializes the log file for writing errors
+func initLogFile() error {
+	var err error
+	logFile, err = os.OpenFile("migration-errors.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open log file: %w", err)
+	}
+	return nil
+}
+
+// logError writes an error entry to the migration-errors.log file
+func logError(prefix string, err error) {
+	if logFile == nil {
+		// Fallback to stderr if log file isn't initialized
+		log.Printf("[%s] %v", prefix, err)
+		return
+	}
+
+	entry := fmt.Sprintf("%s | %s | %s\n",
+		time.Now().Format(time.RFC3339),
+		runtime.GOROOT(),
+		err,
+	)
+
+	if _, writeErr := logFile.WriteString(entry); writeErr != nil {
+		log.Printf("[ERROR] Failed to write to log file: %v", writeErr)
+	}
+}
+
+// closeLogFile closes the log file handle
+func closeLogFile() {
+	if logFile != nil {
+		logFile.Close()
+	}
+}
 
 // SearchResponse mirrors Immich search API response
 type SearchResponse struct {
@@ -87,6 +127,7 @@ func (c *immichClient) searchAssets(ctx context.Context, page int) ([]Asset, err
 
 	req.Header.Set("x-api-key", c.apiKey)
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "immich-migrate/1.0")
 
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -131,6 +172,7 @@ type steadyPhotoClient struct {
 	authToken     string // Bearer token from login
 	client        *http.Client
 	sleepInterval time.Duration // Sleep between uploads to stay under rate limit
+	userAgent     string      // User-Agent header for client identification
 }
 
 func newSteadyPhotoClient(baseURL string, sleepInterval time.Duration) *steadyPhotoClient {
@@ -138,6 +180,7 @@ func newSteadyPhotoClient(baseURL string, sleepInterval time.Duration) *steadyPh
 		baseURL:       strings.TrimRight(baseURL, "/"),
 		client:        &http.Client{Timeout: 10 * time.Minute},
 		sleepInterval: sleepInterval,
+		userAgent:     "immich-migrate/1.0",
 	}
 }
 
@@ -191,6 +234,7 @@ func (c *steadyPhotoClient) login(email, password string) (*steadyPhotoLoginResp
 	}
 
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", c.userAgent)
 
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -251,6 +295,7 @@ func (c *steadyPhotoClient) uploadFile(ctx context.Context, filename string, mim
 
 		req.Header.Set("Content-Type", writer.FormDataContentType())
 		req.Header.Set("Authorization", "Bearer "+c.authToken)
+		req.Header.Set("User-Agent", c.userAgent)
 
 		resp, err := c.client.Do(req)
 		if err != nil {
@@ -369,6 +414,8 @@ func (s *migrationStats) recordError(err error) {
 	defer s.mu.Unlock()
 	s.errors++
 	log.Printf("[ERROR] %v", err)
+	// Also write to the dedicated error log file
+	logError("[MIGRATION]", err)
 }
 
 func (s *migrationStats) printFinalReport(total int) {
@@ -382,7 +429,7 @@ func (s *migrationStats) printFinalReport(total int) {
 	fmt.Printf("Duration:               %s\n", elapsed)
 
 	if s.errors > 0 {
-		fmt.Println("\n⚠️  Migration completed with errors. Check logs for details.")
+		fmt.Println("\n⚠️  Migration completed with errors. Check migration-errors.log for details.")
 	} else {
 		fmt.Println("\n✅ Migration completed successfully!")
 	}
@@ -396,6 +443,12 @@ func main() {
 	steadyPassword := os.Getenv("STEADY_PASSWORD")
 	targetURL := os.Getenv("STEADY_URL")
 	dryRun := len(os.Getenv("DRY_RUN")) > 0
+
+	// Initialize the error log file
+	if err := initLogFile(); err != nil {
+		log.Fatalf("Failed to initialize log file: %v", err)
+	}
+	defer closeLogFile()
 
 	// Optional: configure sleep interval between uploads to stay under rate limits.
 	// Default is 1 seconds (~10 req/min) which safely stays under the 500/min limit.
@@ -459,6 +512,7 @@ func main() {
 		steadyClient = newSteadyPhotoClient(targetURL, uploadSleep)
 		loginResp, err := steadyClient.login(steadyEmail, steadyPassword)
 		if err != nil {
+			logError("[AUTH]", err)
 			log.Fatalf("Failed to authenticate: %v", err)
 		}
 
@@ -479,6 +533,7 @@ func main() {
 	for {
 		select {
 		case <-ctx.Done():
+			logError("[CTX]", fmt.Errorf("migration cancelled by user"))
 			log.Printf("Migration cancelled by user")
 			return
 		default:
@@ -487,6 +542,7 @@ func main() {
 		fmt.Printf("\n[2/3] Fetching page %d...\n", page)
 		assets, err := client.searchAssets(ctx, page)
 		if err != nil {
+			logError("[FETCH]", err)
 			log.Fatalf("Failed to fetch assets: %v", err)
 		}
 
@@ -512,6 +568,7 @@ func main() {
 	for i, asset := range allAssets {
 		select {
 		case <-ctx.Done():
+			logError("[CTX]", fmt.Errorf("migration cancelled by user"))
 			log.Printf("Migration cancelled by user")
 			return
 		default:
@@ -568,6 +625,7 @@ func migrateAsset(
 	fmt.Printf("  Downloading: %s (%s)\n", asset.OriginalFileName, ext)
 	fileData, err := immichClient.downloadAsset(ctx, asset.ID)
 	if err != nil {
+		logError("[DOWNLOAD]", err)
 		return fmt.Errorf("download failed: %w", err)
 	}
 
@@ -578,7 +636,9 @@ func migrateAsset(
 	}
 
 	if steadyClient == nil {
-		return fmt.Errorf("steadyPhoto client is nil - authentication required (or use DRY_RUN=true)")
+		err := fmt.Errorf("steadyPhoto client is nil - authentication required (or use DRY_RUN=true)")
+		logError("[CONFIG]", err)
+		return err
 	}
 
 	// Upload the file using the SteadyPhoto API endpoint.
@@ -591,6 +651,7 @@ func migrateAsset(
 			time.Sleep(steadyClient.sleepInterval)
 			return fmt.Errorf("duplicate") // Special error to indicate skip
 		}
+		logError("[UPLOAD]", err)
 		time.Sleep(5 * time.Second)
 		return fmt.Errorf("upload via API failed: %w", err)
 	}

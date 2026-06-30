@@ -98,6 +98,17 @@ func (m *MediaType) Scan(value interface{}) error {
 	return nil
 }
 
+// ClientSource represents the source of an upload (e.g., "web", "android", "immich-migrate")
+type ClientSource string
+
+const (
+	ClientSourceWeb        ClientSource = "web"
+	ClientSourceAndroid    ClientSource = "android"
+	ClientSourceiOS        ClientSource = "ios"
+	ClientSourceImmichMigrate ClientSource = "immich-migrate"
+	ClientSourceUnknown    ClientSource = "unknown"
+)
+
 // Media represents a single image/video asset
 type Media struct {
 	ID            uuid.UUID      `db:"id" json:"id"`
@@ -115,6 +126,7 @@ type Media struct {
 	UpdatedAt     time.Time      `db:"updated_at" json:"updatedAt"`
 	Tags          string             `db:"tags" json:"tags"`
 	UserID        uuid.UUID          `db:"user_id" json:"userId"`
+	ClientSource  ClientSource     `db:"client_source" json:"clientSource"`
 	DeletedAt     *time.Time         `db:"deleted_at" json:"-"` // Soft delete timestamp, not exposed in JSON API
 }
 

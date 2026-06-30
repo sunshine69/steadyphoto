@@ -44,9 +44,12 @@ type UploadProgress struct {
 	Message        string  `json:"message,omitempty"`
 }
 
-var httpClient = &http.Client{
-	Timeout: 15 * time.Minute, // Long timeout for large file uploads on mobile networks
-}
+var (
+	httpClient = &http.Client{
+		Timeout: 15 * time.Minute, // Long timeout for large file uploads on mobile networks
+	}
+	userAgent = "immich-android/1.0"
+)
 
 // UploadSingleFile uploads a single file to the server via Go's http package.
 // This is much more reliable than OkHttp on Android because Go handles network
@@ -116,6 +119,7 @@ func UploadSingleFile(filePath string, uploadURL string, authToken string) (*Upl
 
 		// Set headers - this must be done after creating the multipart writer since it sets Content-Type
 		req.Header.Set("Content-Type", writer.FormDataContentType())
+		req.Header.Set("User-Agent", userAgent)
 
 		// Add auth token if provided
 		if authToken != "" {
@@ -208,6 +212,7 @@ func CreateChunkedUploadSession(uploadURL string, authToken string, fileName str
 	}
 
 	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("User-Agent", userAgent)
 	if authToken != "" {
 		req.Header.Set("Authorization", "Bearer "+authToken)
 	}
@@ -279,6 +284,7 @@ func UploadChunk(chunkData []byte, uploadURL string, authToken string, sessionID
 	}
 
 	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("User-Agent", userAgent)
 	if authToken != "" {
 		req.Header.Set("Authorization", "Bearer "+authToken)
 	}
@@ -313,6 +319,7 @@ func GetChunkedUploadStatus(uploadURL string, authToken string, sessionID string
 		return nil, fmt.Errorf("failed to create request: %v", err)
 	}
 
+	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("Authorization", "Bearer "+authToken)
 
 	resp, err := httpClient.Do(req)
@@ -372,6 +379,7 @@ func CompleteChunkedUpload(uploadURL string, authToken string, sessionID string)
 	}
 
 	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("User-Agent", userAgent)
 	if authToken != "" {
 		req.Header.Set("Authorization", "Bearer "+authToken)
 	}
