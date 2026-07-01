@@ -608,7 +608,14 @@ export class PhotoListComponent implements OnInit, OnDestroy {
   clearTagFilter(): void { this.activeTagFilter = null; this.router.navigate(['/'], { replaceUrl: true }); }
   changePage(dir: number): void { this.offset += (dir * this.limit); this.currentPage += dir; this.galleryState.saveCurrentPage(this.currentPage); this.loadPhotos(); window.scrollTo(0, 0); }
   onJumpToPage(): void { if (this.jumpPageInput && this.jumpPageInput <= this.totalPages) { this.currentPage = this.jumpPageInput; this.offset = (this.currentPage - 1) * this.limit; this.galleryState.saveCurrentPage(this.currentPage); this.loadPhotos(); window.scrollTo(0, 0); } }
-  onPhotoClick(id: string): void { this.router.navigate(['/photos', id]); }
+  onPhotoClick(id: string): void {
+    const queryParams: any = {};
+    if (this.currentSearchTerm) {
+      queryParams.searchTerm = this.currentSearchTerm;
+      queryParams.searchScope = this.searchScope;
+    }
+    this.router.navigate(['/photos', id], { queryParams });
+  }
 
   ngOnDestroy(): void {
     sessionStorage.setItem(this.SCROLL_KEY, window.scrollY.toString());

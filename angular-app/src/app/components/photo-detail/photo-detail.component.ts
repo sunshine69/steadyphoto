@@ -6,6 +6,7 @@ import { Subscription } from 'rxjs';
 import { PhotoService } from '../../services/photo.service';
 import { AlbumService } from '../../services/album.service';
 import { PresentationService, MediaItem } from '../../services/presentation.service';
+import { SearchService, SearchScope } from '../../services/search.service';
 import { ShareTriggerService } from '../../services/share-trigger.service';
 import { Photo } from '../../models/photo.model';
 
@@ -199,6 +200,7 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
   private photoService = inject(PhotoService);
   private albumService = inject(AlbumService);
   private presentationService = inject(PresentationService);
+  private searchService = inject(SearchService);
   private shareTrigger = inject(ShareTriggerService);
   private subscription?: Subscription;
 
@@ -412,134 +414,130 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
     const shareToken = this.route.snapshot.queryParams['shareToken'];
     const albumIdsParam = this.route.snapshot.queryParams['albumIds'];
     const albumMediaPaths = this.route.snapshot.queryParams['mediaPaths'];
+    const searchParam = this.route.snapshot.queryParams['searchTerm'];
+    const searchScopeParam = this.route.snapshot.queryParams['searchScope'] || 'all';
     
     let mediaItems: MediaItem[];
     
+    // Helper: build media items array from photos (shared or not)
+    const buildMediaItems = (photos: (Photo | null)[], sourceContext: string): MediaItem[] => {
+      return photos
+        .filter((p): p is Photo => p !== null)
+        .map(p => ({
+          id: p.id,
+          path: (isSharedMedia && shareToken)
+            ? this.photoService.getPublicShareOriginalUrl(shareToken, p.path || '')
+            : isSharedMedia && !shareToken
+            ? `${this.photoService['API_BASE_URL']}/media/shared/${p.id}/original`
+            : `${this.photoService['API_BASE_URL']}/media/${p.id}/original`,
+          filename: p.filename || '',
+          mediaType: p.mediaType || 'photo'
+        }));
+    };
+
+    const startPresentationWithItems = (items: MediaItem[], navigateOpts: any) => {
+      const startIndex = items.findIndex(item => item.id === this.photo?.id);
+      if (startIndex !== -1 && items.length > 0) {
+        this.presentationService.open(items, startIndex);
+        this.router.navigate(['/presentation'], navigateOpts);
+      } else {
+        alert('No items available for presentation.');
+      }
+    };
+
     if (albumIdsParam) {
       // We came from an album - build media items from album IDs
       const albumPhotoIds: string[] = albumIdsParam.split(',').map((id: string) => id.trim()).filter(Boolean);
       const albumMediaPathsArray: string[] = albumMediaPaths ? albumMediaPaths.split(',').map((p: string) => p.trim()) : [];
       
       import('rxjs').then(({ forkJoin, of, catchError }) => {
-        // For authenticated shared media, we need to fetch details to get media type
         const requests$ = albumPhotoIds.map(id => 
           isSharedMedia && !shareToken
-            ? this.photoService.getSharedMedia(id).pipe(
-                catchError(() => of(null)) // Skip failed fetches gracefully
-              )
+            ? this.photoService.getSharedMedia(id).pipe(catchError(() => of(null)))
             : isSharedMedia && shareToken
-            ? this.photoService.getPublicShareMedia(shareToken, albumMediaPathsArray[albumPhotoIds.indexOf(id)] || '').pipe(
-                catchError(() => of(null)) // Skip failed fetches gracefully
-              )
-            : this.photoService.getMedia(id).pipe(
-                catchError(() => of(null)) // Skip failed fetches gracefully
-              )
+            ? this.photoService.getPublicShareMedia(shareToken, albumMediaPathsArray[albumPhotoIds.indexOf(id)] || '').pipe(catchError(() => of(null)))
+            : this.photoService.getMedia(id).pipe(catchError(() => of(null)))
         );
         
         forkJoin(requests$).subscribe({
-          next: (photos) => {
-            mediaItems = photos.filter((p): p is Photo => p !== null).map((p, index) => ({
-              id: p.id,
-              path: (isSharedMedia && shareToken)
-                ? this.photoService.getPublicShareOriginalUrl(shareToken, albumMediaPathsArray[index] || '')
-                : isSharedMedia
-                ? `${this.photoService['API_BASE_URL']}/media/shared/${p.id}/original`
-                : `${this.photoService['API_BASE_URL']}/media/${p.id}/original`,
-              filename: p.filename || '',
-              mediaType: p.mediaType || 'photo'
-            }));
-
-            const startIndex = mediaItems.findIndex(item => item.id === this.photo?.id);
-            
-            if (startIndex !== -1 && mediaItems.length > 0) {
-              this.presentationService.open(mediaItems, startIndex);
-              this.router.navigate(['/presentation'], { queryParams: { shareToken } });
-            } else {
-              alert('No items available for presentation.');
-            }
+          next: (photos: (Photo | null)[]) => {
+            mediaItems = buildMediaItems(photos, 'album');
+            startPresentationWithItems(mediaItems, { queryParams: { shareToken } });
           },
-          error: (err) => {
+          error: (err: unknown) => {
             console.error('Failed to load album media for presentation', err);
             alert('Failed to start presentation mode.');
           }
         });
       });
+    } else if (searchParam && !isSharedMedia) {
+      // Came from search context (owner gallery) - use search results
+      this.searchService.searchMedia(searchParam, searchScopeParam as SearchScope, 200, 0).subscribe({
+        next: (response: any) => {
+          mediaItems = response.results.map((p: any) => ({
+            id: p.id,
+            path: `${this.photoService['API_BASE_URL']}/media/${p.id}/original`,
+            filename: p.filename || '',
+            mediaType: p.mediaType || 'photo'
+          }));
+          startPresentationWithItems(mediaItems, {});
+        },
+        error: (err: unknown) => {
+          console.error('Failed to load search results for presentation', err);
+          alert('Failed to start presentation mode.');
+        }
+      });
+    } else if (isSharedMedia && shareToken) {
+      // Public shared media - use public share endpoint
+      this.photoService.listPublicShareMedia(shareToken, 100, 0).subscribe({
+        next: (response: any) => {
+          mediaItems = response.media.map((p: any) => ({
+            id: p.ID || p.id,
+            path: `${this.photoService.getPublicShareOriginalUrl(shareToken, p.Path || p.path || '')}`,
+            filename: p.Filename || p.filename || '',
+            mediaType: (p.MediaType || p.mediaType || 'photo')
+          }));
+          startPresentationWithItems(mediaItems, { queryParams: { shareToken } });
+        },
+        error: (err) => {
+          console.error('Failed to load public share media for presentation', err);
+          alert('Failed to start presentation mode.');
+        }
+      });
+    } else if (isSharedMedia) {
+      // Authenticated shared media
+      this.photoService.listSharedMedia(100, 0).subscribe({
+        next: (response: any) => {
+          mediaItems = response.items.map((p: any) => ({
+            id: p.id || p.ID,
+            path: `${this.photoService['API_BASE_URL']}/media/shared/${(p.id || p.ID)}/original`,
+            filename: p.filename || '',
+            mediaType: (p.mediaType || 'photo')
+          }));
+          startPresentationWithItems(mediaItems, { queryParams: { source: 'shared' } });
+        },
+        error: (err) => {
+          console.error('Failed to load shared media for presentation', err);
+          alert('Failed to start presentation mode.');
+        }
+      });
     } else {
-      // No album context - fetch all gallery items using the appropriate endpoint based on shared context
-      if (isSharedMedia && shareToken) {
-        // Use public share endpoint (no auth required)
-        this.photoService.listPublicShareMedia(shareToken, 100, 0).subscribe({
-          next: (response: any) => {
-            mediaItems = response.media.map((p: any) => ({
-              id: p.ID || p.id,
-              path: `${this.photoService.getPublicShareOriginalUrl(shareToken, p.Path || p.path || '')}`,
-              filename: p.Filename || p.filename || '',
-              mediaType: (p.MediaType || p.mediaType || 'photo')
-            }));
-
-            const startIndex = mediaItems.findIndex(item => item.id === this.photo?.id);
-            
-            if (startIndex !== -1 && mediaItems.length > 0) {
-              this.presentationService.open(mediaItems, startIndex);
-              this.router.navigate(['/presentation'], { queryParams: { shareToken } });
-            } else {
-              alert('No items available for presentation.');
-            }
-          },
-          error: (err) => {
-            console.error('Failed to load public share media for presentation', err);
-            alert('Failed to start presentation mode.');
-          }
-        });
-      } else if (isSharedMedia) {
-        this.photoService.listSharedMedia(100, 0).subscribe({
-          next: (response: any) => {
-            mediaItems = response.items.map((p: any) => ({
-              id: p.id || p.ID,
-              path: `${this.photoService['API_BASE_URL']}/media/shared/${(p.id || p.ID)}/original`,
-              filename: p.filename || '',
-              mediaType: (p.mediaType || 'photo')
-            }));
-
-            const startIndex = mediaItems.findIndex(item => item.id === this.photo?.id);
-            
-            if (startIndex !== -1 && mediaItems.length > 0) {
-              this.presentationService.open(mediaItems, startIndex);
-              this.router.navigate(['/presentation'], { queryParams: { source: 'shared' } });
-            } else {
-              alert('No items available for presentation.');
-            }
-          },
-          error: (err) => {
-            console.error('Failed to load shared media for presentation', err);
-            alert('Failed to start presentation mode.');
-          }
-        });
-      } else {
-        this.photoService.listMedia(100, 0).subscribe({
-          next: (response: any) => {
-            mediaItems = response.photos.map((p: any) => ({
-              id: p.id,
-              path: `${this.photoService['API_BASE_URL']}/media/${p.id}/original`,
-              filename: p.filename,
-              mediaType: p.mediaType || 'photo'
-            }));
-
-            const startIndex = mediaItems.findIndex(item => item.id === this.photo?.id);
-            
-            if (startIndex !== -1 && mediaItems.length > 0) {
-              this.presentationService.open(mediaItems, startIndex);
-              this.router.navigate(['/presentation']);
-            } else {
-              alert('No items available for presentation.');
-            }
-          },
-          error: (err) => {
-            console.error('Failed to load media for presentation', err);
-            alert('Failed to start presentation mode.');
-          }
-        });
-      }
+      // No search or album context - fetch all gallery items
+      this.photoService.listMedia(200, 0).subscribe({
+        next: (response: any) => {
+          mediaItems = response.photos.map((p: any) => ({
+            id: p.id,
+            path: `${this.photoService['API_BASE_URL']}/media/${p.id}/original`,
+            filename: p.filename,
+            mediaType: p.mediaType || 'photo'
+          }));
+          startPresentationWithItems(mediaItems, {});
+        },
+        error: (err) => {
+          console.error('Failed to load media for presentation', err);
+          alert('Failed to start presentation mode.');
+        }
+      });
     }
   }
 
