@@ -8,8 +8,6 @@ import { SearchService, SearchScope, SearchResponse } from '../../services/searc
 import { Photo, ListPhotosResponse } from '../../models/photo.model';
 import { Router, RouterModule, ActivatedRoute } from '@angular/router';
 import { PhotoCardComponent } from '../photo-card/photo-card.component';
-import { AlbumService } from '../../services/album.service';
-import { Album } from '../../models/album.model';
 import { SelectionService } from '../../services/selection.service';
 
 @Component({
@@ -18,117 +16,6 @@ import { SelectionService } from '../../services/selection.service';
   imports: [CommonModule, RouterModule, PhotoCardComponent, FormsModule],
   template: `
     <div class="photo-list-container">
-      <!-- Bulk Action Toolbar -->
-      <div class="bulk-action-toolbar mb-3" *ngIf="selectedPhotoIds.size > 0">
-        <div class="d-flex align-items-center justify-content-between bg-dark p-2 rounded shadow-sm border" style="border-color: #495057;">
-          <!-- Selection Count -->
-          <div>
-            <span class="badge bg-primary me-2">{{ selectedPhotoIds.size }}</span> items selected
-          </div>
-
-          <!-- Single Action Dropdown -->
-          <div class="d-flex align-items-center gap-3">
-            <select class="form-select form-select-sm w-auto text-dark" [(ngModel)]="selectedAction" (change)="onActionSelected()" style="background-color: #495057; border-color: #6c757d;">
-              <option [ngValue]="null">Select action...</option>
-              <option value="addAlbum">Add to album</option>
-              <option value="removeAlbum">Remove from album</option>
-              <option value="delete" style="color: #dc3545; font-weight: bold;">Delete media</option>
-              <option value="addTags">Add tags</option>
-            </select>
-
-            <!-- Cancel Selection -->
-            <button class="btn btn-sm btn-outline-secondary" (click)="clearSelection()">Cancel</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Dialog: Add to Album -->
-      <div class="modal-overlay" *ngIf="showAddAlbumDialog">
-        <div class="modal-content bg-dark border rounded p-4" style="border-color: #6c757d;">
-          <h5 class="mb-3 text-white">Add to Album</h5>
-          <p class="text-muted mb-3">{{ selectedPhotoIds.size }} items will be added to the selected album.</p>
-          
-          <div class="mb-3">
-            <label class="form-label text-white">Select Album:</label>
-            <select class="form-select" [(ngModel)]="targetAlbumId" style="background-color: #495057; border-color: #6c757d; color: white;">
-              <option [ngValue]="undefined">Choose an album...</option>
-              <option *ngFor="let album of albums" [ngValue]="album.id">{{ album.name }}</option>
-            </select>
-          </div>
-
-          <div class="d-flex gap-2 justify-content-end">
-            <button class="btn btn-secondary" (click)="closeAddAlbumDialog()">Cancel</button>
-            <button class="btn btn-primary" (click)="executeAddToAlbum()" [disabled]="!targetAlbumId">Add to Album</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Dialog: Remove from Album -->
-      <div class="modal-overlay" *ngIf="showRemoveAlbumDialog">
-        <div class="modal-content bg-dark border rounded p-4" style="border-color: #6c757d;">
-          <h5 class="mb-3 text-white">Remove from Album</h5>
-          <p class="text-muted mb-3">{{ selectedPhotoIds.size }} items will be removed from the selected album.</p>
-          
-          <div class="mb-3">
-            <label class="form-label text-white">Select Album:</label>
-            <select class="form-select" [(ngModel)]="targetAlbumIdForRemoval" style="background-color: #495057; border-color: #6c757d; color: white;">
-              <option [ngValue]="undefined">Choose an album...</option>
-              <option *ngFor="let album of albums" [ngValue]="album.id">{{ album.name }}</option>
-            </select>
-          </div>
-
-          <div class="d-flex gap-2 justify-content-end">
-            <button class="btn btn-secondary" (click)="closeRemoveAlbumDialog()">Cancel</button>
-            <button class="btn btn-outline-danger" (click)="executeRemoveFromAlbum()" [disabled]="!targetAlbumIdForRemoval">Remove from Album</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Dialog: Delete Media -->
-      <div class="modal-overlay" *ngIf="showDeleteDialog">
-        <div class="modal-content bg-dark border rounded p-4" style="border-color: #6c757d;">
-          <h5 class="mb-3 text-danger">Delete Media</h5>
-          <p class="text-muted mb-3">{{ selectedPhotoIds.size }} item(s) will be permanently deleted. This action cannot be undone.</p>
-          
-          <div class="alert alert-warning" role="alert">
-            Are you sure you want to delete the selected media?
-          </div>
-
-          <div class="d-flex gap-2 justify-content-end">
-            <button class="btn btn-secondary" (click)="closeDeleteDialog()">Cancel</button>
-            <button class="btn btn-danger" (click)="executeDelete()" [disabled]="isDeleting">
-              {{ isDeleting ? 'Deleting...' : 'Delete' }}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Dialog: Add Tags -->
-      <div class="modal-overlay" *ngIf="showAddTagsDialog">
-        <div class="modal-content bg-dark border rounded p-4" style="border-color: #6c757d;">
-          <h5 class="mb-3 text-white">Add Tags</h5>
-          <p class="text-muted mb-3">{{ selectedPhotoIds.size }} items will be tagged.</p>
-          
-          <div class="mb-3">
-            <label class="form-label text-white">Enter Tags:</label>
-            <input 
-              type="text" 
-              [(ngModel)]="tagInput" 
-              placeholder="tag1:tag2:tag3..." 
-              class="form-control" 
-              style="background-color: #495057; border-color: #6c757d; color: white;"
-              autofocus
-            >
-            <small class="text-muted">Separate tags with colons (e.g., vacation:sunset:beach)</small>
-          </div>
-
-          <div class="d-flex gap-2 justify-content-end">
-            <button class="btn btn-secondary" (click)="closeAddTagsDialog()">Cancel</button>
-            <button class="btn btn-success" (click)="executeAddTags()" [disabled]="!tagInput.trim()">Add Tags</button>
-          </div>
-        </div>
-      </div>
-
       <!-- Active Tag Filter Display -->
       <div *ngIf="activeTagFilter && selectedPhotoIds.size === 0" class="alert alert-info d-flex align-items-center justify-content-between mb-3">
         <span>Showing items with tag: <strong class="text-uppercase">#{{ activeTagFilter }}</strong></span>
@@ -178,18 +65,7 @@ import { SelectionService } from '../../services/selection.service';
     </div>
   `,
   styles: [`
-    /* Floating Bulk Action Toolbar */
-    .bulk-action-toolbar {
-        position: fixed;
-        top: 24px;
-        left: 50%;
-        transform: translateX(-50%);
-        z-index: 998; 
-        width: calc(100vw - 60px); /* Margins on sides */
-        max-width: 700px;          /* Max width for large screens */
-    }
-
-    .photo-list-container { padding-top: 5rem; padding-bottom: 2rem; width: 100%; position: relative;} 
+    .photo-list-container { padding-top: 5rem; padding-bottom: 2rem; width: 100%; position: relative; }
     .grid-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 1.5rem; width: 100%; }
     .grid-item { position: relative; height: 100%; }
 
@@ -203,25 +79,6 @@ import { SelectionService } from '../../services/selection.service';
     .loading-spinner { display: flex; justify-content: center; align-items: center; min-height: 300px; }
     .pagination-controls { display: flex; justify-content: center; align-items: center; margin-top: 2rem; padding-bottom: 2rem; }
     .jump-input { width: 60px !important; text-align: center; }
-
-    /* Modal Overlay Styles */
-    .modal-overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background-color: rgba(0, 0, 0, 0.7);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 1050;
-    }
-
-    .modal-content {
-      min-width: 400px;
-      max-width: 90%;
-    }
   `]
 })
 export class PhotoListComponent implements OnInit, OnDestroy {
@@ -237,30 +94,14 @@ export class PhotoListComponent implements OnInit, OnDestroy {
   activeTagFilter: string | null = null;
   searchScope: SearchScope = 'all';
   
+  // Local selection state — kept in sync with the service via selectedIds$ subscription
   selectedPhotoIds: Set<string> = new Set();
-  targetAlbumId: string | undefined = undefined;
-  targetAlbumIdForRemoval: string | undefined = undefined;
-  albums: Album[] = [];
-
-  // Wizard workflow state
-  selectedAction: string | null = null;
-  
-  // Dialog visibility flags
-  showAddAlbumDialog = false;
-  showRemoveAlbumDialog = false;
-  showDeleteDialog = false;
-  showAddTagsDialog = false;
-  
-  isDeleting = false;
-  
-  // Tag input for wizard dialog
-  tagInput = '';
 
   private subscription: Subscription | null = null;
   private searchSubscription: Subscription | null = null;
   private routeSub: Subscription | null = null;
-
   private selectAllTriggerSub: Subscription | null = null;
+  private selectedIdsSub: Subscription | null = null;
   private readonly SCROLL_KEY = 'photo_list_scroll_pos';
 
   constructor(
@@ -269,7 +110,6 @@ export class PhotoListComponent implements OnInit, OnDestroy {
     private galleryState: GalleryStateService,
     private searchService: SearchService,
     private route: ActivatedRoute,
-    private albumService: AlbumService,
     private selectionService: SelectionService
   ) {}
 
@@ -292,22 +132,21 @@ export class PhotoListComponent implements OnInit, OnDestroy {
     });
 
     // Subscribe to "Select All" trigger from the top header
-    console.log('[PHOTO-LIST-DEBUG] Creating subscription to selectAllTrigger$');
-    console.log('[PHOTO-LIST-DEBUG] This.selectionService:', this.selectionService);
     this.selectAllTriggerSub = this.selectionService.selectAllTrigger$.subscribe(() => {
-      console.log('[PHOTO-LIST-DEBUG] selectAllTrigger$ received event!');
-      console.log('[PHOTO-LIST-DEBUG] This.photos:', this.photos);
-      console.log('[PHOTO-LIST-DEBUG] This.photos.length:', this.photos ? this.photos.length : 0);
       if (this.photos && this.photos.length > 0) {
         const ids = this.photos.map(p => p.id);
-        console.log('[PHOTO-LIST-DEBUG] Selecting IDs:', ids);
         this.selectionService.selectAll(ids);
-        console.log('[PHOTO-LIST-DEBUG] selectionService.selectAll() called');
-      } else {
-        console.warn('[PHOTO-LIST-DEBUG] No photos to select!');
       }
     });
-    console.log('[PHOTO-LIST-DEBUG] Subscription created successfully');
+
+    // Subscribe to the service's selectedIds$ BehaviorSubject so the local
+    // selectedPhotoIds Set stays in sync whenever any selection action occurs
+    // (selectAll, add, remove, toggle, clear). The service is the single source
+    // of truth — we never write to selectedPhotoIds directly except via the
+    // subscription callback.
+    this.selectedIdsSub = this.selectionService.selectedIds$.subscribe(ids => {
+      this.selectedPhotoIds = new Set(ids);
+    });
 
     this.searchService.searchScope$.subscribe(scope => {
       this.searchScope = scope;
@@ -319,241 +158,30 @@ export class PhotoListComponent implements OnInit, OnDestroy {
       this.loadPhotos();
     });
 
-    // Load albums to populate the dropdown!
-    this.albumService.getAlbums().subscribe({
-        next: (albums: Album[]) => this.albums = albums,
-        error: (err: any) => console.error('Error loading albums for selection', err)
-    });
     this.loadPhotos();
   }
 
+  /**
+   * Toggle the selection state of a photo.
+   * Delegates to the service so the service's BehaviorSubject is updated,
+   * which triggers the selectedIds$ subscription that updates our local Set.
+   */
   toggleSelection(id: string): void {
-    if (this.selectedPhotoIds.has(id)) { this.selectedPhotoIds.delete(id); } 
-    else { this.selectedPhotoIds.add(id); }
+    this.selectionService.toggle(id);
   }
 
+  /**
+   * Check whether a photo is currently selected.
+   * Reads from the local Set which is kept in sync via the subscription.
+   */
   isPhotoSelected(id: string): boolean { return this.selectedPhotoIds.has(id); }
 
- clearSelection(): void { 
-    this.selectedPhotoIds.clear(); 
-    this.targetAlbumId = undefined; 
-    this.targetAlbumIdForRemoval = undefined;
-    this.selectedAction = null;
-    this.showAddAlbumDialog = false;
-    this.showRemoveAlbumDialog = false;
-    this.showDeleteDialog = false;
-    this.showAddTagsDialog = false;
-    this.tagInput = '';
-    this.isDeleting = false;
-  }
-
-  onActionSelected(): void {
-    if (!this.selectedAction) return;
-    
-    switch (this.selectedAction) {
-      case 'addAlbum':
-        this.showAddAlbumDialog = true;
-        break;
-      case 'removeAlbum':
-        this.showRemoveAlbumDialog = true;
-        break;
-      case 'delete':
-        if (!confirm(`Are you sure you want to delete ${this.selectedPhotoIds.size} item(s)? This action cannot be undone.`)) {
-          this.clearSelection();
-          return;
-        }
-        this.executeDelete();
-        break;
-      case 'addTags':
-        this.showAddTagsDialog = true;
-        break;
-    }
-  }
-
-  closeDeleteDialog(): void {
-    this.showDeleteDialog = false;
-    this.selectedAction = null;
-    this.isDeleting = false;
-  }
-
-  executeDelete(): void {
-    if (this.selectedPhotoIds.size === 0 || !this.photoService) return;
-
-    const mediaIds = Array.from(this.selectedPhotoIds);
-    let completed = 0;
-    const total = mediaIds.length;
-    const errors: string[] = [];
-
-    this.isDeleting = true;
-
-    mediaIds.forEach(id => {
-      this.photoService.deleteMedia(id).subscribe({
-        next: () => {
-          completed++;
-          if (completed === total) {
-            alert(`Successfully deleted ${total} item(s)`);
-            this.clearSelection();
-            this.loadPhotos(); // Refresh the list
-          }
-        },
-        error: (err) => {
-          console.error(`Error deleting media ${id}`, err);
-          errors.push(id);
-          completed++;
-          if (completed === total) {
-            const successCount = total - errors.length;
-            let message = `Deleted ${successCount} item(s)`;
-            if (errors.length > 0) {
-              message += `, but failed to delete ${errors.length} item(s).`;
-            } else {
-              message += '.';
-            }
-            alert(message);
-            this.clearSelection();
-            this.loadPhotos(); // Refresh the list even on partial failure
-          }
-        }
-      });
-    });
-
-    // Close dialog if it was open (for single item delete)
-    if (this.showDeleteDialog) {
-      this.closeDeleteDialog();
-    } else {
-      this.isDeleting = false;
-    }
-  }
-
-  closeAddAlbumDialog(): void {
-    this.showAddAlbumDialog = false;
-    this.selectedAction = null;
-  }
-
-  executeAddToAlbum(): void {
-    if (!this.targetAlbumId || typeof this.targetAlbumId !== 'string' || this.selectedPhotoIds.size === 0) {
-      alert('Please select a valid album first');
-      return;
-    }
-    const mediaIds = Array.from(this.selectedPhotoIds);
-    this.albumService.addMediaToAlbum(this.targetAlbumId, mediaIds).subscribe({
-      next: () => { 
-        alert('Added to album successfully!'); 
-        this.closeAddAlbumDialog();
-        this.clearSelection();
-      },
-      error: (err: any) => alert(`Error adding to album - ${err.message || 'Unknown error'}`)
-    });
-  }
-
-  closeRemoveAlbumDialog(): void {
-    this.showRemoveAlbumDialog = false;
-    this.selectedAction = null;
-  }
-
-  executeRemoveFromAlbum(): void {
-    if (!this.targetAlbumIdForRemoval || typeof this.targetAlbumIdForRemoval !== 'string' || this.selectedPhotoIds.size === 0) {
-      alert('Please select an album to remove items from');
-      return;
-    }
-
-    const mediaIds = Array.from(this.selectedPhotoIds);
-    this.albumService.bulkRemoveMediaFromAlbum(this.targetAlbumIdForRemoval, mediaIds).subscribe({
-      next: () => { 
-        alert('Removed from album successfully!'); 
-        this.closeRemoveAlbumDialog();
-        this.clearSelection();
-      },
-      error: (err: any) => alert(`Error removing from album - ${err.message || 'Unknown error'}`)
-    });
-  }
-
-  closeAddTagsDialog(): void {
-    this.showAddTagsDialog = false;
-    this.selectedAction = null;
-    this.tagInput = '';
-  }
-
-  executeAddTags(): void {
-    if (!this.tagInput.trim() || this.selectedPhotoIds.size === 0) {
-      alert('Please enter tags and select items');
-      return;
-    }
-
-    const mediaIds = Array.from(this.selectedPhotoIds);
-    
-    // Parse the tag input - split by colon as per spec
-    const newTags = this.tagInput.split(':')
-      .map(tag => tag.trim())
-      .filter(tag => tag.length > 0)
-      .join(':');
-
-    if (newTags.length === 0) {
-      alert('No valid tags entered');
-      return;
-    }
-
-    // Add tags to each selected photo
-    let completed = 0;
-    const total = mediaIds.length;
-    
-    mediaIds.forEach(id => {
-      this.photoService.getMedia(id).subscribe({
-        next: (photo) => {
-          if (!photo) return;
-          
-          // Get existing tags and append new ones
-          let existingTags: string[] = [];
-          if (Array.isArray(photo.tags)) {
-            existingTags = photo.tags as string[];
-          } else if (typeof photo.tags === 'string') {
-            existingTags = photo.tags.split(':').filter(t => t.trim().length > 0);
-          }
-
-          // Add new tags that don't already exist
-          const allNewTags = newTags.split(':');
-          allNewTags.forEach(tag => {
-            if (!existingTags.includes(tag)) {
-              existingTags.push(tag);
-            }
-          });
-
-          // Update the photo with combined tags
-          this.photoService.updateTags(id, existingTags.join(':')).subscribe({
-            next: () => {
-              completed++;
-              if (completed === total) {
-                alert(`Added ${allNewTags.length} tag(s) to ${total} item(s)`);
-                this.closeAddTagsDialog();
-                this.clearSelection();
-              }
-            },
-            error: (err) => {
-              console.error(`Error updating tags for photo ${id}`, err);
-              completed++; // Still count as complete even if individual update fails
-              if (completed === total) {
-                alert(`Added tags to ${total} item(s), but some updates may have failed`);
-                this.closeAddTagsDialog();
-                this.clearSelection();
-              }
-            }
-          });
-        },
-        error: (err) => {
-          console.error(`Error fetching photo ${id}`, err);
-          completed++; // Count as complete even if fetch fails
-          if (completed === total) {
-            alert(`Added tags to ${total} item(s), but some updates may have failed`);
-            this.closeAddTagsDialog();
-            this.clearSelection();
-          }
-        }
-      });
-    });
-  }
-
-  private getAlbumName(id: string): string {
-    const album = this.albums.find(a => a.id === id);
-    return album ? album.name : id;
+  /**
+   * Clear all selections.
+   * Delegates to the service; the subscription will reset our local Set.
+   */
+  clearSelection(): void { 
+    this.selectionService.clear();
   }
 
   /**
@@ -644,6 +272,7 @@ export class PhotoListComponent implements OnInit, OnDestroy {
     this.subscription?.unsubscribe();
     this.searchSubscription?.unsubscribe();
     this.selectAllTriggerSub?.unsubscribe();
+    this.selectedIdsSub?.unsubscribe();
     this.routeSub?.unsubscribe();
   }
 }

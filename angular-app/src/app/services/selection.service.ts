@@ -39,8 +39,13 @@ export class SelectionService {
     }
   }
 
+  /**
+   * Add all the given IDs to the selection, preserving any previously
+   * selected items.  This is the correct behaviour for a "Select All on
+   * current page" action — it should accumulate rather than replace.
+   */
   selectAll(ids: string[]): void {
-    const newSet = new Set<string>();
+    const newSet = new Set(this._selectedIds$.value);
     ids.forEach(id => newSet.add(id));
     this._selectedIds$.next(newSet);
   }
@@ -50,9 +55,7 @@ export class SelectionService {
   }
 
   triggerSelectAll(): void {
-    console.log('[DEBUG] SelectionService.triggerSelectAll() called');
     this._selectAllTrigger$.next();
-    console.log('[DEBUG] Next emitted to _selectAllTrigger$');
   }
 
   isAllSelected(ids: string[]): boolean {

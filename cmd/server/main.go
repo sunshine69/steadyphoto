@@ -34,7 +34,7 @@ const (
 	tlsKeyKey  = "TLS_KEY"  // Path to TLS private key file (PEM) - env var fallback
 
 	workerCronTabKey = "WORKER_CRON_TAB" // Cron schedule for worker execution
-	defaultCronTab   = "0 * * * *"       // Default: run hourly
+	defaultCronTab   = "0 0 */1 * *"     // Default: run hourly
 )
 
 var (
@@ -71,6 +71,13 @@ func startWorkerScheduler() {
 // runWorker executes the worker at /worker.exe and logs output
 func runWorker() {
 	var cmd *exec.Cmd
+
+	if _, err := os.Stat("/app/worker.lock"); err == nil {
+		return
+	} else {
+		os.WriteFile("/app/worker.lock", []byte("worker running"), 0o777)
+		defer os.RemoveAll("/app/worker.lock")
+	}
 
 	// Use platform-specific path for worker
 	cmd = exec.Command("/app/worker")
