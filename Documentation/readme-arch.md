@@ -160,7 +160,7 @@ The Angular application provides a responsive dashboard featuring:
 | Streaming & Playback | ✅ Completed | HTTP Range requests for seekable video playback without full downloads, verified in handleGetOriginal and handleGetPhotoFile |
 | Album Feature | ✅ Completed | Full-stack: DB schema (with position field), CRUD APIs with ownership validation, Angular UI (sidebar, detail view, bulk actions) |
 | Search & Discovery | ✅ Completed | Client-side search across 3 scopes (`all`, `name`, `tags`) + URL-based tag filtering. Server-side tag search at `/api/v1/media/search` |
-| Bulk Actions (Multi-Select) | ✅ Completed | Delete, Add to Album, Remove from Album, Bulk Tag Assignment via toolbar in photo list view |
+| Bulk Actions (Multi-Select) | ✅ Completed | Delete, Add to Album, Remove from Album, Bulk Tag Assignment via inline toolbar in header (left of Select All button, never overlaps search). Select All accumulates selections — previously selected items are retained; clear (×) button resets all selections. State managed by SelectionService BehaviorSubject<Set<string>>. |
 | Media Deletion | ✅ Enhanced — Trash/Restore Flow | Three-stage deletion: soft delete → trash → permanent delete. Permanent delete removes both DB records AND physical files (including thumbnails and face detection data) |
 | Admin User Management | ✅ Backend API Completed | Full CRUD + bulk operations for admin users with status validation, session revocation on delete/disable |
 | Media Upload (Backend) | ✅ Completed with Multiple Modes | Multi-file upload, single file upload, chunked resumable uploads for mobile clients. SHA256 deduplication verified. MIME-type detection via `http.DetectContentType()` + extension whitelist enforced at upload time |

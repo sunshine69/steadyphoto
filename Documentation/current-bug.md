@@ -25,6 +25,33 @@
 
 ---
 
+### ✅ Selection Toolbar Layout — Overlapping Search Input (FIXED)
+**Problem**: The "Selection Actions" dropdown appeared as a floating element that overlapped the search input field, making the search input unusable when items were selected.
+
+**Root Cause**: The toolbar was rendered as a floating/sticky overlay positioned above the search input.
+
+**Fix**: Moved the Selection Actions dropdown to the left side of the "Select All" button and changed it from a floating element to an inline element within the toolbar, so the search input remains usable.
+
+---
+
+### ✅ SelectionService `selectAll()` Replaces Instead of Accumulates (FIXED)
+**Problem**: When items were already selected and the user searched for new photos and clicked "Select All", the previous selection was cleared and only the current view's items were selected.
+
+**Root Cause**: `SelectionService.selectAll()` created a new empty `Set` and only added the IDs passed to it, replacing any previous selection.
+
+**Fix**: Changed `selectAll()` to initialize the new set from the existing selection (`new Set(this._selectedIds$.value)`) before adding the new IDs on top. Now `selectAll` **accumulates** selections — previously selected items are retained. Clearing is only done via the explicit "Clear" (×) button which calls `clear()`.
+
+---
+
+### ✅ PhotoListComponent Not Syncing with SelectionService (FIXED)
+**Problem**: `PhotoListComponent` maintained its own local selection state and only subscribed to `selectionService.selectAllTrigger$`, but not to `selectionService.selectedIds$`. This caused the component's UI to fall out of sync when selections were made through other components (e.g., album media selection, shared media selection).
+
+**Root Cause**: The component directly accessed the private `_selectedIds$` in tests but relied on a local `Set<string>` that was never updated from the service's `BehaviorSubject`.
+
+**Fix**: Refactored `PhotoListComponent` to subscribe exclusively to `selectionService.selectedIds$` for all state synchronization, removing the local set and any direct access to the service's private state. The component now reflects the service's selection state reactively.
+
+---
+
 ## Open / Known Issues
 
 ### ❌ `.upload-temp/` Directory Growth (KNOWN — PENDING FIX)

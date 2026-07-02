@@ -1,13 +1,13 @@
 # Bulk Actions & Media Deletion Feature
 
-**Status:** ✅ Completed — Enhanced with Trash/Restore flow  
-**Last Updated:** June 13, 2026
+**Status:** ✅ Completed — Enhanced with Trash/Restore flow & Accumulative Select All  
+**Last Updated:** June 22, 2026
 
 ---
 
 ## Overview
 
-The photo list view supports multi-select mode with a toolbar for bulk operations on selected media items. **Significant enhancement: the deletion flow now includes trash, restore, and permanent delete capabilities.**
+The photo list view supports multi-select mode with a toolbar for bulk operations on selected media items. **Significant enhancement: the deletion flow now includes trash, restore, and permanent delete capabilities.** The toolbar is rendered inline (not floating) on the left side of the "Select All" button, keeping the search input fully usable. **Important: `Select All` now accumulates selections — previously selected items are retained.** Only the clear (×) button resets all selections.
 
 ---
 
@@ -37,6 +37,33 @@ The photo list view supports multi-select mode with a toolbar for bulk operation
 ---
 
 ## Related Documents
+---
+
+## Selection Behavior
+
+### `Select All` — Accumulates, Does Not Replace
+
+**Last changed:** June 22, 2026
+
+Previously, `Select All` replaced any existing selection. This has been fixed so that `Select All` **accumulates** — it adds the current page's items to whatever was already selected.
+
+**Example workflow:**
+1. User selects 2 individual photos → 2 items selected
+2. User searches for new photos and clicks **Select All** → all photos on the current page are added to the existing 2 (total = 2 + n)
+3. User continues browsing other pages and clicking **Select All** → selections keep accumulating
+4. User clicks the **clear (×)** button → all selections are reset
+
+### Inline Toolbar Layout
+
+The selection actions panel (count badge, action dropdown, and clear button) is rendered **inline** within the header bar, positioned to the **left** of the "Select All" button. It is no longer a floating element, so the search input remains fully functional and is never overlapped.
+
+### State Synchronization
+
+Selection state is managed by the `SelectionService` (a singleton with `BehaviorSubject<Set<string>>`). Components that need to react to selection changes subscribe to `selectionService.selectedIds$` rather than maintaining their own local set:
+
+- **`PhotoListComponent`**: Subscribes to `selectedIds$`; its `toggleSelection(id)` delegates to `selectionService.toggle(id)`.
+- **`AppComponent` (header)**: Subscribes to `selectedIds$` to display the inline selection bar and count badge.
+- Any other component can also subscribe to `selectedIds$` to show the count or react to changes.
 
 - [Architecture Overview](readme-arch.md) — High-level system architecture
 - [Album Feature](readme-album.md) — Bulk actions include add/remove from album
