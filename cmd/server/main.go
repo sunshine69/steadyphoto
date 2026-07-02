@@ -72,11 +72,14 @@ func startWorkerScheduler() {
 func runWorker() {
 	var cmd *exec.Cmd
 
-	if _, err := os.Stat("/app/worker.lock"); err == nil {
+	if _, err := os.Stat("/tmp/worker.lock"); err == nil {
 		return
 	} else {
-		os.WriteFile("/app/worker.lock", []byte("worker running"), 0o777)
-		defer os.RemoveAll("/app/worker.lock")
+		if err := os.WriteFile("/tmp/worker.lock", []byte("worker running"), 0o777); err != nil {
+			println("[EEROR] writting lock file")
+		} else {
+			defer os.RemoveAll("/tmp/worker.lock")
+		}
 	}
 
 	// Use platform-specific path for worker
