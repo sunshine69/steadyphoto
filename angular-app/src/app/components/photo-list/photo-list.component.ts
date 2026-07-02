@@ -1,4 +1,4 @@
-import { Component, inject, Inject, OnInit, OnDestroy, Optional } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
@@ -10,6 +10,7 @@ import { Router, RouterModule, ActivatedRoute } from '@angular/router';
 import { PhotoCardComponent } from '../photo-card/photo-card.component';
 import { AlbumService } from '../../services/album.service';
 import { Album } from '../../models/album.model';
+import { SelectionService } from '../../services/selection.service';
 
 @Component({
   selector: 'app-photo-list',
@@ -258,15 +259,18 @@ export class PhotoListComponent implements OnInit, OnDestroy {
   private subscription: Subscription | null = null;
   private searchSubscription: Subscription | null = null;
   private routeSub: Subscription | null = null;
+
+  private selectAllTriggerSub: Subscription | null = null;
   private readonly SCROLL_KEY = 'photo_list_scroll_pos';
 
   constructor(
-    @Optional() @Inject(PhotoService) private photoService: PhotoService,
+    private photoService: PhotoService,
     private router: Router,
     private galleryState: GalleryStateService,
     private searchService: SearchService,
     private route: ActivatedRoute,
-    private albumService: AlbumService
+    private albumService: AlbumService,
+    private selectionService: SelectionService
   ) {}
 
   get totalPages(): number { return Math.ceil(this.totalPhotos / this.limit) || 1; }
@@ -286,6 +290,24 @@ export class PhotoListComponent implements OnInit, OnDestroy {
       this.currentSearchTerm = term;
       this.loadPhotos();
     });
+
+    // Subscribe to "Select All" trigger from the top header
+    console.log('[PHOTO-LIST-DEBUG] Creating subscription to selectAllTrigger$');
+    console.log('[PHOTO-LIST-DEBUG] This.selectionService:', this.selectionService);
+    this.selectAllTriggerSub = this.selectionService.selectAllTrigger$.subscribe(() => {
+      console.log('[PHOTO-LIST-DEBUG] selectAllTrigger$ received event!');
+      console.log('[PHOTO-LIST-DEBUG] This.photos:', this.photos);
+      console.log('[PHOTO-LIST-DEBUG] This.photos.length:', this.photos ? this.photos.length : 0);
+      if (this.photos && this.photos.length > 0) {
+        const ids = this.photos.map(p => p.id);
+        console.log('[PHOTO-LIST-DEBUG] Selecting IDs:', ids);
+        this.selectionService.selectAll(ids);
+        console.log('[PHOTO-LIST-DEBUG] selectionService.selectAll() called');
+      } else {
+        console.warn('[PHOTO-LIST-DEBUG] No photos to select!');
+      }
+    });
+    console.log('[PHOTO-LIST-DEBUG] Subscription created successfully');
 
     this.searchService.searchScope$.subscribe(scope => {
       this.searchScope = scope;
@@ -621,6 +643,7 @@ export class PhotoListComponent implements OnInit, OnDestroy {
     sessionStorage.setItem(this.SCROLL_KEY, window.scrollY.toString());
     this.subscription?.unsubscribe();
     this.searchSubscription?.unsubscribe();
+    this.selectAllTriggerSub?.unsubscribe();
     this.routeSub?.unsubscribe();
   }
 }

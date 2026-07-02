@@ -1,20 +1,20 @@
 import { Component, OnInit, OnDestroy, inject, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router, RouterModule } from '@angular/router';
-import { PhotoService } from './services/photo.service';
+import { RouterModule } from '@angular/router';
 import { PresentationModeComponent } from './components/presentation-mode/presentation-mode.component';
-import { PresentationService, MediaItem } from './services/presentation.service';
+import { PresentationService } from './services/presentation.service';
 import { UploadModalComponent } from './components/upload-modal/upload-modal.component';
 import { UploadTriggerService } from './services/upload-trigger.service';
 import { SidebarComponent } from './components/sidebar/sidebar.component';
 import { UserManagementComponent } from './components/user-management/user-management.component';
-import { AuthService, CurrentUser } from './services/auth.service';
+import { AuthService } from './services/auth.service';
 import { ShareModalComponent } from './components/share-modal/share-modal.component';
 import { ShareTriggerService } from './services/share-trigger.service';
 
 import { SearchService, SearchScope } from './services/search.service';
 import { Subject, Subscription, debounceTime, distinctUntilChanged } from 'rxjs';
+import { SelectionService } from './services/selection.service';
 
 @Component({
   selector: 'app-root',
@@ -58,6 +58,16 @@ import { Subject, Subscription, debounceTime, distinctUntilChanged } from 'rxjs'
           </div>
 
           <div class="header-actions">
+            <!-- Select All Button -->
+            <button class="icon-btn select-all-btn" title="Select All on Page" (click)="onSelectAll()">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="7" height="7"/>
+                <rect x="14" y="3" width="7" height="7"/>
+                <rect x="3" y="14" width="7" height="7"/>
+                <rect x="14" y="14" width="7" height="7"/>
+              </svg>
+            </button>
+
             <!-- Upload Button -->
             <button class="icon-btn upload-trigger" title="Upload Media" (click)="uploadTrigger.open()">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -306,7 +316,8 @@ export class AppComponent implements OnInit, OnDestroy {
 
   constructor(
     public presentationService: PresentationService,
-    private searchService: SearchService
+    private searchService: SearchService,
+    private selectionService: SelectionService
   ) {}
 
   onKeyUp(event: KeyboardEvent): void {
@@ -423,5 +434,15 @@ export class AppComponent implements OnInit, OnDestroy {
 
   handlePresentationClose(): void {
     this.presentationService.close();
+  }
+
+  onSelectAll(): void {
+    // Trigger select all - the photo-list component will handle it
+    // by listening to selectAllTrigger$ and selecting all photos on the current page
+    console.log('[SELECT-ALL-DEBUG] AppComponent.onSelectAll() called');
+    console.log('[SELECT-ALL-DEBUG] This.selectionService:', this.selectionService);
+    console.log('[SELECT-ALL-DEBUG] Before triggerSelectAll');
+    this.selectionService.triggerSelectAll();
+    console.log('[SELECT-ALL-DEBUG] After triggerSelectAll');
   }
 }
