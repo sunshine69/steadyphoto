@@ -2,13 +2,13 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"os"
-	"os/signal"
-	"syscall"
-	"time"
+	"path/filepath"
+	"strings"
 
+	"github.com/google/uuid"
+	"github.com/joho/godotenv"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
 	"steadyphoto/internal/ai"
@@ -17,19 +17,31 @@ import (
 	"steadyphoto/internal/processor"
 )
 
-const (
-	defaultDBURL         = "postgres://localhost:5432/steadyphoto?sslmode=disable"
-	defaultJobPollPeriod = 10 * time.Second
-	defaultStorageRoot   = "/data/photos/storage"
-	defaultThumbRoot     = "/data/photos/.thumbnails"
-)
-
 func main() {
-	dbURL := getEnv("DB_URL", defaultDBURL)
-	pollPeriod, err := parseDuration(getEnv("JOB_POLL_PERIOD", fmt.Sprintf("%d", defaultJobPollPeriod)))
+	// Load .env from the project root
+	absPath, err := filepath.Abs(".")
 	if err != nil {
-		log.Fatalf("invalid JOB_POLL_PERIOD: %v", err)
+		log.Fatalf("failed to get absolute path: %v", err)
 	}
+	log.Printf("Loading .env from: %s", absPath)
+
+	envFile := filepath.Join(absPath, ".env")
+	if err := godotenv.Load(envFile); err != nil {
+		log.Printf("[WARN] Failed to load %s: %v (using env vars)", envFile, err)
+	}
+
+	// Read config from env (now populated from .env)
+	dbURL := getEnv("DATABASE_URL", "")
+	if dbURL == "" {
+		log.Fatal("DATABASE_URL not set in .env or environment")
+	}
+
+	storageRoot := getEnv("STORAGE_ROOT", "storage")
+	thumbRoot := getEnv("THUMBNAIL_ROOT", filepath.Join(storageRoot, ".thumbnails"))
+
+	log.Printf("DB URL: %s", maskDBPassword(dbURL))
+	log.Printf("Storage root: %s", storageRoot)
+	log.Printf("Thumbnail root: %s", thumbRoot)
 
 	db, err := sqlx.Connect("postgres", dbURL)
 	if err != nil {
@@ -37,36 +49,102 @@ func main() {
 	}
 	defer db.Close()
 
+	if err := db.Ping(); err != nil {
+		log.Fatalf("failed to ping database: %v", err)
+	}
+
 	jobRepo := database.NewPostgresJobRepository(db)
 	mediaRepo := database.NewPostgresMediaRepository(db)
 	faceRepo := database.NewPostgresFaceRepository(db)
 
 	detector := &ai.NoopFaceDetector{}
 	engine := processor.NewStandardImageEngine(85)
-	thumbProcessor := processor.NewThumbnailProcessor(engine, defaultStorageRoot, defaultThumbRoot)
-	faceProc := processor.NewFaceDetectionProcessor(detector, faceRepo, mediaRepo, defaultStorageRoot)
+	thumbProcessor := processor.NewThumbnailProcessor(engine, storageRoot, thumbRoot)
+	faceProc := processor.NewFaceDetectionProcessor(detector, faceRepo, mediaRepo, storageRoot)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := context.Background()
 
-	go func() {
-		sigCh := make(chan os.Signal, 1)
-		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-		select {
-		case <-sigCh:
-			fmt.Println("\nShutting down worker...")
-			cancel()
-		}
-	}()
+	// One-shot: process all pending jobs until none remain
+	processed, err := processAllJobs(ctx, jobRepo, mediaRepo, thumbProcessor, faceProc)
+	if err != nil {
+		log.Fatalf("error processing jobs: %v", err)
+	}
 
-	log.Printf("Worker started - polling for jobs every %s", pollPeriod)
+	if processed == 0 {
+		log.Println("No pending jobs found. Exiting.")
+	} else {
+		log.Printf("Processed %d job(s). Exiting.", processed)
+	}
+}
+
+// processAllJobs processes all pending jobs one at a time until the queue is empty.
+func processAllJobs(ctx context.Context, jobRepo *database.PostgresJobRepository, mediaRepo *database.PostgresMediaRepository, thumbProc *processor.ThumbnailProcessor, faceProc *processor.FaceDetectionProcessor) (int, error) {
+	processed := 0
 
 	for {
-		if err := processNextJob(ctx, jobRepo, mediaRepo, thumbProcessor, faceProc); err != nil {
-			log.Printf("error processing job: %v", err)
+		jobs, err := jobRepo.GetPending(ctx, 1)
+		if err != nil {
+			return processed, err
 		}
-		time.Sleep(pollPeriod)
+
+		if len(jobs) == 0 {
+			break
+		}
+
+		job := jobs[0]
+		log.Printf("Processing job ID=%s type=%s mediaID=%s", job.ID.String(), job.Type, job.MediaID)
+
+		processErr := func() error {
+			media, err := mediaRepo.GetByID(ctx, job.MediaID, nil)
+			if err != nil {
+				return err
+			}
+			if media == nil {
+				return logError(jobRepo, job.ID, "media not found")
+			}
+
+			switch job.Type {
+			case domain.JobTypeThumbnail:
+				err = thumbProc.ProcessJob(ctx, job, media)
+			case domain.JobTypeFaceDetection:
+				err = faceProc.ProcessJob(ctx, job, media)
+			default:
+				return logError(jobRepo, job.ID, "unknown job type")
+			}
+
+			if err != nil {
+				return logError(jobRepo, job.ID, err.Error())
+			}
+
+			log.Printf("job %s completed successfully", job.ID)
+			return jobRepo.UpdateStatus(ctx, job.ID, domain.JobStatusCompleted, "")
+		}()
+
+		if processErr != nil {
+			log.Printf("error processing job %s: %v", job.ID, processErr)
+		}
+
+		processed++
 	}
+
+	return processed, nil
+}
+
+// logError updates a job's status to failed and logs the error.
+func logError(jobRepo *database.PostgresJobRepository, jobID uuid.UUID, errMsg string) error {
+	log.Printf("job %s failed: %s", jobID, errMsg)
+	return jobRepo.UpdateStatus(context.Background(), jobID, domain.JobStatusFailed, errMsg)
+}
+
+// maskDBPassword replaces password in DSN for safe logging.
+func maskDBPassword(dsn string) string {
+	masked := dsn
+	if idx := len("postgres://"); idx < len(dsn) {
+		if pwEnd := strings.Index(dsn[idx:], "@"); pwEnd != -1 {
+			masked = dsn[:idx] + "****" + dsn[idx+pwEnd:]
+		}
+	}
+	return masked
 }
 
 func getEnv(key, fallback string) string {
@@ -74,66 +152,4 @@ func getEnv(key, fallback string) string {
 		return val
 	}
 	return fallback
-}
-
-func parseDuration(s string) (time.Duration, error) {
-	d, err := time.ParseDuration(s)
-	if err == nil {
-		return d, nil
-	}
-	n, e := time.ParseDuration(fmt.Sprintf("%ss", s))
-	if e != nil {
-		return 0, fmt.Errorf("invalid duration %q: expected Go duration or number of seconds", s)
-	}
-	return n, nil
-}
-
-func processNextJob(ctx context.Context, jobRepo *database.PostgresJobRepository, mediaRepo *database.PostgresMediaRepository, thumbProc *processor.ThumbnailProcessor, faceProc *processor.FaceDetectionProcessor) error {
-	jobs, err := jobRepo.GetPending(ctx, 1)
-	if err != nil {
-		return fmt.Errorf("failed to get pending jobs: %w", err)
-	}
-	if len(jobs) == 0 {
-		return nil // No jobs available
-	}
-
-	job := jobs[0]
-	log.Printf("Processing job ID=%s type=%s mediaID=%s", job.ID, job.Type, job.MediaID)
-
-	err = func() error {
-		media, err := mediaRepo.GetByID(ctx, job.MediaID, nil)
-		if err != nil {
-			return fmt.Errorf("failed to get media: %w", err)
-		}
-		if media == nil {
-			return fmt.Errorf("media not found for ID=%s", job.MediaID)
-		}
-
-		switch job.Type {
-		case domain.JobTypeThumbnail:
-			err = thumbProc.ProcessJob(ctx, job, media)
-		case domain.JobTypeFaceDetection:
-			err = faceProc.ProcessJob(ctx, job, media)
-		default:
-			return fmt.Errorf("unknown job type: %s", job.Type)
-		}
-
-		if err != nil {
-			log.Printf("job %s failed: %v - marking as error", job.ID, err)
-			err2 := jobRepo.UpdateStatus(ctx, job.ID, domain.JobStatusFailed, err.Error())
-			if err2 != nil {
-				return fmt.Errorf("failed to mark job as error: %w", err2)
-			}
-			return nil // Don't return the original error; we handled it
-		}
-
-		log.Printf("job %s completed successfully", job.ID)
-		err = jobRepo.UpdateStatus(ctx, job.ID, domain.JobStatusCompleted, "")
-		if err != nil {
-			return fmt.Errorf("failed to mark job as completed: %w", err)
-		}
-		return nil
-	}()
-
-	return err
 }

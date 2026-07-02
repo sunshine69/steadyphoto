@@ -37,6 +37,7 @@ type Server struct {
 	albumShareRepo   domain.AlbumShareRepository
 	publicShareRepo  domain.PublicShareRepository
 	publicAccessRepo domain.PublicShareAccessRepository
+	jobRepo          domain.JobRepository
 }
 
 func NewServer(
@@ -51,6 +52,7 @@ func NewServer(
 	albumShareRepo domain.AlbumShareRepository,
 	publicShareRepo domain.PublicShareRepository,
 	publicAccessRepo domain.PublicShareAccessRepository,
+	jobRepo domain.JobRepository,
 ) *Server {
 	s := &Server{
 		router:           chi.NewRouter(),
@@ -66,6 +68,7 @@ func NewServer(
 		albumShareRepo:   albumShareRepo,
 		publicShareRepo:  publicShareRepo,
 		publicAccessRepo: publicAccessRepo,
+		jobRepo:          jobRepo,
 	}
 	s.routes()
 	s.startCleanupGoroutine()
@@ -195,7 +198,7 @@ func (s *Server) routes() {
 
 				// Single file upload endpoint (mobile client) - increased memory limit to 1GB
 				sessionManager := s.sessionManager
-				singleUploadHandler := NewMediaUploadHandlerSingle(s.mediaRepo, s.storageService, sessionManager)
+				singleUploadHandler := NewMediaUploadHandlerSingle(s.mediaRepo, s.jobRepo, s.storageService, sessionManager)
 				r.Post("/single", singleUploadHandler.HandleSingleFileUpload)
 
 				// Chunked/upload session endpoints for resumable uploads - increased memory limit to 128MB per chunk

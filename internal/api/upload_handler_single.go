@@ -274,13 +274,15 @@ func (m *UploadSessionManager) CleanupExpiredSessions() int {
 // MediaUploadHandlerSingle handles single-file upload requests for mobile clients.
 type MediaUploadHandlerSingle struct {
 	mediaRepo      domain.MediaRepository
+	jobRepo        domain.JobRepository
 	storageService *storage.StorageService
 	sessionManager *UploadSessionManager
 }
 
-func NewMediaUploadHandlerSingle(mediaRepo domain.MediaRepository, storageService *storage.StorageService, sessionManager *UploadSessionManager) *MediaUploadHandlerSingle {
+func NewMediaUploadHandlerSingle(mediaRepo domain.MediaRepository, jobRepo domain.JobRepository, storageService *storage.StorageService, sessionManager *UploadSessionManager) *MediaUploadHandlerSingle {
 	return &MediaUploadHandlerSingle{
 		mediaRepo:      mediaRepo,
+		jobRepo:        jobRepo,
 		storageService: storageService,
 		sessionManager: sessionManager,
 	}
@@ -465,9 +467,24 @@ func (h *MediaUploadHandlerSingle) HandleSingleFileUpload(w http.ResponseWriter,
 		"errors":             []interface{}{},
 	}
 
+	// Create thumbnail job asynchronously
+	jobID := uuid.New()
+	job := &domain.Job{
+		ID:        jobID,
+		UserID:    userID,
+		Type:      domain.JobTypeThumbnail,
+		Status:    domain.JobStatusPending,
+		MediaID:   meta.ID,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	if err := h.jobRepo.Create(dbCtx, job); err != nil {
+		log.Printf("[WARN] UploadHandlerSingle: Failed to create thumbnail job for %s: %v", fileName, err)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
-	log.Printf("[INFO] UploadHandlerSingle: Successfully uploaded '%s' (ID=%s)", fileName, meta.ID)
+	log.Printf("[INFO] UploadHandlerSingle: Successfully uploaded '%s' (ID=%s, jobID=%s)", fileName, meta.ID, jobID)
 }
 
 // HandleChunkUpload handles chunk uploads for resumable file transfers.
@@ -894,12 +911,27 @@ func (h *MediaUploadHandlerSingle) HandleComplete(w http.ResponseWriter, r *http
 		"errors":             []interface{}{},
 	}
 
+	// Create thumbnail job asynchronously
+	jobID := uuid.New()
+	job := &domain.Job{
+		ID:        jobID,
+		UserID:    userID,
+		Type:      domain.JobTypeThumbnail,
+		Status:    domain.JobStatusPending,
+		MediaID:   meta.ID,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	if err := h.jobRepo.Create(dbCtx, job); err != nil {
+		log.Printf("[WARN] UploadHandlerComplete: Failed to create thumbnail job for %s: %v", session.Filename, err)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
 
 	h.sessionManager.DeleteSession(uploadID)
 
-	log.Printf("[INFO] UploadHandlerComplete: Successfully assembled '%s' (ID=%s)", session.Filename, meta.ID)
+	log.Printf("[INFO] UploadHandlerComplete: Successfully assembled '%s' (ID=%s, jobID=%s)", session.Filename, meta.ID, jobID)
 }
 
 // HandleAbort aborts an in-progress resumable upload session and cleans up temp files.

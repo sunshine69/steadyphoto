@@ -1,13 +1,17 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
+	"runtime"
 
+	"github.com/robfig/cron"
 	"steadyphoto/internal/api"
 	"steadyphoto/internal/database"
 	"steadyphoto/internal/storage"
@@ -28,6 +32,9 @@ const (
 
 	tlsCertKey = "TLS_CERT" // Path to TLS certificate file (PEM) - env var fallback
 	tlsKeyKey  = "TLS_KEY"  // Path to TLS private key file (PEM) - env var fallback
+
+	workerCronTabKey = "WORKER_CRON_TAB" // Cron schedule for worker execution
+	defaultCronTab   = "0 * * * *"      // Default: run hourly
 )
 
 var (
@@ -39,6 +46,82 @@ func printVersionBuildInfo() {
 	fmt.Printf("Version: %s\nBuild time: %s\n", version, buildTime)
 }
 
+// startWorkerScheduler starts the cron scheduler that periodically runs the worker
+func startWorkerScheduler() {
+	cronTab := os.Getenv(workerCronTabKey)
+	if cronTab == "" {
+		cronTab = defaultCronTab
+	}
+
+	log.Printf("Starting worker scheduler with cron tab: %s", cronTab)
+
+	c := cron.New()
+
+	// Add the worker execution job
+	c.AddFunc(cronTab, func() {
+		log.Println("Running worker job...")
+		go runWorker()
+	})
+
+	// Start the scheduler
+	c.Start()
+	log.Println("Worker scheduler started")
+}
+
+// runWorker executes the worker at /worker.exe and logs output
+func runWorker() {
+	var cmd *exec.Cmd
+
+	// Use platform-specific path for worker
+	if runtime.GOOS == "windows" {
+		cmd = exec.Command("C:\\worker.exe")
+	} else {
+		cmd = exec.Command("/worker.exe")
+	}
+
+	// Capture stdout and stderr
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		log.Printf("Error creating worker stdout pipe: %v", err)
+		return
+	}
+
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		log.Printf("Error creating worker stderr pipe: %v", err)
+		return
+	}
+
+	// Start the command
+	if err := cmd.Start(); err != nil {
+		log.Printf("Error starting worker: %v", err)
+		return
+	}
+
+	// Read stdout and log it
+	go func() {
+		scanner := bufio.NewScanner(stdout)
+		for scanner.Scan() {
+			log.Printf("[WORKER STDOUT] %s", scanner.Text())
+		}
+	}()
+
+	// Read stderr and log it
+	go func() {
+		scanner := bufio.NewScanner(stderr)
+		for scanner.Scan() {
+			log.Printf("[WORKER STDERR] %s", scanner.Text())
+		}
+	}()
+
+	// Wait for the command to complete
+	err = cmd.Wait()
+	if err != nil {
+		log.Printf("Worker completed with error: %v", err)
+	} else {
+		log.Println("Worker completed successfully")
+	}
+}
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "version" {
@@ -109,10 +192,10 @@ func main() {
 	mediaRepo := database.NewPostgresMediaRepository(db)
 	albumRepo := database.NewPostgresAlbumRepository(db)
 	userRepo := database.NewPostgresUserRepository(db)
-	sessionRepo     := database.NewPostgresSessionRepository(db)
-	shareRepo       := database.NewPostgresShareRepository(db)
-	mediaShareRepo  := database.NewPostgresMediaShareRepository(db)
-	albumShareRepo  := database.NewPostgresAlbumShareRepository(db)
+	sessionRepo    := database.NewPostgresSessionRepository(db)
+	shareRepo      := database.NewPostgresShareRepository(db)
+	mediaShareRepo := database.NewPostgresMediaShareRepository(db)
+	albumShareRepo := database.NewPostgresAlbumShareRepository(db)
 	publicShareRepo := database.NewPostgresPublicShareRepository(db)
 	publicAccessRepo := database.NewPostgresPublicShareAccessRepository(db)
 
@@ -125,11 +208,17 @@ func main() {
 	// Set up storage service (single parameter: baseDir)
 	storageService := storage.NewStorageService(storageRoot)
 
+	// Set up job repository for background job processing
+	jobRepo := database.NewPostgresJobRepository(db)
+
 	// Create API server
-	server := api.NewServer(mediaRepo, albumRepo, userRepo, sessionRepo, storageService, thumbRoot, shareRepo, mediaShareRepo, albumShareRepo, publicShareRepo, publicAccessRepo)
+	server := api.NewServer(mediaRepo, albumRepo, userRepo, sessionRepo, storageService, thumbRoot, shareRepo, mediaShareRepo, albumShareRepo, publicShareRepo, publicAccessRepo, jobRepo)
 
 	addr := ":" + apiPort
 	log.Printf("Starting SteadyPhoto API on port %s", addr)
+
+	// Start worker scheduler
+	startWorkerScheduler()
 
 	if certPath != "" && keyPath != "" {
 		log.Printf("[SECURITY] Starting HTTPS server with TLS (cert=%s, key=%s)", certPath, keyPath)
@@ -156,6 +245,7 @@ Environment Variables (fallback):
   API_PORT          Port to listen on (default: 8081)
   STORAGE_ROOT      Base directory for media storage (default: ./storage)
   THUMBNAIL_ROOT    Directory for thumbnails (default: ./storage/.thumbnails)
+  WORKER_CRON_TAB   Cron schedule for worker execution (default: "0 * * * *" - hourly)
   TLS_CERT          Path to TLS certificate file (PEM) — used if -tls-cert is not provided
   TLS_KEY           Path to TLS private key file (PEM) — used if -tls-key is not provided
 
@@ -172,6 +262,21 @@ Command-Line Flags (override env vars):
 
 Sub-commands:
   version           Show version and build information.
+
+Worker Scheduler:
+  The server includes a cron scheduler that periodically runs the worker program.
+  The cron schedule is controlled by the WORKER_CRON_TAB environment variable.
+  Default schedule: "0 * * * *" (every hour at minute 0).
+
+  Examples of valid cron schedules:
+    "0 * * * *"       - Run at the top of every hour
+    "*/15 * * * *"    - Run every 15 minutes
+    "0 */2 * * *"     - Run every 2 hours
+    "0 0 * * *"       - Run daily at midnight
+    "0 0 * * 0"       - Run weekly on Sunday at midnight
+
+  The worker is executed as a background goroutine, so it doesn't block the HTTP server.
+  Worker output is logged with [WORKER STDOUT] and [WORKER STDERR] prefixes.
 
 HTTPS/TLS Modes:
   - Direct HTTPS: Set either environment variables ($TLS_CERT + $TLS_KEY) OR command-line flags (-tls-cert + -tls-key).
@@ -192,5 +297,8 @@ Examples:
   DATABASE_URL=postgres://user:pass@localhost:5432/steadyphoto ./server
 
   # Seed admin user on startup (requires PostgreSQL connection):
-  DATABASE_URL=postgres://user:pass@localhost:5432/steadyphoto ADMIN_EMAIL=admin@example.com ADMIN_PASSWORD=secret123 ./server`)
+  DATABASE_URL=postgres://user:pass@localhost:5432/steadyphoto ADMIN_EMAIL=admin@example.com ADMIN_PASSWORD=secret123 ./server
+
+  # Run worker every 15 minutes:
+  WORKER_CRON_TAB="*/15 * * * *" DATABASE_URL=postgres://user:pass@localhost:5432/steadyphoto ./server`)
 }
