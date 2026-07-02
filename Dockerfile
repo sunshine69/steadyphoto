@@ -41,6 +41,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-X main.version=v1.0.0-$(git rev
 
 # Build the migrate binary
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app/steadyphoto/migrate cmd/migrate/main.go
+# Build the geenrate thumb job manually
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-X main.version=v1.0.0-$(git rev-parse --short HEAD) -X main.buildTime=$(date '+%Y%m%d_%H%M%S') -extldflags=-static -w -s" --tags "osusergo netgo" -o /app/steadyphoto/generate-jobs cmd/repair_jobs/main.go
 
 # Stage 3: Production Image
 # ============================================
@@ -56,6 +58,7 @@ WORKDIR /app
 COPY --from=go-builder /app/steadyphoto/server ./server
 COPY --from=go-builder /app/steadyphoto/migrate ./migrate
 COPY --from=go-builder /app/steadyphoto/worker ./worker
+COPY --from=go-builder /app/steadyphoto/generate-jobs ./generate-jobs
 COPY --from=go-builder //app/steadyphoto/migrations ./migrations
 
 # Copy the built Angular application to /ui directory

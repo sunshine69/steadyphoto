@@ -9,13 +9,13 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"runtime"
 
-	"github.com/robfig/cron"
 	"steadyphoto/internal/api"
 	"steadyphoto/internal/database"
 	"steadyphoto/internal/storage"
 	"steadyphoto/internal/utils"
+
+	"github.com/robfig/cron"
 
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
@@ -34,7 +34,7 @@ const (
 	tlsKeyKey  = "TLS_KEY"  // Path to TLS private key file (PEM) - env var fallback
 
 	workerCronTabKey = "WORKER_CRON_TAB" // Cron schedule for worker execution
-	defaultCronTab   = "0 * * * *"      // Default: run hourly
+	defaultCronTab   = "0 * * * *"       // Default: run hourly
 )
 
 var (
@@ -73,11 +73,7 @@ func runWorker() {
 	var cmd *exec.Cmd
 
 	// Use platform-specific path for worker
-	if runtime.GOOS == "windows" {
-		cmd = exec.Command("C:\\worker.exe")
-	} else {
-		cmd = exec.Command("/worker.exe")
-	}
+	cmd = exec.Command("/app/worker")
 
 	// Capture stdout and stderr
 	stdout, err := cmd.StdoutPipe()
@@ -192,8 +188,8 @@ func main() {
 	mediaRepo := database.NewPostgresMediaRepository(db)
 	albumRepo := database.NewPostgresAlbumRepository(db)
 	userRepo := database.NewPostgresUserRepository(db)
-	sessionRepo    := database.NewPostgresSessionRepository(db)
-	shareRepo      := database.NewPostgresShareRepository(db)
+	sessionRepo := database.NewPostgresSessionRepository(db)
+	shareRepo := database.NewPostgresShareRepository(db)
 	mediaShareRepo := database.NewPostgresMediaShareRepository(db)
 	albumShareRepo := database.NewPostgresAlbumShareRepository(db)
 	publicShareRepo := database.NewPostgresPublicShareRepository(db)
