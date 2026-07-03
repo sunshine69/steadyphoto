@@ -436,11 +436,32 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
     };
 
     const startPresentationWithItems = (items: MediaItem[], navigateOpts: any) => {
-      const startIndex = items.findIndex(item => item.id === this.photo?.id);
-      if (startIndex !== -1 && items.length > 0) {
-        this.presentationService.open(items, startIndex);
+      // === DEBUGGING: Track why presentation fails ===
+      const currentPhotoId = this.photo?.id || 'NO_PHOTO_ID';
+      const itemCount = items.length;
+      const foundIndex = items.findIndex(item => item.id === currentPhotoId);
+
+      console.group('🎬 PRESENTATION START DEBUG');
+      console.log('📌 Current Photo ID:', currentPhotoId);
+      console.log('📌 Current Photo Filename:', this.photo?.filename || 'N/A');
+      console.log('📌 Total items in array:', itemCount);
+      if (itemCount > 0) {
+        console.log('📌 First 5 item IDs:', items.slice(0, 5).map(i => i.id));
+        console.log('📌 All item IDs:', items.map(i => i.id));
+      }
+      console.log('📌 Found current photo in items at index:', foundIndex);
+      console.log('📌 Route snapshot query params:', this.route.snapshot.queryParams);
+      console.groupEnd();
+
+      if (foundIndex !== -1 && items.length > 0) {
+        console.log('✅ Presentation will start (found at index', foundIndex, ')');
+        this.presentationService.open(items, foundIndex);
         this.router.navigate(['/presentation'], navigateOpts);
       } else {
+        console.error('❌ Presentation blocked!');
+        console.error('   Reason foundIndex === -1:', foundIndex === -1);
+        console.error('   Reason items.length === 0:', items.length === 0);
+        console.error('   Current photo ID not found in items array!');
         alert('No items available for presentation.');
       }
     };

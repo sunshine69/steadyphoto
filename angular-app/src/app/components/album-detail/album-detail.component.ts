@@ -521,7 +521,26 @@ export class AlbumDetailComponent implements OnInit, OnDestroy {
   }
 
   startPresentationFromAlbum(): void {
-    if (this.photos.length === 0 || this.loading) return;
+    // === DEBUGGING: Track presentation from album detail ===
+    console.group('🎬 PRESENTATION FROM ALBUM DETAIL DEBUG');
+    console.log('📌 Album ID:', this.albumId);
+    console.log('📌 Album Name:', this.albumName);
+    console.log('📌 Photos loaded (ngOnInit/refresh):', this.photos.length);
+    console.log('📌 Loading state:', this.loading);
+    console.log('📌 Is shared album:', this.route.snapshot.queryParams['source'] === 'shared');
+    
+    // Show first 3 photo IDs to verify data integrity
+    if (this.photos.length > 0) {
+      console.log('📌 First 3 photo IDs:', this.photos.slice(0, 3).map(p => p.id));
+      console.log('📌 All photo IDs:', this.photos.map(p => p.id));
+      console.log('📌 First photo filename:', this.photos[0].filename);
+    }
+    console.groupEnd();
+
+    if (this.photos.length === 0 || this.loading) {
+      console.warn('⚠️ Presentation blocked early: photos.length =', this.photos.length, 'loading =', this.loading);
+      return;
+    }
 
     const isSharedAlbum = this.route.snapshot.queryParams['source'] === 'shared';
     
@@ -536,10 +555,18 @@ export class AlbumDetailComponent implements OnInit, OnDestroy {
       mediaType: p.mediaType || 'photo'
     }));
 
+    console.group('🎬 FINAL ITEM CHECK');
+    console.log('📌 Constructed mediaItems.length:', mediaItems.length);
+    console.log('📌 Expected to equal photos.length:', this.photos.length, '(should match)');
+    console.groupEnd();
+
     if (mediaItems.length > 0) {
+      console.log('✅ Presentation starting with', mediaItems.length, 'items');
       this.presentationService.open(mediaItems, 0);
       this.router.navigate(['/presentation']);
     } else {
+      console.error('❌ Presentation blocked - mediaItems is empty!');
+      console.error('   This should not happen if photos.length > 0');
       alert('No items available for presentation.');
     }
   }
