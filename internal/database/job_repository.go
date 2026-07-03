@@ -56,3 +56,14 @@ func (r *PostgresJobRepository) GetPending(ctx context.Context, limit int) ([]*d
 	}
 	return jobs, nil
 }
+
+// GetJobsByMediaID returns all jobs for a given media ID regardless of status
+func (r *PostgresJobRepository) GetJobsByMediaID(ctx context.Context, mediaID uuid.UUID) ([]*domain.Job, error) {
+	var jobs []*domain.Job
+	query := `SELECT * FROM jobs WHERE media_id = $1 ORDER BY created_at DESC`
+	err := r.db.SelectContext(ctx, &jobs, query, mediaID)
+	if err != nil {
+		return nil, err
+	}
+	return jobs, nil
+}

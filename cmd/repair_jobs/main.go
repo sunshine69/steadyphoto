@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"time"
 
 	"steadyphoto/internal/database"
@@ -18,6 +19,7 @@ import (
 
 func main() {
 	dbURL := flag.String("db", "", "PostgreSQL connection URL")
+	validate := flag.Bool("validate", false, "Validate thumbnail files on disk and update job statuses accordingly")
 	flag.Parse()
 
 	if *dbURL == "" {
@@ -39,13 +41,10 @@ func main() {
 	photoRepo := database.NewPostgresMediaRepository(db)
 	jobRepo := database.NewPostgresJobRepository(db)
 
-	fmt.Println("🔍 Scanning database for missing thumbnail jobs...")
-
 	ctx := context.Background()
 
 	// 3. Get all photos
-	// Note: For very large libraries, we'd need to paginate this.
-	allMedia, _, err := photoRepo.List(ctx, 10000, 0, nil) 
+	allMedia, _, err := photoRepo.List(ctx, 10000, 0, nil)
 	if err != nil {
 		log.Fatalf("Failed to list media: %v", err)
 	}
@@ -61,46 +60,160 @@ func main() {
 	fmt.Printf("Found %d photos in database.\n", len(photos))
 
 	createdCount := 0
+	updatedCount := 0
 	skippedCount := 0
+	validatedCount := 0
 
 	for _, photo := range photos {
-		// Check if a thumbnail job already exists for this photo
-		// We check for 'pending' or 'processing' jobs to avoid duplicates
-		// In a real system, we might also check 'completed'
-		
-		// Since our JobRepository doesn't have a 'GetJobsByMediaID', 
-		// we'll do a quick check via a raw query or assume we need to check status.
-		// For simplicity in this repair script, we'll query the jobs table directly.
-		
-		var exists bool
-		query := `SELECT EXISTS(SELECT 1 FROM jobs WHERE media_id = $1 AND job_type = $2 AND status IN ('pending', 'processing'))`
-		err := db.GetContext(ctx, &exists, query, photo.ID, string(domain.JobTypeThumbnail))
+		// Check if ANY job already exists for this photo (regardless of status)
+		var jobExists bool
+		var existingJobID uuid.UUID
+		query := `SELECT EXISTS(SELECT 1 FROM jobs WHERE media_id = $1 AND job_type = $2)`
+		err := db.GetContext(ctx, &jobExists, query, photo.ID, string(domain.JobTypeThumbnail))
 		if err != nil {
 			log.Printf("Error checking job status for photo %s: %v", photo.ID, err)
 			continue
 		}
 
-		if !exists {
-			// Create the missing job
-			job := &domain.Job{
-				ID:        uuid.New(),
-				Type:      domain.JobTypeThumbnail,
-				Status:    domain.JobStatusPending,
-				MediaID:   photo.ID,
-				CreatedAt: time.Now(),
+		// Get the existing job ID if it exists
+		if jobExists {
+			err = db.GetContext(ctx, &existingJobID, `SELECT id FROM jobs WHERE media_id = $1 AND job_type = $2 LIMIT 1`, photo.ID, string(domain.JobTypeThumbnail))
+			if err != nil {
+				log.Printf("Error getting existing job ID for photo %s: %v", photo.ID, err)
+				continue
 			}
+		}
 
-			if err := jobRepo.Create(ctx, job); err != nil {
-				log.Printf("Failed to create job for photo %s: %v", photo.ID, err)
+		if *validate {
+			// Validate mode: Check if thumbnail file exists on disk
+			fullThumbPath := getThumbnailPath(photo)
+			thumbExists, thumbSize := checkThumbnailFile(fullThumbPath)
+
+			if !thumbExists || thumbSize == 0 {
+				// Thumbnail missing or empty - need to create/update job to pending
+				if !jobExists {
+					// Create new pending job
+					job := createPendingJob(photo.ID)
+					if err := jobRepo.Create(ctx, job); err != nil {
+						log.Printf("Failed to create job for photo %s: %v", photo.ID, err)
+						continue
+					}
+					createdCount++
+					fmt.Printf("Created pending job for photo %s (thumb missing)\n", photo.ID)
+				} else {
+					// Update existing job to pending
+					if err := jobRepo.UpdateStatus(ctx, existingJobID, domain.JobStatusPending, ""); err != nil {
+						log.Printf("Failed to update job to pending for photo %s: %v", photo.ID, err)
+						continue
+					}
+					updatedCount++
+					fmt.Printf("Updated job to pending for photo %s (thumb missing)\n", photo.ID)
+				}
 			} else {
-				createdCount++
+				// Thumbnail exists and is valid - ensure job is completed
+				if !jobExists {
+					// Create new completed job
+					job := createCompletedJob(photo.ID)
+					if err := jobRepo.Create(ctx, job); err != nil {
+						log.Printf("Failed to create job for photo %s: %v", photo.ID, err)
+						continue
+					}
+					createdCount++
+					fmt.Printf("Created completed job for photo %s (thumb exists)\n", photo.ID)
+				} else {
+					// Update existing job to completed
+					if err := jobRepo.UpdateStatus(ctx, existingJobID, domain.JobStatusCompleted, ""); err != nil {
+						log.Printf("Failed to update job to completed for photo %s: %v", photo.ID, err)
+						continue
+					}
+					updatedCount++
+					fmt.Printf("Updated job to completed for photo %s (thumb exists)\n", photo.ID)
+				}
 			}
+			validatedCount++
 		} else {
-			skippedCount++
+			// Original repair mode: Only create jobs if they don't exist
+			if !jobExists {
+				job := createPendingJob(photo.ID)
+				if err := jobRepo.Create(ctx, job); err != nil {
+					log.Printf("Failed to create job for photo %s: %v", photo.ID, err)
+					continue
+				}
+				createdCount++
+			} else {
+				skippedCount++
+			}
 		}
 	}
 
 	fmt.Printf("\n✅ Repair Complete!\n")
-	fmt.Printf("New jobs created: %d\n", createdCount)
-	fmt.Printf("Jobs already existing: %d\n", skippedCount)
+	if *validate {
+		fmt.Printf("Validated: %d photos\n", validatedCount)
+		fmt.Printf("New jobs created: %d\n", createdCount)
+		fmt.Printf("Jobs updated: %d\n", updatedCount)
+	} else {
+		fmt.Printf("New jobs created: %d\n", createdCount)
+		fmt.Printf("Jobs already existing: %d\n", skippedCount)
+	}
+}
+
+// getThumbnailPath constructs the thumbnail file path for a photo
+// Pattern: storage/.thumbnails/{user_id}/{YYYY}/{MM}/{DD}/{media_id}_thumb.webp
+func getThumbnailPath(photo *domain.Media) string {
+	storageDir := os.Getenv("STORAGE_DIR")
+	if storageDir == "" {
+		storageDir = "storage"
+	}
+
+	thumbRoot := filepath.Join(storageDir, ".thumbnails")
+	if photo.UserID != uuid.Nil {
+		thumbRoot = filepath.Join(thumbRoot, photo.UserID.String())
+	}
+
+	// Use captured_at for date-based directory structure
+	// If captured_at is zero time, fall back to created_at
+	capturedAt := photo.CapturedAt
+	if capturedAt.IsZero() {
+		capturedAt = photo.CreatedAt
+	}
+
+	thumbFilename := fmt.Sprintf("%s_thumb.webp", photo.ID.String())
+	thumbPath := filepath.Join(thumbRoot, capturedAt.Format("2006"), capturedAt.Format("01"), capturedAt.Format("02"), thumbFilename)
+
+	return thumbPath
+}
+
+// checkThumbnailFile checks if a thumbnail file exists and returns its size
+func checkThumbnailFile(path string) (exists bool, size int64) {
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, 0
+		}
+		log.Printf("Error checking file %s: %v", path, err)
+		return false, 0
+	}
+	return true, info.Size()
+}
+
+// createPendingJob creates a new job with pending status
+func createPendingJob(mediaID uuid.UUID) *domain.Job {
+	return &domain.Job{
+		ID:        uuid.New(),
+		Type:      domain.JobTypeThumbnail,
+		Status:    domain.JobStatusPending,
+		MediaID:   mediaID,
+		CreatedAt: time.Now(),
+	}
+}
+
+// createCompletedJob creates a new job with completed status
+func createCompletedJob(mediaID uuid.UUID) *domain.Job {
+	return &domain.Job{
+		ID:        uuid.New(),
+		Type:      domain.JobTypeThumbnail,
+		Status:    domain.JobStatusCompleted,
+		MediaID:   mediaID,
+		CreatedAt: time.Now(),
+	}
 }

@@ -19,6 +19,11 @@ func NewPostgresMediaRepository(db *sqlx.DB) *PostgresMediaRepository {
 	return &PostgresMediaRepository{db: db}
 }
 
+// GetDB returns the underlying database connection for direct queries
+func (r *PostgresMediaRepository) GetDB() *sqlx.DB {
+	return r.db
+}
+
 func (r *PostgresMediaRepository) Create(ctx context.Context, media *domain.Media) error {
 	query := `
 		INSERT INTO media (id, user_id, path, filename, hash, size_bytes, width, height, captured_at, media_type, metadata, video_metadata, created_at, updated_at, tags)
