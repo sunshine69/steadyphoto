@@ -263,14 +263,9 @@ func (s *Server) routes() {
 					}
 
 					// Delete thumbnail separately (it's optional and may not exist)
-					// Strip user ID from path since thumbnails are stored without it
-					cleanPath := strings.TrimPrefix(media.Path, "storage/")
-					parts := strings.SplitN(cleanPath, string(filepath.Separator), 2)
-					if len(parts) >= 2 {
-						cleanPath = parts[1]
-					}
-					ext := filepath.Ext(cleanPath)
-					if thumbRelPath := s.storageService.GetThumbnailRelativePath(string(media.MediaType), cleanPath, ext); thumbRelPath != "" {
+					// Thumbnails are stored WITH user ID in the path
+					ext := filepath.Ext(media.Path)
+					if thumbRelPath := s.storageService.GetThumbnailRelativePath(string(media.MediaType), media.Path, ext); thumbRelPath != "" {
 						s.storageService.DeleteFileSilently(thumbRelPath) // Ignore error for thumbnails
 					}
 
@@ -898,17 +893,11 @@ func (s *Server) handleGetThumbnail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Calculate thumbnail path - strip user ID from path since thumbnails are stored without it
-	cleanPath := strings.TrimPrefix(media.Path, "storage/")
-	parts := strings.SplitN(cleanPath, string(filepath.Separator), 2)
-	if len(parts) >= 2 {
-		cleanPath = parts[1]
-	}
-	ext := filepath.Ext(cleanPath)
-
+	// Calculate thumbnail path - thumbnails are stored WITH user ID in the path
+	ext := filepath.Ext(media.Path)
 	thumbRelPath := s.storageService.GetThumbnailRelativePath(
 		string(media.MediaType),
-		cleanPath,
+		media.Path,
 		ext,
 	)
 
@@ -1063,24 +1052,23 @@ func (s *Server) handlePermanentDeleteMedia(w http.ResponseWriter, r *http.Reque
 }
 
 // getThumbnailRelativePath returns the relative path for a thumbnail based on media type.
+// Thumbnails are stored WITH the user ID in the path.
 func (s *Server) getThumbnailRelativePath(media *domain.Media) string {
 	relPath := filepath.Clean(media.Path)
 	ext := filepath.Ext(relPath)
 
-	// Strip user ID from path since thumbnails are stored without it
-	cleanPath := strings.TrimPrefix(relPath, "storage/")
-	parts := strings.SplitN(cleanPath, string(filepath.Separator), 2)
-	if len(parts) >= 2 {
-		cleanPath = parts[1]
+	// Do NOT strip user ID from path - thumbnails are stored WITH user ID
+	if relPath == "" {
+		return ""
 	}
 
 	if media.MediaType == domain.MediaTypeVideo {
-		basePart := strings.TrimSuffix(cleanPath, ext)
+		basePart := strings.TrimSuffix(relPath, ext)
 		basePart = strings.Replace(basePart, "/.videos/", "/", 1)
 		return basePart + ".webp"
 	}
 
-	basePart := strings.TrimSuffix(cleanPath, ext)
+	basePart := strings.TrimSuffix(relPath, ext)
 	return basePart + "_thumb.webp"
 }
 

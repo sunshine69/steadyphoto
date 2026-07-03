@@ -24,12 +24,17 @@ SteadyPhoto is a comprehensive photo and video management system with AI-powered
 ### Storage Organization
 ```
 storage/
-  {user_id}/         # Logical isolation per user
+  .thumbnails/       # Thumbnail images (mirrors photo structure with user_id)
+    {user_id}/
+      YYYY/
+        MM/
+          DD/        # Thumbnail files (photos & videos)
+  {user_id}/         # Logical isolation per user — original media files
     YYYY/
       MM/
         DD/          # Actual file assets (Photos & Videos)
 ```
-*Ensures physical data isolation while keeping directory tree predictable.*
+*Ensures physical data isolation while keeping directory tree predictable. Thumbnails are stored alongside originals under `.thumbnails/` with the same `{user_id}/` scoping.*
 
 ---
 
@@ -101,7 +106,7 @@ The Angular application provides a responsive dashboard featuring:
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/api/v1/media/{id}/original` | Stream original file with Range request support (video seeking) |
-| `GET` | `/api/v1/media/{id}/thumb` | Stream thumbnail (falls back to original if thumb missing) |
+| `GET` | `/api/v1/media/{id}/thumb` | Stream thumbnail — looks up `storage/.thumbnails/{user_id}/{date}/{filename_thumb.webp}`; falls back to original if thumb missing. **Note: thumbnails are stored WITH user_id in path (not stripped)** |
 
 ### Trash Endpoints
 | Method | Path | Description |

@@ -226,22 +226,19 @@ func (h *Handler) ServeThumbnailFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	fmt.Printf("[DEBUG] h.mediaRepo.GetByID Output - %v\n", media)
-	// Calculate thumbnail path - strip user ID from path since thumbnails are stored without it
-	cleanPath := strings.TrimPrefix(media.Path, "storage/")
-	parts := strings.SplitN(cleanPath, string(filepath.Separator), 2)
-	if len(parts) >= 2 {
-		cleanPath = parts[1]
-	}
-	extClean := filepath.Ext(cleanPath)
-	basePart := strings.TrimSuffix(cleanPath, extClean)
+	// Calculate thumbnail path - thumbnails are stored alongside media under '.thumbnails/',
+	// preserving the full path structure including user_id.
+	// e.g. media.Path = "storage/9a362745-.../2024/05/13/photo.jpg"
+	//      -> thumbPath = ".thumbnails/9a362745-.../2024/05/13/photo_thumb.webp"
+	extClean := filepath.Ext(media.Path)
+	basePart := strings.TrimSuffix(media.Path, extClean)
 
 	var thumbRelPath string
 	if media.MediaType == domain.MediaTypeVideo {
-		// For videos, thumbnails are in storage/.thumbnails/YYYY/MM/DD/filename.webp
-		// We strip '/.videos/' from the path to place it under '.thumbnails/'
-		thumbRelPath = strings.Replace(basePart, "/.videos/", "/", 1) + ".webp"
+		// For videos, thumbnail is stored as base.webp inside .thumbnails/<user_id>/<date>/
+		thumbRelPath = basePart + ".webp"
 	} else {
-		// For photos, thumbnail is in storage/.thumbnails/YYYY/MM/DD/filename_thumb.webp
+		// For photos, thumbnail is stored as base_thumb.webp inside .thumbnails/<user_id>/<date>/
 		thumbRelPath = basePart + "_thumb.webp"
 	}
 
