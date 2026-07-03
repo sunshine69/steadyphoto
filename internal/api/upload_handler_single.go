@@ -1051,7 +1051,7 @@ func (h *MediaUploadHandlerSingle) HandleDelete(w http.ResponseWriter, r *http.R
 	}
 	ext := filepath.Ext(cleanPath)
 	if thumbRelPath := h.storageService.GetThumbnailRelativePath(string(media.MediaType), cleanPath, ext); thumbRelPath != "" {
-		h.storageService.DeleteFileSilently(thumbRelPath) // Ignore error for thumbnails
+		h.storageService.DeleteThumbnailSilently(thumbRelPath) // Ignore error for thumbnails
 	}
 
 	// Permanently delete from database

@@ -212,7 +212,7 @@ func main() {
 	}
 
 	// Set up storage service (single parameter: baseDir)
-	storageService := storage.NewStorageService(storageRoot)
+	storageService := storage.NewStorageService(storageRoot, thumbRoot)
 
 	// Set up job repository for background job processing
 	jobRepo := database.NewPostgresJobRepository(db)

@@ -266,7 +266,7 @@ func (s *Server) routes() {
 					// Thumbnails are stored WITH user ID in the path
 					ext := filepath.Ext(media.Path)
 					if thumbRelPath := s.storageService.GetThumbnailRelativePath(string(media.MediaType), media.Path, ext); thumbRelPath != "" {
-						s.storageService.DeleteFileSilently(thumbRelPath) // Ignore error for thumbnails
+						s.storageService.DeleteThumbnailSilently(thumbRelPath) // Ignore error for thumbnails
 					}
 
 					// Permanently delete from database
@@ -1036,7 +1036,7 @@ func (s *Server) handlePermanentDeleteMedia(w http.ResponseWriter, r *http.Reque
 
 	// Delete thumbnail separately (it's optional and may not exist)
 	if thumbRelPath := s.getThumbnailRelativePath(media); thumbRelPath != "" {
-		s.storageService.DeleteFileSilently(thumbRelPath) // Ignore error for thumbnails
+		s.storageService.DeleteThumbnailSilently(thumbRelPath) // Ignore error for thumbnails
 	}
 
 	// Permanently delete from database

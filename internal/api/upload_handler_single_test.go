@@ -11,17 +11,61 @@ import (
 	"testing"
 	"time"
 
+	"steadyphoto/internal/domain"
 	"steadyphoto/internal/storage"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
+
+// MockJobRepository implements domain.JobRepository for testing.
+type MockJobRepository struct {
+	jobs []*domain.Job
+}
+
+func (m *MockJobRepository) Create(ctx context.Context, job *domain.Job) error {
+	m.jobs = append(m.jobs, job)
+	return nil
+}
+
+func (m *MockJobRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Job, error) {
+	for _, job := range m.jobs {
+		if job.ID == id {
+			return job, nil
+		}
+	}
+	return nil, nil
+}
+
+func (m *MockJobRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status domain.JobStatus, errStr string) error {
+	for _, job := range m.jobs {
+		if job.ID == id {
+			job.Status = status
+			return nil
+		}
+	}
+	return nil
+}
+
+func (m *MockJobRepository) GetPending(ctx context.Context, limit int) ([]*domain.Job, error) {
+	var pending []*domain.Job
+	for _, job := range m.jobs {
+		if job.Status == domain.JobStatusPending {
+			pending = append(pending, job)
+			if len(pending) >= limit {
+				break
+			}
+		}
+	}
+	return pending, nil
+}
 
 // --- Tests ---
 
 func TestDeleteSession_CleansUpChunkFiles(t *testing.T) {
 	dir := t.TempDir()
-	storageSvc := storage.NewStorageService(dir)
+	storageSvc := storage.NewStorageService(dir, filepath.Join(dir, "thumbs"))
 	manager := NewUploadSessionManager(storageSvc)
 
 	userID := uuid.New()
@@ -61,7 +105,7 @@ func TestDeleteSession_CleansUpChunkFiles(t *testing.T) {
 
 func TestDeleteSession_CleansUpChunkFiles_WhenOnlyPartialChunksExist(t *testing.T) {
 	dir := t.TempDir()
-	storageSvc := storage.NewStorageService(dir)
+	storageSvc := storage.NewStorageService(dir, filepath.Join(dir, "thumbs"))
 	manager := NewUploadSessionManager(storageSvc)
 
 	userID := uuid.New()
@@ -87,7 +131,7 @@ func TestDeleteSession_CleansUpChunkFiles_WhenOnlyPartialChunksExist(t *testing.
 
 func TestDeleteSession_CleansUpChunkFiles_WhenNoChunksExist(t *testing.T) {
 	dir := t.TempDir()
-	storageSvc := storage.NewStorageService(dir)
+	storageSvc := storage.NewStorageService(dir, filepath.Join(dir, "thumbs"))
 	manager := NewUploadSessionManager(storageSvc)
 
 	userID := uuid.New()
@@ -104,7 +148,7 @@ func TestDeleteSession_CleansUpChunkFiles_WhenNoChunksExist(t *testing.T) {
 
 func TestDeleteSession_SessionNotFound_NoPanic(t *testing.T) {
 	dir := t.TempDir()
-	storageSvc := storage.NewStorageService(dir)
+	storageSvc := storage.NewStorageService(dir, filepath.Join(dir, "thumbs"))
 	manager := NewUploadSessionManager(storageSvc)
 
 	// Delete a non-existent session — should not panic
@@ -113,7 +157,7 @@ func TestDeleteSession_SessionNotFound_NoPanic(t *testing.T) {
 
 func TestCleanupExpiredSessions_RemovesOldSessionsAndChunks(t *testing.T) {
 	dir := t.TempDir()
-	storageSvc := storage.NewStorageService(dir)
+	storageSvc := storage.NewStorageService(dir, filepath.Join(dir, "thumbs"))
 	manager := NewUploadSessionManager(storageSvc)
 
 	userID := uuid.New()
@@ -166,7 +210,7 @@ func TestCleanupExpiredSessions_RemovesOldSessionsAndChunks(t *testing.T) {
 
 func TestCleanupExpiredSessions_NewSessions_NotRemoved(t *testing.T) {
 	dir := t.TempDir()
-	storageSvc := storage.NewStorageService(dir)
+	storageSvc := storage.NewStorageService(dir, filepath.Join(dir, "thumbs"))
 	manager := NewUploadSessionManager(storageSvc)
 
 	userID := uuid.New()
@@ -196,10 +240,11 @@ func TestCleanupExpiredSessions_NewSessions_NotRemoved(t *testing.T) {
 
 func TestHandleAbort_CleansUpChunkFiles(t *testing.T) {
 	dir := t.TempDir()
-	storageSvc := storage.NewStorageService(dir)
+	storageSvc := storage.NewStorageService(dir, filepath.Join(dir, "thumbs"))
 	mediaRepo := new(MockMediaRepository)
+	jobRepo := new(MockJobRepository)
 	sessionManager := NewUploadSessionManager(storageSvc)
-	handler := NewMediaUploadHandlerSingle(mediaRepo, storageSvc, sessionManager)
+	handler := NewMediaUploadHandlerSingle(mediaRepo, jobRepo, storageSvc, sessionManager)
 
 	userID := uuid.New()
 	session := sessionManager.CreateSession(userID, "abort-test.mp4", 1024*1024, 3)
@@ -246,10 +291,11 @@ func TestHandleAbort_CleansUpChunkFiles(t *testing.T) {
 
 func TestHandleComplete_SuccessPath_CleansUpChunkFiles(t *testing.T) {
 	dir := t.TempDir()
-	storageSvc := storage.NewStorageService(dir)
+	storageSvc := storage.NewStorageService(dir, filepath.Join(dir, "thumbs"))
 	mediaRepo := new(MockMediaRepository)
+	jobRepo := new(MockJobRepository)
 	sessionManager := NewUploadSessionManager(storageSvc)
-	handler := NewMediaUploadHandlerSingle(mediaRepo, storageSvc, sessionManager)
+	handler := NewMediaUploadHandlerSingle(mediaRepo, jobRepo, storageSvc, sessionManager)
 
 	userID := uuid.New()
 	session := sessionManager.CreateSession(userID, "complete-test.mp4", 1024*1024, 2)
@@ -266,6 +312,11 @@ func TestHandleComplete_SuccessPath_CleansUpChunkFiles(t *testing.T) {
 		assert.NoError(t, err)
 		chunkPaths = append(chunkPaths, chunkPath)
 	}
+
+	// Mock GetByHash to return nil (no duplicate found) so the upload proceeds
+	mediaRepo.On("GetByHash", mock.Anything, mock.Anything).Return((*domain.Media)(nil), nil)
+	// Mock Create to return nil (no error) so the media is persisted
+	mediaRepo.On("Create", mock.Anything, mock.Anything).Return(nil)
 
 	// Create a proper multipart/form-data request body
 	multipartBody := &bytes.Buffer{}
@@ -290,6 +341,8 @@ func TestHandleComplete_SuccessPath_CleansUpChunkFiles(t *testing.T) {
 
 	// Verify session is gone
 	assert.Nil(t, sessionManager.GetSession(session.ID))
+
+	mediaRepo.AssertExpectations(t)
 }
 
 // --- Helpers ---

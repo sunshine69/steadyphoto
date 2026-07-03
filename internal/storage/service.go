@@ -14,13 +14,16 @@ import (
 // StorageService manages access to the physical media files, 
 // providing isolation between different users at the filesystem level.
 type StorageService struct {
-	baseDir string // The root directory (e.g., "/mnt/data/storage")
+	baseDir string // The root directory for media files (e.g., "/mnt/data/storage")
+	thumbDir string // The root directory for thumbnails (e.g., "/mnt/data/storage/.thumbnails")
 }
 
-// NewStorageService creates a new service with a base directory.
-func NewStorageService(baseDir string) *StorageService {
+// NewStorageService creates a new service with a base directory for media and an optional separate
+// directory for thumbnails. Pass an empty string for thumbDir to co-locate thumbnails with media.
+func NewStorageService(baseDir string, thumbDir string) *StorageService {
 	return &StorageService{
-		baseDir: filepath.Clean(baseDir),
+		baseDir:  filepath.Clean(baseDir),
+		thumbDir: filepath.Clean(thumbDir),
 	}
 }
 
@@ -39,7 +42,8 @@ func (s *StorageService) ResolveUserFile(userID uuid.UUID, dbRelPath string) (st
 	return s.ResolvePath(userScopedPath)
 }
 
-// GetAbsolutePath returns the absolute path for a given relative path without checking if it exists.
+// GetAbsolutePath returns the absolute path for a given relative path within the media base directory.
+// It does NOT check if the file exists.
 func (s *StorageService) GetAbsolutePath(relativePath string) string {
 	// To prevent path traversal and absolute path escapes, we treat all paths as 
 	// being relative to the baseDir by cleaning them against a virtual root ("/")
@@ -51,6 +55,16 @@ func (s *StorageService) GetAbsolutePath(relativePath string) string {
 	safeRel := strings.TrimPrefix(rel, string(os.PathSeparator))
 
 	return filepath.Join(s.baseDir, safeRel)
+}
+
+// GetThumbnailAbsolutePath returns the absolute path for a given thumbnail relative path.
+// Thumbnails are stored in a separate root directory (thumbDir) with the same relative structure.
+// E.g., if thumbRelPath is "user_id/2024/01/01/photo_thumb.webp" and thumbDir is "storage/.thumbnails",
+// this returns "storage/.thumbnails/user_id/2024/01/01/photo_thumb.webp".
+func (s *StorageService) GetThumbnailAbsolutePath(thumbRelPath string) string {
+	rel := filepath.Clean("/" + thumbRelPath)
+	safeRel := strings.TrimPrefix(rel, string(os.PathSeparator))
+	return filepath.Join(s.thumbDir, safeRel)
 }
 
 // ResolvePath takes a path (either relative to baseDir or absolute) 
@@ -98,6 +112,14 @@ func (s *StorageService) DeleteFileSilently(path string) {
 	os.Remove(fullPath) // Ignore errors - we don't care if file didn't exist
 }
 
+// DeleteThumbnailSilently removes a thumbnail file from the thumbnail storage directory
+// without returning an error if it doesn't exist. This is the correct method for deleting
+// thumbnails because they live in a separate directory (thumbDir), not the media base directory.
+func (s *StorageService) DeleteThumbnailSilently(thumbRelPath string) {
+	fullPath := s.GetThumbnailAbsolutePath(thumbRelPath)
+	os.Remove(fullPath) // Ignore errors - we don't care if file didn't exist
+}
+
 // DeleteMediaFiles deletes both the main media file and its thumbnail from storage.
 func (s *StorageService) DeleteMediaFiles(mediaPath string, thumbRelPath string) error {
 	// Try to delete main file
@@ -107,7 +129,7 @@ func (s *StorageService) DeleteMediaFiles(mediaPath string, thumbRelPath string)
 
 	// Try to delete thumbnail (if it exists and is different from the original path)
 	if thumbRelPath != "" && thumbRelPath != mediaPath {
-		s.DeleteFileSilently(thumbRelPath) // Ignore error for optional thumbnails
+		s.DeleteThumbnailSilently(thumbRelPath) // Use correct thumbDir, not baseDir
 	}
 
 	return nil
