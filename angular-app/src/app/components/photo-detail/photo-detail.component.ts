@@ -37,7 +37,7 @@ import { Photo } from '../../models/photo.model';
             <!-- Image display for photos -->
             <div class="image-viewer-wrapper" *ngIf="!isVideo()">
               <img 
-                [src]="thumbnailUrl()" 
+                [src]="originalUrl()" 
                 [alt]="photo.filename" 
                 class="main-image rounded shadow"
                 crossorigin="use-credentials"

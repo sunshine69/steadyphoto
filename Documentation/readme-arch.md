@@ -49,12 +49,18 @@ storage/
 - ✅ **Security Layers**: CORS middleware properly configured — only specific origins listed in `AllowedCORSOrigins` are allowed. When no Origin header is present, CORS headers omitted entirely. Non-whitelisted origins get 403 Forbidden. ⚠️ CSP headers not set anywhere
 
 ### Frontend Integration
+
+Code directory: `angular-app`
+
 The Angular application provides a responsive dashboard featuring:
 - ✅ Unified Media View — single seamless feed of photos and videos
 - ✅ Advanced Playback — native video players with seekable support in media detail view
 - ⚠️ Search & Discovery — client-side search/filter across 3 scopes + URL-based tag filtering; server-side search exists at `/api/v1/media/search`
 
 ### Android App (Kotlin/Go)
+
+Code directory: `android`
+
 - ✅ Authentication — token refresh flow via OkHttp interceptor (`ApiClient.kt`) with automatic retry on 401
 - ✅ Media Scanning — three-tier scan: type-specific → Files provider fallback; SHA256 dedup via Go gomobile bindings
 - ✅ Upload — chunked streaming uploads with retry logic (OOM fix applied); UploadManager uses `UploadSingleFile` for multipart upload

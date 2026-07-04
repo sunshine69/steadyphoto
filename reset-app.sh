@@ -20,8 +20,8 @@ go build -o scanner.exe cmd/scanner/main.go
 
 rm -rf storage ; mkdir storage;  ./scanner.exe -u ${ADMIN_EMAIL} -p ${ADMIN_PASSWORD}  -source /mnt/doc/tmp/testimg > scanner.log 2>&1
 
-#./scanner.exe -source /mnt/doc/Videos/AI-Video -u ${ADMIN_EMAIL} -p ${ADMIN_PASSWORD}  >> scanner.log  2>&1
-#./scanner.exe -source /mnt/doc/Diana\ Place\ 5/ -u ${ADMIN_EMAIL} -p ${ADMIN_PASSWORD}  >> scanner.log  2>&1
+./scanner.exe -source /mnt/doc/Videos/AI-Video -u ${ADMIN_EMAIL} -p ${ADMIN_PASSWORD}  >> scanner.log  2>&1
+./scanner.exe -source /mnt/doc/Diana\ Place\ 5/ -u ${ADMIN_EMAIL} -p ${ADMIN_PASSWORD}  >> scanner.log  2>&1
 
 go build -o worker.exe cmd/worker/main.go
 ./worker.exe > worker.log
