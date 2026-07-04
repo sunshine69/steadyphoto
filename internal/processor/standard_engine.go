@@ -10,7 +10,6 @@ import (
 	"log"
 	"os"
 
-	"github.com/rwcarlsen/goexif/exif"
 	"golang.org/x/image/draw"
 )
 
@@ -30,30 +29,14 @@ func NewStandardImageEngine(quality int) *StandardImageEngine {
 // applyExifOrientation reads the EXIF orientation tag and applies the corresponding
 // rotation/flipping to the image so the thumbnail is displayed upright on all devices.
 func applyExifOrientation(file *os.File, img image.Image) (image.Image, error) {
-	// Seek to beginning to read EXIF data
-	_, err := file.Seek(0, 0)
+	// Use the new ExifReader instead of goexif
+	reader := NewExifReader()
+	orientation, err := reader.ReadOrientation(file)
 	if err != nil {
-		return img, fmt.Errorf("failed to seek file: %w", err)
+		return img, fmt.Errorf("failed to read EXIF orientation: %w", err)
 	}
 
-	exifData, err := exif.Decode(file)
-	if err != nil {
-		// No EXIF data — return image as-is
-		return img, nil
-	}
-
-	orientation, err := exifData.Get(exif.Orientation)
-	if err != nil {
-		// No orientation tag — return image as-is
-		return img, nil
-	}
-
-	orientVal, err := orientation.Int(0)
-	if err != nil {
-		return img, fmt.Errorf("failed to parse orientation value: %w", err)
-	}
-
-	if orientVal == 1 {
+	if orientation == OrientationNormal {
 		// Orientation 1 = normal, no rotation needed
 		return img, nil
 	}
@@ -62,30 +45,30 @@ func applyExifOrientation(file *os.File, img image.Image) (image.Image, error) {
 	origWidth := origBounds.Dx()
 	origHeight := origBounds.Dy()
 
-	switch orientVal {
-	case 2:
+	switch orientation {
+	case OrientationFlipHorizontal:
 		// Flip horizontally
 		return flipHorizontal(img, origWidth, origHeight), nil
-	case 3:
+	case OrientationRotate180:
 		// Rotate 180°
 		return rotate180(img, origWidth, origHeight), nil
-	case 4:
+	case OrientationFlipVertical:
 		// Flip vertically
 		return flipVertical(img, origWidth, origHeight), nil
-	case 5:
+	case OrientationRotate90CWFlipH:
 		// Rotate 90° CW + flip horizontally
 		return rotate90CWThenFlipH(img, origWidth, origHeight), nil
-	case 6:
+	case OrientationRotate90CW:
 		// Rotate 90° CW — standard "portrait" after camera orientation
 		return rotate90CW(img, origWidth, origHeight), nil
-	case 7:
+	case OrientationRotate90CCWFlipH:
 		// Rotate 90° CCW + flip horizontally
 		return rotate90CCWThenFlipH(img, origWidth, origHeight), nil
-	case 8:
+	case OrientationRotate90CCW:
 		// Rotate 90° CCW — standard for phones
 		return rotate90CCW(img, origWidth, origHeight), nil
 	default:
-		return img, fmt.Errorf("unknown orientation value: %d", orientVal)
+		return img, fmt.Errorf("unknown orientation value: %d", orientation)
 	}
 }
 

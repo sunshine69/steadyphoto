@@ -16,6 +16,7 @@ require (
 )
 
 require (
+	github.com/bep/imagemeta v0.17.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/joho/godotenv v1.5.1 // indirect
 	github.com/klauspost/compress v1.18.5 // indirect

@@ -48,7 +48,11 @@ func NewEngine(config MigrationConfig) (*Engine, error) {
 	if storageBase == "" {
 		storageBase = "./storage"
 	}
-	storageSvc := storage.NewStorageService(storageBase)
+	thumbDir := os.Getenv("THUMBS_BASE_DIR")
+	if thumbDir == "" {
+		thumbDir = filepath.Join(storageBase, ".thumbnails")
+	}
+	storageSvc := storage.NewStorageService(storageBase, thumbDir)
 
 	return &Engine{
 		config:          config,
