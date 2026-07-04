@@ -1,5 +1,5 @@
-#!/bin/bash -x
-# set -e
+#!/bin/bash
+set -e
 
 set -a
 . .env
@@ -24,11 +24,11 @@ rm -rf storage ; mkdir storage;  ./scanner.exe -u ${ADMIN_EMAIL} -p ${ADMIN_PASS
 ./scanner.exe -source /mnt/doc/Diana\ Place\ 5/ -u ${ADMIN_EMAIL} -p ${ADMIN_PASSWORD}  >> scanner.log  2>&1
 
 go build -o worker.exe cmd/worker/main.go
-./worker.exe > worker.log
+./worker.exe > worker.log 2>&1
 # killall worker.exe
 
 # go test ./... -v -count=1
-ps -ef|grep 'ng serv' | awk '{print $2}' | while read pid; do kill $pid; done
+ps -ef|grep 'ng serv' | awk '{print $2}' | while read pid; do kill $pid || true; done
 cd angular-app && npx ng serve &
 cd ..
 

@@ -188,6 +188,26 @@ func (r *PostgresMediaRepository) ListByType(ctx context.Context, mediaType doma
 
 
 // Search searches for media by query string with optional scope and pagination
+
+// ListAll returns all non-deleted media across all users (admin/worker use only)
+func (r *PostgresMediaRepository) ListAll(ctx context.Context, limit int, offset int) ([]*domain.Media, int, error) {
+	var mediaList []*domain.Media
+	var total int
+
+	countQuery := `SELECT COUNT(*) FROM media WHERE deleted_at IS NULL`
+	err := r.db.GetContext(ctx, &total, countQuery)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	listQuery := `SELECT * FROM media WHERE deleted_at IS NULL ORDER BY captured_at DESC LIMIT $1 OFFSET $2`
+	err = r.db.SelectContext(ctx, &mediaList, listQuery, int64(limit), int64(offset))
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return mediaList, total, nil
+}
 func (r *PostgresMediaRepository) Search(ctx context.Context, query string, scope string, limit int, offset int, userID *uuid.UUID) ([]*domain.Media, int, error) {
 	var mediaList []*domain.Media
 	var total int

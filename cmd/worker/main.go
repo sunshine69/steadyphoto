@@ -24,6 +24,7 @@ func main() {
 	// CLI flags
 	userEmailFlag := flag.String("user", "", "User email to process all media for")
 	mediaIDFlag := flag.String("media-id", "", "Specific media ID to generate thumbnail for (single mode)")
+	forceFlag := flag.Bool("force", false, "Force thumbnail generation, ignoring existing thumbnails")
 	flag.Parse()
 
 	if *userEmailFlag != "" && *mediaIDFlag != "" {
@@ -78,8 +79,12 @@ func main() {
 
 	// User email mode: find user by email, process all their media
 	if *userEmailFlag != "" {
+		forceMode := *forceFlag
+		if forceMode {
+			log.Printf("[FORCE MODE] Will regenerate all thumbnails for user: %s", *userEmailFlag)
+		}
 		log.Printf("[USER MODE] Processing all media for user: %s", *userEmailFlag)
-		err = processUserMedia(ctx, jobRepo, mediaRepo, thumbProcessor, faceProc, *userEmailFlag)
+		err = processUserMedia(ctx, jobRepo, mediaRepo, thumbProcessor, faceProc, *userEmailFlag, forceMode)
 		if err != nil {
 			log.Fatalf("error processing user media: %v", err)
 		}
@@ -89,12 +94,27 @@ func main() {
 
 	// Single media mode
 	if *mediaIDFlag != "" {
+		forceMode := *forceFlag
+		if forceMode {
+			log.Printf("[FORCE MODE] Will regenerate thumbnail for media: %s", *mediaIDFlag)
+		}
 		log.Printf("[SINGLE MODE] Processing media ID: %s", *mediaIDFlag)
-		err = processSingleMedia(ctx, jobRepo, mediaRepo, thumbProcessor, faceProc, *mediaIDFlag)
+		err = processSingleMedia(ctx, jobRepo, mediaRepo, thumbProcessor, faceProc, *mediaIDFlag, forceMode)
 		if err != nil {
 			log.Fatalf("error processing single media: %v", err)
 		}
 		log.Println("Single media processing completed.")
+		return
+	}
+
+	// Global force mode: regenerate ALL thumbnails for ALL media across ALL users
+	if *forceFlag {
+		log.Println("[GLOBAL FORCE MODE] Regenerating all thumbnails for ALL users...")
+		err = processGlobalForce(ctx, jobRepo, mediaRepo, thumbProcessor, faceProc)
+		if err != nil {
+			log.Fatalf("error processing global force: %v", err)
+		}
+		log.Println("Global force processing completed.")
 		return
 	}
 
@@ -112,7 +132,7 @@ func main() {
 }
 
 // processUserMedia finds a user by email and processes all their media items
-func processUserMedia(ctx context.Context, jobRepo *database.PostgresJobRepository, mediaRepo *database.PostgresMediaRepository, thumbProc *processor.ThumbnailProcessor, faceProc *processor.FaceDetectionProcessor, userEmail string) error {
+func processUserMedia(ctx context.Context, jobRepo *database.PostgresJobRepository, mediaRepo *database.PostgresMediaRepository, thumbProc *processor.ThumbnailProcessor, faceProc *processor.FaceDetectionProcessor, userEmail string, force bool) error {
 	// Find user by email
 	userID, err := findUserIDByEmail(ctx, mediaRepo, userEmail)
 	if err != nil {
@@ -129,9 +149,36 @@ func processUserMedia(ctx context.Context, jobRepo *database.PostgresJobReposito
 
 	log.Printf("Found %d media items for user", len(materials))
 
+	// If force mode, reset all existing job statuses to pending so they get regenerated
+	if force {
+		log.Printf("[FORCE MODE] Resetting all existing jobs for user %s to pending...", userID)
+		resetCount, err := jobRepo.ResetJobsByUserID(ctx, userID)
+		if err != nil {
+			log.Printf("[WARN] Failed to reset jobs: %v", err)
+		} else {
+			log.Printf("[FORCE MODE] Reset %d existing job(s) to pending", resetCount)
+		}
+
+		// Also delete existing thumbnail files so they get regenerated
+		thumbCount := 0
+		for _, media := range materials {
+			thumbAbsPath, err := thumbProc.GetThumbnailAbsPath(media.Path)
+			if err != nil {
+				continue
+			}
+			if _, statErr := os.Stat(thumbAbsPath); statErr == nil {
+				if err := os.Remove(thumbAbsPath); err == nil {
+					thumbCount++
+					log.Printf("  Deleted existing thumbnail: %s", thumbAbsPath)
+				}
+			}
+		}
+		log.Printf("[FORCE MODE] Deleted %d existing thumbnail file(s)", thumbCount)
+	}
+
 	processed := 0
 	for _, media := range materials {
-		err = processSingleMedia(ctx, jobRepo, mediaRepo, thumbProc, faceProc, media.ID.String())
+		err = processSingleMedia(ctx, jobRepo, mediaRepo, thumbProc, faceProc, media.ID.String(), force)
 		if err != nil {
 			log.Printf("[ERROR] Failed to process media %s: %v", media.ID, err)
 			continue
@@ -141,14 +188,63 @@ func processUserMedia(ctx context.Context, jobRepo *database.PostgresJobReposito
 
 	log.Printf("Processed %d out of %d media items for user %s", processed, len(materials), userEmail)
 	return nil
+
+}
+
+// processGlobalForce regenerates thumbnails for ALL media across ALL users
+func processGlobalForce(ctx context.Context, jobRepo *database.PostgresJobRepository, mediaRepo *database.PostgresMediaRepository, thumbProc *processor.ThumbnailProcessor, faceProc *processor.FaceDetectionProcessor) error {
+	// Get all media across all users
+	log.Printf("[GLOBAL FORCE MODE] Listing all media across all users...")
+	materials, _, err := mediaRepo.ListAll(ctx, 100000, 0)
+	if err != nil {
+		return fmt.Errorf("failed to list all media: %w", err)
+	}
+
+	log.Printf("[GLOBAL FORCE MODE] Found %d media items across all users", len(materials))
+
+	// Reset ALL jobs across all users to pending
+	log.Printf("[GLOBAL FORCE MODE] Resetting all jobs to pending...")
+	resetCount, err := jobRepo.ResetJobsAll(ctx)
+	if err != nil {
+		log.Printf("[WARN] Failed to reset jobs: %v", err)
+	} else {
+		log.Printf("[GLOBAL FORCE MODE] Reset %d existing jobs to pending", resetCount)
+	}
+
+	// Delete ALL existing thumbnail files
+	log.Printf("[GLOBAL FORCE MODE] Deleting all existing thumbnails...")
+	thumbCount := 0
+	for _, media := range materials {
+		thumbAbsPath, err := thumbProc.GetThumbnailAbsPath(media.Path)
+		if err != nil {
+			continue
+		}
+		if _, statErr := os.Stat(thumbAbsPath); statErr == nil {
+			if err := os.Remove(thumbAbsPath); err == nil {
+				thumbCount++
+				log.Printf("  Deleted existing thumbnail: %s", thumbAbsPath)
+			}
+		}
+	}
+	log.Printf("[GLOBAL FORCE MODE] Deleted %d existing thumbnail file(s)", thumbCount)
+
+	// Process each media item with force mode
+	processed := 0
+	for _, media := range materials {
+		err = processSingleMedia(ctx, jobRepo, mediaRepo, thumbProc, faceProc, media.ID.String(), true)
+		if err != nil {
+			log.Printf("[ERROR] Failed to process media %s: %v", media.ID, err)
+			continue
+		}
+		processed++
+	}
+
+	log.Printf("[GLOBAL FORCE MODE] Processed %d out of %d media items", processed, len(materials))
+	return nil
 }
 
 // findUserIDByEmail queries the users table to get the ID for a given email
 func findUserIDByEmail(ctx context.Context, mediaRepo *database.PostgresMediaRepository, userEmail string) (uuid.UUID, error) {
-	// Use the user repository if available, otherwise query directly
-	// For now, we'll need to add this method to the media repo or use raw SQL
-	// Let's add a direct query approach
-
 	var userID uuid.UUID
 	query := `SELECT id FROM users WHERE email = $1 LIMIT 1`
 	err := mediaRepo.GetDB().GetContext(ctx, &userID, query, userEmail)
@@ -161,7 +257,7 @@ func findUserIDByEmail(ctx context.Context, mediaRepo *database.PostgresMediaRep
 
 // processSingleMedia handles a single media ID by checking for existing jobs,
 // printing their status, generating the thumbnail (overriding if exists), and updating DB.
-func processSingleMedia(ctx context.Context, jobRepo *database.PostgresJobRepository, mediaRepo *database.PostgresMediaRepository, thumbProc *processor.ThumbnailProcessor, faceProc *processor.FaceDetectionProcessor, mediaIDStr string) error {
+func processSingleMedia(ctx context.Context, jobRepo *database.PostgresJobRepository, mediaRepo *database.PostgresMediaRepository, thumbProc *processor.ThumbnailProcessor, faceProc *processor.FaceDetectionProcessor, mediaIDStr string, force bool) error {
 	mediaID, err := uuid.Parse(mediaIDStr)
 	if err != nil {
 		return fmt.Errorf("invalid media ID %q: %w", mediaIDStr, err)
@@ -193,32 +289,47 @@ func processSingleMedia(ctx context.Context, jobRepo *database.PostgresJobReposi
 				j.ID.String(), j.Status, j.Type, j.CreatedAt.Format(time.RFC3339))
 		}
 
-		// Check if thumbnail exists on disk and is valid (>0 bytes)
-		thumbAbsPath, err := thumbProc.GetThumbnailAbsPath(media.Path)
-		if err != nil {
-			log.Printf("[WARN] Could not determine thumbnail path: %v", err)
+		// Force mode: skip existing thumbnail check, always regenerate
+		if force {
+			log.Printf("[FORCE MODE] Deleting existing thumbnail and regenerating.")
+			thumbAbsPath, err := thumbProc.GetThumbnailAbsPath(media.Path)
+			if err == nil {
+				os.Remove(thumbAbsPath)
+			}
+			// Mark existing jobs as completed, then we'll create a new one
+			for _, j := range existingJobs {
+				jobRepo.UpdateStatus(ctx, j.ID, domain.JobStatusCompleted, "")
+			}
+			// Don't reuse - we want a fresh job for the regeneration
+			job = nil
 		} else {
-			if _, statErr := os.Stat(thumbAbsPath); statErr == nil {
-				info, _ := os.Stat(thumbAbsPath)
-				if info.Size() > 0 {
-					log.Printf("[EXISTING] Thumbnail already exists on disk: %s (%d bytes)", thumbAbsPath, info.Size())
-					// Reuse the most recent job and mark it completed
-					job = existingJobs[0]
-					log.Printf("Reusing existing job: %s (marking as completed)", job.ID.String())
-
-					// Update job status to completed if not already
-					if job.Status != domain.JobStatusCompleted {
-						err := jobRepo.UpdateStatus(ctx, job.ID, domain.JobStatusCompleted, "")
-						if err != nil {
-							return fmt.Errorf("failed to update job status: %w", err)
-						}
-					}
-					return nil // Done - no need to generate thumbnail
-				} else {
-					log.Printf("[EMPTY] Thumbnail exists but is empty (0 bytes). Will regenerate.")
-				}
+			// Check if thumbnail exists on disk and is valid (>0 bytes)
+			thumbAbsPath, err := thumbProc.GetThumbnailAbsPath(media.Path)
+			if err != nil {
+				log.Printf("[WARN] Could not determine thumbnail path: %v", err)
 			} else {
-				log.Printf("[NEW] No existing thumbnail found. Will generate new one.")
+				if _, statErr := os.Stat(thumbAbsPath); statErr == nil {
+					info, _ := os.Stat(thumbAbsPath)
+					if info.Size() > 0 {
+						log.Printf("[EXISTING] Thumbnail already exists on disk: %s (%d bytes)", thumbAbsPath, info.Size())
+						// Reuse the most recent job and mark it completed
+						job = existingJobs[0]
+						log.Printf("Reusing existing job: %s (marking as completed)", job.ID.String())
+
+						// Update job status to completed if not already
+						if job.Status != domain.JobStatusCompleted {
+							err := jobRepo.UpdateStatus(ctx, job.ID, domain.JobStatusCompleted, "")
+							if err != nil {
+								return fmt.Errorf("failed to update job status: %w", err)
+							}
+						}
+						return nil // Done - no need to generate thumbnail
+					} else {
+						log.Printf("[EMPTY] Thumbnail exists but is empty (0 bytes). Will regenerate.")
+					}
+				} else {
+					log.Printf("[NEW] No existing thumbnail found. Will generate new one.")
+				}
 			}
 		}
 	} else {

@@ -25,6 +25,7 @@ require (
 	github.com/pkg/sftp v1.13.10 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/robfig/cron v1.2.0 // indirect
+	github.com/rwcarlsen/goexif v0.0.0-20190401172101-9e8deecbddbd // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/ulikunitz/xz v0.5.15 // indirect
 	github.com/zeebo/xxh3 v1.0.2 // indirect

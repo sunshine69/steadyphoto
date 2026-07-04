@@ -109,6 +109,13 @@ func (m *MockMediaRepository) PermanentlyDeleteMedia(ctx context.Context, id uui
 	args := m.Called(ctx, id, userID)
 	return args.Error(0)
 }
+func (m *MockMediaRepository) Search(ctx context.Context, query string, scope string, limit, offset int, userID *uuid.UUID) ([]*domain.Media, int, error) {
+	args := m.Called(ctx, query, scope, limit, offset, userID)
+	if args.Get(0) == nil {
+		return nil, 0, args.Error(2)
+	}
+	return args.Get(0).([]*domain.Media), args.Int(1), args.Error(2)
+}
 
 // MockFaceDetector is a mock for ai.FaceDetector
 type MockFaceDetector struct {

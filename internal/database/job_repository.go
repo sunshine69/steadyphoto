@@ -67,3 +67,31 @@ func (r *PostgresJobRepository) GetJobsByMediaID(ctx context.Context, mediaID uu
 	}
 	return jobs, nil
 }
+
+// ResetJobsAll resets all jobs across all users back to pending status
+// This is used for global thumbnail regeneration
+func (r *PostgresJobRepository) ResetJobsAll(ctx context.Context) (int, error) {
+	query := `UPDATE jobs SET status = 'pending', error_message = NULL, updated_at = $1`
+	result, err := r.db.ExecContext(ctx, query, time.Now())
+	if err != nil {
+		return 0, err
+	}
+	rowsAffected, _ := result.RowsAffected()
+	return int(rowsAffected), nil
+}
+
+// ResetJobsByUserID sets all jobs for a user's media back to pending status
+// This is used for force thumbnail regeneration
+func (r *PostgresJobRepository) ResetJobsByUserID(ctx context.Context, userID uuid.UUID) (int, error) {
+	query := `
+		UPDATE jobs 
+		SET status = 'pending', error_message = NULL, updated_at = $2 
+		WHERE media_id IN (SELECT id FROM media WHERE user_id = $1)
+	`
+	result, err := r.db.ExecContext(ctx, query, userID, time.Now())
+	if err != nil {
+		return 0, err
+	}
+	rowsAffected, _ := result.RowsAffected()
+	return int(rowsAffected), nil
+}
