@@ -467,7 +467,7 @@ export class AlbumDetailComponent implements OnInit, OnDestroy {
         ? (id ? `${apiBaseUrl}/media/shared/${id}/thumb` : '')
         : (id ? `${apiBaseUrl}/media/${id}/thumb` : ''),
       filename: p.Filename ?? p.filename ?? '',
-      captured_at: p.CapturedAt ?? p.captured_at ?? '',
+      captured_at: p.capturedAt ?? p.capturedAt ?? '',
       width: p.Width ?? p.width,
       height: p.Height ?? p.height,
       size: p.Size ?? p.size,

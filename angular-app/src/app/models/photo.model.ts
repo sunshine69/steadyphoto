@@ -18,16 +18,46 @@ export interface Photo {
   mediaType?: 'photo' | 'video';
   thumbnailUrl?: string;
   tags?: string; // Comma-separated tags from backend
-  metadata?: {
-    camera?: string;
-    iso?: string | number;
-    aperture?: string;
-    focal_length?: string;
-    gps_lat?: number;
-    gps_lon?: number;
-    [key: string]: any;
-  };
+  metadata?: PhotoMetadata;
   videoMetadata?: VideoMetadata;
+}
+
+export interface PhotoMetadata {
+  // Camera info
+  make?: string;
+  model?: string;
+  lens_model?: string;
+  modifydate?: string;
+  ModifyDate?: string;
+  // Exposure settings
+  exposure_time?: string;
+  f_number?: string;
+  iso?: string;
+  focal_length?: string;
+  exposure_program?: string;
+  white_balance?: string;
+  flash?: string;
+  color_space?: string;
+  // DateTime
+  datetime_original?: string;
+  DateTimeOriginal?: string;
+  datetime?: string;
+  datetime_digitized?: string;
+  // Dimensions from EXIF
+  image_width?: string;
+  image_length?: string;
+  // Orientation
+  orientation?: string;
+  // GPS
+  gps_latitude?: string;
+  gps_longitude?: string;
+  gps_altitude?: string;
+  gps_latitude_ref?: string;
+  gps_longitude_ref?: string;
+  // Software
+  software?: string;
+  artist?: string;
+  image_description?: string;
 }
 
 export interface UpdateTagsRequest {

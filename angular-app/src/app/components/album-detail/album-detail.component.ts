@@ -475,20 +475,13 @@ export class AlbumDetailComponent implements OnInit, OnDestroy {
         ? (id ? `${apiBaseUrl}/media/shared/${id}/thumb` : '')
         : (id ? `${apiBaseUrl}/media/${id}/thumb` : ''),
       filename: p.Filename ?? p.filename ?? '',
-      captured_at: p.CapturedAt ?? p.captured_at ?? '',
+      captured_at: p.capturedAt ?? p.capturedAt ?? '',
       width: p.Width ?? p.width,
       height: p.Height ?? p.height,
       size: p.Size ?? p.size,
       type: p.Type ?? p.type,
       mediaType: mediaType || 'photo',
-      metadata: p.Metadata ? {
-        camera: p.Metadata.Camera,
-        iso: p.Metadata.Iso,
-        aperture: p.Metadata.Aperture,
-        focal_length: p.Metadata.FocalLength,
-        gps_lat: p.Metadata.GpsLat,
-        gps_lon: p.Metadata.GpsLon,
-      } : undefined,
+      metadata: p.Metadata ? this.photoService.normalizeMetadata(p.Metadata) : undefined,
       videoMetadata: p.VideoMetadata ? {
         duration: p.VideoMetadata.Duration ?? p.VideoMetadata.duration,
         bitrate: p.VideoMetadata.Bitrate ?? p.VideoMetadata.bitrate,

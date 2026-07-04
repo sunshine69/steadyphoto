@@ -18,6 +18,8 @@ import { SelectionService } from './services/selection.service';
 import { PhotoService } from './services/photo.service';
 import { AlbumService } from './services/album.service';
 import { Album } from './models/album.model';
+import { ExifTriggerService } from './services/exif-trigger.service';
+import { ExifDataPopupComponent } from './components/exif-data-popup/exif-data-popup.component';
 
 @Component({
   selector: 'app-root',
@@ -531,7 +533,8 @@ export class AppComponent implements OnInit, OnDestroy {
     private searchService: SearchService,
     private selectionService: SelectionService,
     private photoService: PhotoService,
-    private albumService: AlbumService
+    private albumService: AlbumService,
+    private exifTriggerService: ExifTriggerService
   ) {}
 
   onKeyUp(event: KeyboardEvent): void {
@@ -673,6 +676,8 @@ export class AppComponent implements OnInit, OnDestroy {
     // by listening to selectAllTrigger$ and selecting all photos on the current page
     console.log('[SELECT-ALL-DEBUG] AppComponent.onSelectAll() called');
     this.selectionService.triggerSelectAll();
+    // Also trigger the EXIF popup
+    this.exifTriggerService.triggerExifPopup();
   }
 
   // ===== Selection Action Handlers =====

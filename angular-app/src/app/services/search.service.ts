@@ -4,6 +4,7 @@ import { Observable, BehaviorSubject, Subject } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { environment } from '../../environments/environment';
 import { Photo } from '../models/photo.model';
+import { PhotoService } from './photo.service';
 
 export type SearchScope = 'all' | 'name' | 'tags';
 
@@ -19,6 +20,7 @@ export interface SearchResponse {
 })
 export class SearchService {
   private http = inject(HttpClient);
+  private photoService = inject(PhotoService);
   private API_BASE_URL = environment.apiBaseUrl;
 
   private searchTermSource = new BehaviorSubject<string>('');
@@ -53,21 +55,14 @@ export class SearchService {
       path: id ? `${this.API_BASE_URL}/media/${id}/original` : '',
       thumbnailUrl: id ? `${this.API_BASE_URL}/media/${id}/thumb` : '',
       filename: p.Filename ?? p.filename ?? '',
-      captured_at: p.CapturedAt ?? p.captured_at ?? '',
+      captured_at: p.capturedAt ?? p.capturedAt ?? '',
       width: p.Width ?? p.width,
       height: p.Height ?? p.height,
       size: p.SizeBytes ?? p.sizeBytes ?? p.size,
       type: p.Type ?? p.type,
       mediaType: mediaType,
       tags: p.Tags ?? p.tags ?? '',
-      metadata: p.Metadata ? {
-        camera: p.Metadata.Camera,
-        iso: p.Metadata.Iso,
-        aperture: p.Metadata.Aperture,
-        focal_length: p.Metadata.FocalLength,
-        gps_lat: p.Metadata.GpsLat,
-        gps_lon: p.Metadata.GpsLon,
-      } : undefined,
+      metadata: p.Metadata ? this.photoService.normalizeMetadata(p.Metadata) : undefined,
       videoMetadata: p.VideoMetadata ? {
         duration: p.VideoMetadata.Duration,
         bitrate: p.VideoMetadata.Bitrate,

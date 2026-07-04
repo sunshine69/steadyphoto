@@ -8,12 +8,14 @@ import { AlbumService } from '../../services/album.service';
 import { PresentationService, MediaItem } from '../../services/presentation.service';
 import { SearchService, SearchScope } from '../../services/search.service';
 import { ShareTriggerService } from '../../services/share-trigger.service';
+import { ExifTriggerService } from '../../services/exif-trigger.service';
+import { ExifDataPopupComponent } from '../exif-data-popup/exif-data-popup.component';
 import { Photo } from '../../models/photo.model';
 
 @Component({
   selector: 'app-photo-detail',
   standalone: true,
-  imports: [CommonModule, RouterModule, FormsModule],
+  imports: [CommonModule, RouterModule, FormsModule, ExifDataPopupComponent],
   template: `
     <div class="container mt-4">
       <div class="row">
@@ -49,9 +51,26 @@ import { Photo } from '../../models/photo.model';
             <div class="mt-3 d-flex justify-content-between align-items-start">
               <div>
                 <h3 class="mb-1">{{ photo.filename }}</h3>
-                <p class="text-muted mb-0">Captured: {{ photo.captured_at | date:'medium' }}</p>
+                <p class="text-muted mb-0">Captured: {{ capturedDate | date:'medium' }}</p>
               </div>
-              <div class="btn-group">
+              <div class="btn-group position-relative">
+                <button (click)="startEditingTags()" class="btn btn-outline-success ms-2" [class.active]="isEditingTags">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+                  Tag
+                </button>
+                <div *ngIf="isEditingTags" class="tag-editing-popup position-absolute bg-white border rounded shadow-sm p-3 mt-2" style="z-index: 1000; min-width: 300px;">
+                  <input 
+                    type="text" 
+                    [(ngModel)]="tagInput" 
+                    (keyup.enter)="saveTags()"
+                    placeholder="Enter tags separated by colons..."
+                    class="form-control form-control-sm mb-2"
+                  >
+                  <div class="btn-group btn-group-sm">
+                    <button (click)="saveTags()" class="btn btn-success">Save</button>
+                    <button (click)="cancelEditingTags()" class="btn btn-secondary">Cancel</button>
+                  </div>
+                </div>
                 <a [href]="originalUrl()" download="{{ photo.filename }}" class="btn btn-outline-secondary">
                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2 2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                   Download
@@ -85,6 +104,7 @@ import { Photo } from '../../models/photo.model';
               <h5 class="mb-0">Details</h5>
             </div>
             <ul class="list-group list-group-flush">
+              <!-- Basic Info -->
               <li class="list-group-item">
                 <span class="text-muted">Filename:</span> {{ photo?.filename }}
               </li>
@@ -95,7 +115,7 @@ import { Photo } from '../../models/photo.model';
                 <span class="text-muted">Duration:</span> {{ formatDuration(photo?.videoMetadata?.duration) }}
               </li>
               <li class="list-group-item">
-                <span class="text-muted">Captured:</span> {{ photo?.captured_at | date:'fullDate' }}
+                <span class="text-muted">Captured:</span> {{ capturedDate | date:'fullDate' }}
               </li>
               <li class="list-group-item" *ngIf="photo?.width || photo?.height">
                 <span class="text-muted">Dimensions:</span> {{ photo?.width }} x {{ photo?.height }}
@@ -113,53 +133,31 @@ import { Photo } from '../../models/photo.model';
                 <span class="text-muted">Size:</span> {{ formatFileSize(photo.size) }}
               </li>
               
-              <!-- Tags Section -->
-              <li class="list-group-item">
+              <!-- Tags Display -->
+              <li class="list-group-item" *ngIf="getTagList(photo?.tags || '').length > 0">
                 <div class="d-flex align-items-center mb-2 gap-3">
                   <span class="text-muted" style="margin-right: 16px !important;">Tags:</span>
-                  <button *ngIf="!isEditingTags" (click)="startEditingTags()" class="btn btn-sm btn-outline-primary py-1 px-2" style="font-size: 0.75rem;">
-                    ✏️ Edit
-                  </button>
                 </div>
-                
-                <!-- Tag Display Mode -->
-                <div *ngIf="!isEditingTags">
-                  <span *ngIf="photo?.tags && getTagList(photo.tags).length > 0" class="d-flex flex-wrap gap-1 mb-2">
-                    <span 
-                      *ngFor="let tag of getTagList(photo.tags)" 
-                      (click)="searchByTag(tag)"
-                      class="badge bg-primary text-white cursor-pointer" 
-                      style="cursor: pointer;"
-                    >
-                      {{ tag }} ×
-                    </span>
-                  </span>
-                  <div *ngIf="!photo?.tags || getTagList(photo.tags).length === 0" class="text-muted small">
-                    No tags added yet. Click "Edit" to add tags.
-                  </div>
-                </div>
-                
-                <!-- Tag Edit Mode -->
-                <div *ngIf="isEditingTags">
-                  <input 
-                    type="text" 
-                    [(ngModel)]="tagInput" 
-                    (keyup.enter)="saveTags()"
-                    placeholder="Enter tags separated by commas..."
-                    class="form-control form-control-sm mb-2"
-                    #tagInputRef
+                <span class="d-flex flex-wrap gap-1">
+                  <span 
+                    *ngFor="let tag of getTagList(photo?.tags || '')" 
+                    class="badge bg-primary text-white"
                   >
-                  <div class="btn-group btn-group-sm">
-                    <button (click)="saveTags()" class="btn btn-success">Save</button>
-                    <button (click)="cancelEditingTags()" class="btn btn-secondary">Cancel</button>
-                  </div>
-                </div>
+                    {{ tag }}
+                  </span>
+                </span>
               </li>
             </ul>
           </div>
         </div>
       </div>
     </div>
+    
+    <app-exif-data-popup 
+      *ngIf="showExifPopup" 
+      [exifData]="exifData"
+      (close)="showExifPopup = false"
+    ></app-exif-data-popup>
   `,
   styles: [`
     .image-viewer-wrapper {
@@ -174,8 +172,8 @@ import { Photo } from '../../models/photo.model';
     }
     .main-image {
       max-width: 100%;
-      max-height: 75vh; /* Keeps the image within the viewport height */
-      object-fit: contain; /* Ensures the whole image is visible without cropping */
+      max-height: 75vh;
+      object-fit: contain;
       display: block;
     }
     .video-viewer-wrapper {
@@ -187,9 +185,49 @@ import { Photo } from '../../models/photo.model';
     }
     .main-video {
       max-width: 100%;
-      max-height: 75vh; /* Keeps the video within the viewport height */
+      max-height: 75vh;
       display: block;
       background-color: #000;
+    }
+    .cursor-pointer {
+      cursor: pointer;
+    }
+    h3 {
+      font-size: 14px;
+      font-weight: 500;
+      color: #e5e7eb;
+      margin-bottom: 4px;
+    }
+    .photo-detail-container > div:first-child {
+      font-size: 14px;
+      color: #9ca3af;
+    }
+    .list-group-item {
+      font-size: 14px;
+      padding: 10px 16px;
+    }
+    .list-group-item .text-muted {
+      font-size: 14px;
+      color: #6b7280;
+      margin-right: 8px;
+    }
+    .card-header h5 {
+      font-size: 14px;
+      font-weight: 500;
+      color: #e5e7eb;
+    }
+    .btn {
+      font-size: 14px;
+    }
+    p {
+      font-size: 14px;
+    }
+    .tag-editing-popup {
+      animation: fadeIn 0.2s ease-in-out;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-5px); }
+      to { opacity: 1; transform: translateY(0); }
     }
   `]
 })
@@ -202,11 +240,49 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
   private presentationService = inject(PresentationService);
   private searchService = inject(SearchService);
   private shareTrigger = inject(ShareTriggerService);
+  private exifTrigger = inject(ExifTriggerService);
   private subscription?: Subscription;
 
   // Tag editing state
   isEditingTags = false;
   tagInput = '';
+
+  // EXIF popup state
+  showExifPopup = false;
+
+  get exifData(): any {
+    if (!this.photo?.metadata) return null;
+    return this.photo.metadata;
+  }
+
+  /** Returns the EXIF datetime_original if available, otherwise falls back to ModifyDate (Samsung), then captured_at */
+  get capturedDate(): Date | string {
+    const meta = this.photo?.metadata;
+    
+    // Try DateTimeOriginal first (standard EXIF capture time)
+    if (meta?.datetime_original) {
+      return this.parseExifDate(meta.datetime_original);
+    }
+    
+    // Fallback: ModifyDate (used by Samsung Galaxy phones)
+    if (meta?.modifydate || meta?.ModifyDate) {
+      const dateStr: string | undefined = meta.modifydate || meta.ModifyDate;
+      if (dateStr) {
+        return this.parseExifDate(dateStr);
+      }
+    }
+    
+    // Final fallback: database captured_at
+    return this.photo?.captured_at || new Date();
+  }
+
+  /** Parses EXIF date format like "2026:04:25 11:13:43" to Date object */
+  private parseExifDate(dateStr: string): Date {
+    // Convert "2026:04:25 11:13:43" to "2026-04-25T11:13:43" for proper date parsing
+    const cleaned = dateStr.replace(/(\d{4}):(\d{2}):(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/, '$1-$2-$3T$4:$5:$6');
+    const date = new Date(cleaned);
+    return isNaN(date.getTime()) ? new Date() : date;
+  }
 
   ngOnInit(): void {
     const id = this.route.snapshot.paramMap.get('id');
@@ -219,6 +295,12 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
     console.log(`🔍 [DEBUG] PhotoDetailComponent.ngOnInit`);
     console.log(`   Route params: id=${id}, source=${isSharedMedia ? 'shared' : 'owner'}`);
     console.log(`   Query params:`, this.route.snapshot.queryParams);
+    
+    // Subscribe to EXIF trigger service - opens EXIF popup when triggered
+    this.exifTrigger.exifTrigger$.subscribe(() => {
+      console.log('[PhotoDetail] EXIF popup triggered from button');
+      this.showExifPopup = true;
+    });
     
     if (id) {
       let fetch$: any;
@@ -361,6 +443,27 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
       return `${mb.toFixed(2)} MB`;
     }
     return `${kb.toFixed(2)} KB`;
+  }
+
+  formatExposureTime(exposureTime?: string | number): string {
+    if (!exposureTime) return 'Unknown';
+    
+    // Handle string format like "1/250"
+    if (typeof exposureTime === 'string' && exposureTime.includes('/')) {
+      return exposureTime;
+    }
+    
+    // Handle numeric value (fraction of a second)
+    const value = typeof exposureTime === 'string' ? parseFloat(exposureTime) : exposureTime;
+    if (isNaN(value) || value <= 0) return 'Unknown';
+    
+    // Convert to fraction if it's a decimal
+    if (value < 1) {
+      const denominator = Math.round(1 / value);
+      return `1/${denominator}`;
+    }
+    
+    return value.toString();
   }
 
   onVideoError(event: Event): void {

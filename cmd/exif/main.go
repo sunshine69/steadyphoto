@@ -74,10 +74,7 @@ func main() {
 	}
 
 	// CLI flags
-	verbose := flag.Bool("v", false, "Verbose output")
-	jsonOutput := flag.Bool("json", false, "Output as JSON")
 	dryRun := flag.Bool("dry-run", false, "Show what would be updated without writing to DB")
-	forceUpdate := flag.Bool("force", false, "Force update even if metadata already exists")
 	mediaID := flag.String("media-id", "", "Process a specific media item by UUID")
 	userEmail := flag.String("user", "", "Process all media owned by user (by email)")
 	showHelp := flag.Bool("help", false, "Show usage examples")
@@ -183,9 +180,15 @@ func main() {
 	errors := 0
 	var results []ExifUpdateResult
 
+	// Output clean JSON array - exactly what will be saved to DB
+	fmt.Println("{")
+	fmt.Printf("  \"mode\": \"%s\",\n", mode)
+	fmt.Printf("  \"totalItems\": %d,\n", len(mediaList))
+	fmt.Printf("  \"mediaItems\": [\n")
+
 	for i, media := range mediaList {
-		if *verbose {
-			log.Printf("[%d/%d] Processing: %s", i+1, len(mediaList), media.Path)
+		if i > 0 {
+			fmt.Println(",")
 		}
 
 		// Build full file path
@@ -196,18 +199,7 @@ func main() {
 
 		// Check if file exists
 		if _, statErr := os.Stat(fullPath); os.IsNotExist(statErr) {
-			if *verbose {
-				log.Printf("  File not found, skipping: %s", fullPath)
-			}
-			skipped++
-			continue
-		}
-
-		// Check if metadata already exists and force is not set
-		if !*forceUpdate && hasExistingMetadata(media.Metadata) {
-			if *verbose {
-				log.Printf("  Metadata already exists, skipping (use -force to override)")
-			}
+			log.Printf("  File not found, skipping: %s", fullPath)
 			skipped++
 			continue
 		}
@@ -230,9 +222,6 @@ func main() {
 		}
 
 		if exifInfo == nil {
-			if *verbose {
-				log.Printf("  No EXIF data found")
-			}
 			processed++
 			continue
 		}
@@ -243,19 +232,23 @@ func main() {
 		processed++
 		updated++
 
+		// Output this media item's metadata exactly as it will be saved to DB
+		resultJSON, _ := json.MarshalIndent(metadata, "    ", "  ")
+		fmt.Printf("    {\n")
+		fmt.Printf("      \"id\": \"%s\",\n", media.ID.String())
+		fmt.Printf("      \"path\": \"%s\",\n", media.Path)
+		fmt.Printf("      \"metadata\": %s\n", string(resultJSON))
+		fmt.Printf("    }")
+
+		// Store for final summary
 		result := ExifUpdateResult{
-			ID:          media.ID.String(),
-			Path:        media.Path,
-			Orientation: int(exifInfo.Orientation),
-			Tags:        exifInfo.Tags,
-			Metadata:    metadata,
+			ID:       media.ID.String(),
+			Path:     media.Path,
+			Metadata: metadata,
 		}
 		results = append(results, result)
 
 		if *dryRun {
-			if *verbose {
-				log.Printf("  [DRY-RUN] Would update: %s", media.Path)
-			}
 			continue
 		}
 
@@ -269,22 +262,11 @@ func main() {
 			errors++
 			continue
 		}
-
-		if *verbose {
-			log.Printf("  Updated metadata for: %s", media.Path)
-		}
 	}
 
-	// Print results
-	if *jsonOutput {
-		data, jsonErr := json.MarshalIndent(results, "", "  ")
-		if jsonErr != nil {
-			log.Fatalf("Failed to marshal results to JSON: %v", jsonErr)
-		}
-		fmt.Println(string(data))
-	} else {
-		printTextSummary(processed, updated, skipped, errors, mode)
-	}
+	fmt.Println()
+	fmt.Printf("  ]\n")
+	fmt.Println("}")
 
 	log.Printf("\n=== EXIF Update Complete ===")
 	log.Printf("Mode: %s", mode)
@@ -304,11 +286,10 @@ func hasExistingMetadata(metadata domain.Metadata) bool {
 
 // ExifUpdateResult represents the result of an EXIF update
 type ExifUpdateResult struct {
-	ID          string                `json:"id"`
-	Path        string                `json:"path"`
-	Orientation int                   `json:"orientation"`
-	Tags        []processor.ExifTag   `json:"tags,omitempty"`
-	Metadata    domain.Metadata       `json:"metadata"`
+	ID          string              `json:"id"`
+	Path        string              `json:"path"`
+	Metadata    domain.Metadata     `json:"metadata"`
+	RawJSON     string              `json:"-"`
 }
 
 // buildMetadataFromExif converts ExifInfo to Metadata map
@@ -320,6 +301,9 @@ func buildMetadataFromExif(info *processor.ExifInfo) domain.Metadata {
 		metadata["orientation"] = fmt.Sprintf("%d", int(info.Orientation))
 	}
 
+	// Extract DateTimeOriginal for display purposes
+	var dateTimeOriginal string
+
 	// Add other EXIF tags
 	for _, tag := range info.Tags {
 		// Skip orientation as it's already handled
@@ -327,10 +311,22 @@ func buildMetadataFromExif(info *processor.ExifInfo) domain.Metadata {
 			continue
 		}
 
+		// Capture DateTimeOriginal if present
+		if strings.EqualFold(tag.Tag, "DateTimeOriginal") && dateTimeOriginal == "" {
+			dateTimeOriginal = tag.Value
+		}
+
 		// Add tag to metadata (use tag name as key)
 		if _, exists := metadata[tag.Tag]; !exists {
 			metadata[tag.Tag] = tag.Value
 		}
+	}
+
+	// Set DateTimeOriginal: prefer the actual EXIF tag, fallback to ModifyDate
+	if dateTimeOriginal != "" {
+		metadata["DateTimeOriginal"] = dateTimeOriginal
+	} else if md, ok := metadata["ModifyDate"]; ok {
+		metadata["DateTimeOriginal"] = md
 	}
 
 	return metadata

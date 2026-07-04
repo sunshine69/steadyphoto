@@ -36,7 +36,19 @@ import { ShareTriggerService } from '../../services/share-trigger.service';
       </div >
       <div class="photo-info">
         <p class="photo-filename" [title]="photo.filename">{{ photo.filename }}</p>
-        <p class="photo-date">{{ isVideo() ? formatDuration(photo.videoMetadata?.duration) : (photo.captured_at | date:'shortDate') }}</p>
+        <p class="photo-date">{{ isVideo() ? formatDuration(photo.videoMetadata?.duration) : (getPhotoDate(photo) | date:'shortDate') }}</p>
+        <!-- EXIF Data Display -->
+        <div class="exif-info" *ngIf="photo.metadata && !isVideo()">
+          <span class="exif-item" *ngIf="photo.metadata.make">
+            <span class="exif-icon">📷</span> {{ photo.metadata.make }}
+          </span>
+          <span class="exif-item" *ngIf="photo.metadata.f_number">
+            <span class="exif-icon">🔍</span> f/{{ photo.metadata.f_number }}
+          </span>
+          <span class="exif-item" *ngIf="photo.metadata.focal_length">
+            <span class="exif-icon">📐</span> {{ photo.metadata.focal_length }}mm
+          </span>
+        </div>
       </div >
 
       <!-- Share button overlay on hover -->
@@ -265,5 +277,43 @@ export class PhotoCardComponent {
       return `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     }
     return `${mins}:${secs.toString().padStart(2, '0')}`;
+  }
+
+  /**
+   * Extracts the DateTimeOriginal from the photo's EXIF metadata.
+   * Falls back to captured_at if no EXIF data is available.
+   */
+  getPhotoDate(photo: Photo): Date {
+    if (!photo) return new Date();
+    
+    // Try DateTimeOriginal first (standard EXIF format)
+    if (photo.metadata?.DateTimeOriginal) {
+      return this.parseExifDate(photo.metadata.DateTimeOriginal);
+    }
+    
+    // Try datetime_original (lowercase variant)
+    if (photo.metadata?.datetime_original) {
+      return this.parseExifDate(photo.metadata.datetime_original);
+    }
+    
+    // Try ModifyDate for Samsung devices
+    if (photo.metadata?.ModifyDate) {
+      return this.parseExifDate(photo.metadata.ModifyDate);
+    }
+    
+    // Fallback to database captured_at
+    if (photo.captured_at) {
+      return new Date(photo.captured_at);
+    }
+    
+    return new Date();
+  }
+
+  /** Parses EXIF date format like "2026:04:25 11:13:43" to Date object */
+  private parseExifDate(dateStr: string): Date {
+    // Convert "2026:04:25 11:13:43" to "2026-04-25T11:13:43" for proper date parsing
+    const cleaned = dateStr.replace(/(\d{4}):(\d{2}):(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/, '$1-$2-$3T$4:$5:$6');
+    const date = new Date(cleaned);
+    return isNaN(date.getTime()) ? new Date() : date;
   }
 }

@@ -141,9 +141,13 @@ func (r *ExifReader) ReadExif(file *os.File) (*ExifInfo, error) {
 		},
 	}
 
-	if _, err := imagemeta.Decode(opts); err != nil {
-		log.Printf("[EXIF] Failed to decode metadata: %v", err)
-		return nil, nil
+	_, decodeErr := imagemeta.Decode(opts)
+	if decodeErr != nil {
+		log.Printf("[EXIF] Decode returned error: %v", decodeErr)
+		// If we already collected some tags, still return them (partial data is better than nothing)
+		if len(tags) == 0 {
+			return nil, nil
+		}
 	}
 
 	info := &ExifInfo{

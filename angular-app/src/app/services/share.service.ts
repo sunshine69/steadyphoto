@@ -205,7 +205,7 @@ export class ShareService {
           filename: response.Filename ?? response.filename,
           path: response.Path ?? response.path,            // file path for thumbnail/original serving
           mediaType: response.MediaType ?? response.mediaType as 'photo' | 'video',
-          capturedAt: response.CapturedAt ?? response.capturedAt,
+          capturedAt: response.capturedAt ?? response.capturedAt,
           sharerUserId: response.SharerUserID ?? response.sharerUserId
         })),
         catchError(err => {

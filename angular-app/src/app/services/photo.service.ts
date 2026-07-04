@@ -18,10 +18,58 @@ export class PhotoService {
    * r.HandleFunc("/photos/{id}/original", s.handleGetOriginal).Methods(http.MethodGet)
    * r.HandleFunc("/photos/{id}/thumb", s.handleGetThumbnail).Methods(http.MethodGet)
    */
+  public normalizeMetadata(p: any): Photo['metadata'] {
+    // Handle both API response styles: PascalCase (Metadata) and camelCase (metadata)
+    const m = p.Metadata || p.metadata;
+    if (!m) return undefined;
+    
+    // If Metadata is a flat object with string keys (from JSONB), map directly
+    if (typeof m === 'object' && !Array.isArray(m) && Object.values(m).every(v => typeof v === 'string' || typeof v === 'number' || v == null)) {
+      return {
+        make: m.Make || m.make,
+        model: m.Model || m.model,
+        lens_model: m.LensModel || m.lens_model || m.Lens,
+        exposure_time: m.ExposureTime || m.exposure_time,
+        f_number: m.FNumber || m.f_number,
+        iso: m.ISO || m.iso || m.ISOSpeedRatings || m.iso_speed,
+        focal_length: m.FocalLength || m.focal_length || m.FocalLenmm,
+        exposure_program: m.ExposureProgram || m.exposure_program,
+        white_balance: m.WhiteBalance || m.white_balance,
+        flash: m.Flash || m.flash || m.FlashFired,
+        color_space: m.ColorSpace || m.color_space,
+        datetime_original: m.DateTimeOriginal || m.datetime_original || m.DateTime,
+        datetime: m.DateTime || m.datetime,
+        datetime_digitized: m.DateTimeDigitized || m.datetime_digitized,
+        image_width: m.ImageWidth || m.image_width || m.PixelXDimension,
+        image_length: m.ImageLength || m.image_length || m.PixelYDimension,
+        orientation: m.Orientation || m.orientation,
+        gps_latitude: m.GPSLatitude || m.gps_latitude,
+        gps_longitude: m.GPSLongitude || m.gps_longitude,
+        gps_altitude: m.GPSAltitude || m.gps_altitude,
+        gps_latitude_ref: m.GPSLatitudeRef || m.gps_latitude_ref,
+        gps_longitude_ref: m.GPSLongitudeRef || m.gps_longitude_ref,
+        software: m.Software || m.software,
+        artist: m.Artist || m.artist,
+        image_description: m.ImageDescription || m.image_description,
+      };
+    }
+    
+    // Legacy nested object format
+    return {
+      make: m.Make || m.make,
+      model: m.Model || m.model,
+      lens_model: m.LensModel || m.lens_model,
+      exposure_time: m.ExposureTime || m.exposure_time,
+      f_number: m.FNumber || m.f_number,
+      iso: m.ISO || m.iso || m.ISOSpeedRatings,
+      focal_length: m.FocalLength || m.focal_length,
+    } as Photo['metadata'];
+  }
+
   private normalizePhoto(p: any): Photo {
     const id = p.ID ?? p.id ?? '';
     
-    // Determine media type - check multiple possible field names (MediaType, MediaType, media_type, mediaType)
+    // Determine media type
     let mediaType: 'photo' | 'video' | undefined;
     const rawMediaType = p.MediaType || p.mediaType || p.media_type;
     if (rawMediaType) {
@@ -40,20 +88,13 @@ export class PhotoService {
       path: filePath,
       thumbnailUrl: id ? `${this.API_BASE_URL}/media/${id}/thumb` : '',
       filename: p.Filename ?? p.filename ?? '',
-      captured_at: p.CapturedAt ?? p.captured_at ?? '',
+      captured_at: p.capturedAt ?? p.capturedAt ?? '',
       width: p.Width ?? p.width,
       height: p.Height ?? p.height,
       size: p.Size ?? p.size,
       type: p.Type ?? p.type,
       mediaType: mediaType,
-      metadata: p.Metadata ? {
-        camera: p.Metadata.Camera,
-        iso: p.Metadata.Iso,
-        aperture: p.Metadata.Aperture,
-        focal_length: p.Metadata.FocalLength,
-        gps_lat: p.Metadata.GpsLat,
-        gps_lon: p.Metadata.GpsLon,
-      } : undefined,
+      metadata: this.normalizeMetadata(p),
       videoMetadata: p.VideoMetadata ? {
         duration: p.VideoMetadata.Duration ?? p.VideoMetadata.duration,
         bitrate: p.VideoMetadata.Bitrate ?? p.VideoMetadata.bitrate,
@@ -300,20 +341,13 @@ export class PhotoService {
       path: filePath,
       thumbnailUrl: id ? `${this.API_BASE_URL}/media/shared/${id}/thumb` : '',
       filename: p.Filename ?? p.filename ?? '',
-      captured_at: p.CapturedAt ?? p.captured_at ?? '',
+      captured_at: p.capturedAt ?? p.capturedAt ?? '',
       width: p.Width ?? p.width,
       height: p.Height ?? p.height,
       size: p.Size ?? p.size,
       type: p.Type ?? p.type,
       mediaType: mediaType,
-      metadata: p.Metadata ? {
-        camera: p.Metadata.Camera,
-        iso: p.Metadata.Iso,
-        aperture: p.Metadata.Aperture,
-        focal_length: p.Metadata.FocalLength,
-        gps_lat: p.Metadata.GpsLat,
-        gps_lon: p.Metadata.GpsLon,
-      } : undefined,
+      metadata: this.normalizeMetadata(p),
       videoMetadata: p.VideoMetadata ? {
         duration: p.VideoMetadata.Duration ?? p.VideoMetadata.duration,
         bitrate: p.VideoMetadata.Bitrate ?? p.VideoMetadata.bitrate,
@@ -417,20 +451,13 @@ export class PhotoService {
         ? this.buildPublicShareUrl(resolveToken, mediaPath, 'thumb', password)
         : '',
       filename: p.Filename ?? p.filename ?? '',
-      captured_at: p.CapturedAt ?? p.captured_at ?? '',
+      captured_at: p.capturedAt ?? p.capturedAt ?? '',
       width: p.Width ?? p.width,
       height: p.Height ?? p.height,
       size: p.Size ?? p.size,
       type: p.Type ?? p.type,
       mediaType: mediaType,
-      metadata: p.Metadata ? {
-        camera: p.Metadata.Camera,
-        iso: p.Metadata.Iso,
-        aperture: p.Metadata.Aperture,
-        focal_length: p.Metadata.FocalLength,
-        gps_lat: p.Metadata.GpsLat,
-        gps_lon: p.Metadata.GpsLon,
-      } : undefined,
+      metadata: this.normalizeMetadata(p),
       videoMetadata: p.VideoMetadata ? {
         duration: p.VideoMetadata.Duration ?? p.VideoMetadata.duration,
         bitrate: p.VideoMetadata.Bitrate ?? p.VideoMetadata.bitrate,
