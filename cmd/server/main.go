@@ -83,49 +83,51 @@ func runWorker() {
 	}
 
 	// Use platform-specific path for worker
-	cmd = exec.Command("/app/worker")
+	for _, commandStr := range []string{"/app/worker", "/app/exif-update"} {
+		cmd = exec.Command(commandStr)
 
-	// Capture stdout and stderr
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		log.Printf("Error creating worker stdout pipe: %v", err)
-		return
-	}
-
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		log.Printf("Error creating worker stderr pipe: %v", err)
-		return
-	}
-
-	// Start the command
-	if err := cmd.Start(); err != nil {
-		log.Printf("Error starting worker: %v", err)
-		return
-	}
-
-	// Read stdout and log it
-	go func() {
-		scanner := bufio.NewScanner(stdout)
-		for scanner.Scan() {
-			log.Printf("[WORKER STDOUT] %s", scanner.Text())
+		// Capture stdout and stderr
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			log.Printf("Error creating worker stdout pipe: %v", err)
+			return
 		}
-	}()
 
-	// Read stderr and log it
-	go func() {
-		scanner := bufio.NewScanner(stderr)
-		for scanner.Scan() {
-			log.Printf("[WORKER STDERR] %s", scanner.Text())
+		stderr, err := cmd.StderrPipe()
+		if err != nil {
+			log.Printf("Error creating worker stderr pipe: %v", err)
+			return
 		}
-	}()
 
-	// Wait for the command to complete
-	err = cmd.Wait()
-	if err != nil {
-		log.Printf("Worker completed with error: %v", err)
-	} else {
-		log.Println("Worker completed successfully")
+		// Start the command
+		if err := cmd.Start(); err != nil {
+			log.Printf("Error starting worker: %v", err)
+			return
+		}
+
+		// Read stdout and log it
+		go func() {
+			scanner := bufio.NewScanner(stdout)
+			for scanner.Scan() {
+				log.Printf("[WORKER STDOUT] %s", scanner.Text())
+			}
+		}()
+
+		// Read stderr and log it
+		go func() {
+			scanner := bufio.NewScanner(stderr)
+			for scanner.Scan() {
+				log.Printf("[WORKER STDERR] %s", scanner.Text())
+			}
+		}()
+
+		// Wait for the command to complete
+		err = cmd.Wait()
+		if err != nil {
+			log.Printf("Worker completed with error: %v", err)
+		} else {
+			log.Println("Worker completed successfully")
+		}
 	}
 }
 
