@@ -36,7 +36,7 @@ import { ShareTriggerService } from '../../services/share-trigger.service';
       </div >
       <div class="photo-info">
         <p class="photo-filename" [title]="photo.filename">{{ photo.filename }}</p>
-        <p class="photo-date">{{ isVideo() ? formatDuration(photo.videoMetadata?.duration) : (getPhotoDate(photo) | date:'shortDate') }}</p>
+        <p class="photo-date">{{ isVideo() ? formatDuration(photo.videoMetadata?.duration) : formatDisplayDate(getPhotoDate(photo)) }}</p>
         <!-- EXIF Data Display -->
         <div class="exif-info" *ngIf="photo.metadata && !isVideo()">
           <span class="exif-item" *ngIf="photo.metadata.make">
@@ -265,6 +265,14 @@ export class PhotoCardComponent {
       return 'fallback video';
     }
     return 'fallback photo';
+  }
+
+  formatDisplayDate(date: Date): string {
+    if (!date || isNaN(date.getTime())) return '';
+    const day = date.getDate().toString().padStart(2, '0');
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}/${month}/${year}`;
   }
 
   formatDuration(seconds?: number): string {

@@ -26,8 +26,11 @@ const (
 
 // ExifInfo contains extracted EXIF information.
 type ExifInfo struct {
-	Orientation Orientation
-	Tags        []ExifTag
+	Orientation    Orientation
+	Tags           []ExifTag
+	GPSLatitude    float64
+	GPSLongitude   float64
+	GPSAltitude    float64
 }
 
 // ExifTag represents a single EXIF/IPTC/XMP tag.
@@ -119,6 +122,12 @@ func (r *ExifReader) ReadExif(file *os.File) (*ExifInfo, error) {
 		orientationVal int
 		orientationOK  bool
 		tags           []ExifTag
+		// GPS raw values
+		latRef     string
+		lonRef     string
+		latRaw     string
+		lonRaw     string
+		altRaw     string
 	)
 
 	opts := imagemeta.Options{
@@ -137,6 +146,20 @@ func (r *ExifReader) ReadExif(file *os.File) (*ExifInfo, error) {
 				orientationVal = extractIntValue(info.Value)
 				orientationOK = true
 			}
+
+			// Capture GPS raw values for later processing
+			if strings.EqualFold(info.Tag, "GPSLatitudeRef") {
+				latRef = fmt.Sprintf("%v", info.Value)
+			} else if strings.EqualFold(info.Tag, "GPSLatitude") {
+				latRaw = fmt.Sprintf("%v", info.Value)
+			} else if strings.EqualFold(info.Tag, "GPSLongitudeRef") {
+				lonRef = fmt.Sprintf("%v", info.Value)
+			} else if strings.EqualFold(info.Tag, "GPSLongitude") {
+				lonRaw = fmt.Sprintf("%v", info.Value)
+			} else if strings.EqualFold(info.Tag, "GPSAltitude") {
+				altRaw = fmt.Sprintf("%v", info.Value)
+			}
+
 			return nil
 		},
 	}
@@ -156,7 +179,106 @@ func (r *ExifReader) ReadExif(file *os.File) (*ExifInfo, error) {
 	if orientationOK {
 		info.Orientation = Orientation(orientationVal)
 	}
+
+	// Process GPS coordinates if found
+	if latRaw != "" && lonRaw != "" {
+		latitude, err := parseGPSCoordinate(latRaw, latRef)
+		if err == nil {
+			info.GPSLatitude = latitude
+		}
+	}
+	if lonRaw != "" {
+		longitude, err := parseGPSCoordinate(lonRaw, lonRef)
+		if err == nil {
+			info.GPSLongitude = longitude
+		}
+	}
+	if altRaw != "" {
+		info.GPSAltitude = parseAltitude(altRaw)
+	}
+
 	return info, nil
+}
+
+// parseGPSCoordinate converts GPS coordinate string to decimal degrees
+func parseGPSCoordinate(coordStr, ref string) (float64, error) {
+	// Format: "degrees minutes/1 seconds/1" or "degrees/1 minutes/1 seconds/1"
+	// Example: "40/1 25/1 47/1" or "40 25 47"
+	coordStr = strings.TrimSpace(coordStr)
+	if coordStr == "" {
+		return 0, fmt.Errorf("empty coordinate string")
+	}
+
+	// Split by space to get components
+	parts := strings.Fields(coordStr)
+	if len(parts) < 2 {
+		return 0, fmt.Errorf("invalid coordinate format: %s", coordStr)
+	}
+
+	// Try to parse degrees, minutes, seconds
+	var degrees, minutes, seconds float64
+	var err error
+
+	if len(parts) >= 3 {
+		// Format with fractions: "40/1 25/1 47/1"
+		if _, err = fmt.Sscanf(parts[0], "%f/%f", &degrees, &minutes); err != nil {
+			if _, err = fmt.Sscanf(parts[0], "%f", &degrees); err != nil {
+				return 0, fmt.Errorf("failed to parse degrees: %v", err)
+			}
+			minutes = 0
+		}
+		if _, err = fmt.Sscanf(parts[1], "%f/%f", &minutes, &seconds); err != nil {
+			if _, err = fmt.Sscanf(parts[1], "%f", &minutes); err != nil {
+				return 0, fmt.Errorf("failed to parse minutes: %v", err)
+			}
+			seconds = 0
+		}
+		if len(parts) >= 3 {
+			if _, err = fmt.Sscanf(parts[2], "%f/%f", &seconds, &seconds); err != nil {
+				if _, err = fmt.Sscanf(parts[2], "%f", &seconds); err != nil {
+					return 0, fmt.Errorf("failed to parse seconds: %v", err)
+				}
+			}
+		}
+	} else {
+		// Simple format: "40 25 47"
+		if _, err = fmt.Sscanf(parts[0], "%f", &degrees); err != nil {
+			return 0, fmt.Errorf("failed to parse degrees: %v", err)
+		}
+		if _, err = fmt.Sscanf(parts[1], "%f", &minutes); err != nil {
+			return 0, fmt.Errorf("failed to parse minutes: %v", err)
+		}
+		seconds = 0
+		if len(parts) >= 3 {
+			if _, err = fmt.Sscanf(parts[2], "%f", &seconds); err != nil {
+				return 0, fmt.Errorf("failed to parse seconds: %v", err)
+			}
+		}
+	}
+
+	// Convert to decimal degrees
+	decimal := degrees + minutes/60.0 + seconds/3600.0
+
+	// Apply reference direction
+	if ref == "S" || ref == "W" {
+		decimal = -decimal
+	}
+
+	return decimal, nil
+}
+
+// parseAltitude converts altitude string to float64 (meters)
+func parseAltitude(altStr string) float64 {
+	altStr = strings.TrimSpace(altStr)
+	if altStr == "" {
+		return 0
+	}
+
+	var altitude float64
+	if _, err := fmt.Sscanf(altStr, "%f", &altitude); err != nil {
+		return 0
+	}
+	return altitude
 }
 
 // extractIntValue converts an unknown numeric type to an int.

@@ -96,15 +96,15 @@ func parseSingleDate(dateStr string) (time.Time, error) {
 
 	// Try different formats
 	formats := []string{
-		"01/02/2006",      // dd/mm/yyyy
+		"02/01/2006",      // dd/mm/yyyy (Go: day/month/year)
 		"2006/01/02",      // yyyy/mm/dd
-		"01/02/2006 15:04:05", // dd/mm/yyyy hh:mm:ss
+		"02/01/2006 15:04:05", // dd/mm/yyyy hh:mm:ss
 		"2006/01/02 15:04:05", // yyyy/mm/dd hh:mm:ss
-		"01-02-2006",      // dd-mm-yyyy
+		"02-01-2006",      // dd-mm-yyyy
 		"2006-01-02",      // yyyy-mm-dd (ISO format)
-		"01.02.2006",      // dd.mm.yyyy
+		"02.01.2006",      // dd.mm.yyyy
 		"2006.01.02",      // yyyy.mm.dd
-		"01/02/2006 15:04",    // dd/mm/yyyy hh:mm
+		"02/01/2006 15:04",    // dd/mm/yyyy hh:mm
 		"2006/01/02 15:04",    // yyyy/mm/dd hh:mm
 		"2006",            // yyyy (entire year)
 		"2006/01",         // yyyy/mm (entire month)

@@ -26,9 +26,9 @@ rm -rf storage ; mkdir storage;  ./scanner.exe -u ${ADMIN_EMAIL} -p ${ADMIN_PASS
 go build -o worker.exe cmd/worker/main.go
 ./worker.exe > worker.log 2>&1
 # killall worker.exe
-
+go run cmd/exif/main.go
 # go test ./... -v -count=1
 ps -ef|grep 'ng serv' | awk '{print $2}' | while read pid; do kill $pid || true; done
-cd angular-app && npx ng serve &
-cd ..
+( cd angular-app && npx ng serve & )
+# cd ..
 

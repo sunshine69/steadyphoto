@@ -91,6 +91,7 @@ export class PhotoListComponent implements OnInit, OnDestroy {
 
   loading = true;
   currentSearchTerm = '';
+  currentDateRange = '';
   activeTagFilter: string | null = null;
   searchScope: SearchScope = 'all';
   
@@ -128,6 +129,14 @@ export class PhotoListComponent implements OnInit, OnDestroy {
         this.offset = 0;
       }
       this.currentSearchTerm = term;
+      
+      // For date scope with empty term, don't reload yet — wait for date range to arrive
+      // so we don't call listMedia() with stale data
+      if (this.searchScope === 'date' && !term.trim()) {
+        console.log('[PHOTO-LIST] date scope with empty term, waiting for date range...');
+        return;
+      }
+      
       this.loadPhotos();
     });
 
@@ -150,7 +159,18 @@ export class PhotoListComponent implements OnInit, OnDestroy {
 
     this.searchService.searchScope$.subscribe(scope => {
       this.searchScope = scope;
+      console.log('[PHOTO-LIST] scope changed to:', scope);
       this.loadPhotos();
+    });
+
+    // Subscribe to date range changes for date-only search
+    this.searchService.searchDate$.subscribe(dateRange => {
+      this.currentDateRange = dateRange;
+      console.log('[PHOTO-LIST] dateRange changed to:', dateRange);
+      // Only reload if we're in date scope or there's an active search
+      if (this.searchScope === 'date' || this.currentSearchTerm.trim()) {
+        this.loadPhotos();
+      }
     });
 
     this.routeSub = this.route.queryParams.subscribe(params => {
@@ -186,6 +206,7 @@ export class PhotoListComponent implements OnInit, OnDestroy {
 
   /**
    * Load photos from the backend.
+   * - If searching by date, use server-side search with date range filter
    * - If there's a search term, use server-side search via SearchService
    * - Otherwise, use the standard list endpoint
    */
@@ -195,15 +216,30 @@ export class PhotoListComponent implements OnInit, OnDestroy {
 
     let request$: Subscription | null = null;
 
-    if (this.currentSearchTerm.trim() !== '') {
+    // Use search endpoint for: text search OR date-only search (scope='date' with dateRange)
+    const hasSearchTerm = this.currentSearchTerm.trim() !== '';
+    const isDateSearch = this.searchScope === 'date' && this.currentDateRange !== '';
+
+    if (hasSearchTerm || isDateSearch) {
       // Use server-side search
+      const dateRange = isDateSearch ? this.currentDateRange : undefined;
+      console.log('[PHOTO-LIST] loadPhotos() -> searchMedia:', {
+        query: this.currentSearchTerm,
+        scope: this.searchScope,
+        dateRange: dateRange,
+        limit: this.limit,
+        offset: this.offset
+      });
+
       request$ = this.searchService.searchMedia(
         this.currentSearchTerm,
         this.searchScope,
         this.limit,
-        this.offset
+        this.offset,
+        dateRange
       ).subscribe({
         next: (response: SearchResponse) => {
+          console.log('[PHOTO-LIST] searchMedia response:', { total: response.total, results: response.results.length });
           let allMedia = response.results;
 
           // Apply tag filter from URL if present (client-side filter on top of search results)
@@ -216,14 +252,16 @@ export class PhotoListComponent implements OnInit, OnDestroy {
           this.totalPhotos = response.total;
           this.loading = false;
         },
-        error: () => {
+        error: (err) => {
+          console.error('[PHOTO-LIST] searchMedia error:', err);
           this.photos = [];
           this.totalPhotos = 0;
           this.loading = false;
         }
       });
     } else {
-      // No search term - use standard list endpoint
+      // No search term and no date filter - use standard list endpoint
+      console.log('[PHOTO-LIST] loadPhotos() -> listMedia (no search, no date filter)');
       request$ = this.photoService.listMedia(this.limit, this.offset).subscribe({
         next: (response: ListPhotosResponse) => {
           let allMedia = response.photos;

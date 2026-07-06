@@ -68,14 +68,14 @@ import { ExifDataPopupComponent } from './components/exif-data-popup/exif-data-p
                 type="date" 
                 class="date-input"
                 [(ngModel)]="startDate"
-                placeholder="Start date"
+                (ngModelChange)="onDateChanged()"
               />
               <span class="date-range-separator">to</span>
               <input 
                 type="date" 
                 class="date-input"
                 [(ngModel)]="endDate"
-                placeholder="End date"
+                (ngModelChange)="onDateChanged()"
               />
             </div>
           </div>
@@ -382,26 +382,39 @@ import { ExifDataPopupComponent } from './components/exif-data-popup/exif-data-p
       border-radius: 8px;
     }
 
-    .date-input {
-      padding: 8px 12px;
-      background-color: #1e293b;
-      border: 1px solid #374151;
-      border-radius: 6px;
-      color: #e5e7eb;
-      font-size: 13px;
-      outline: none;
-      width: 140px;
+    .date-part {
+      display: flex;
+      align-items: center;
+      gap: 2px;
     }
 
-    .date-input:focus {
+    .date-part-input {
+      width: 28px;
+      height: 32px;
+      padding: 4px 2px;
+      background-color: #1e293b;
+      border: 1px solid #374151;
+      border-radius: 4px;
+      color: #e5e7eb;
+      font-size: 13px;
+      text-align: center;
+      outline: none;
+    }
+
+    .date-part-input:focus {
       border-color: #6366f1;
       background-color: #0f172a;
+    }
+
+    .date-year-input {
+      width: 32px;
     }
 
     .date-range-separator {
       color: #9ca3af;
       font-size: 13px;
       font-weight: 500;
+      margin: 0 6px;
     }
 
     .header-actions {
@@ -674,17 +687,54 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   onSearch(): void {
-    // When scope changes, immediately trigger search with current term
+    console.log('[APP-COMPONENT] onSearch() called');
+    console.log('[APP-COMPONENT]   selectedScope:', this.selectedScope);
+    console.log('[APP-COMPONENT]   searchTerm:', this.searchTerm);
+    console.log('[APP-COMPONENT]   startDate:', this.startDate);
+    console.log('[APP-COMPONENT]   endDate:', this.endDate);
+
+    if (this.selectedScope === 'date') {
+      // Date scope: build and trigger search with date range
+      const dateRange = this.buildDateRange();
+      console.log('[APP-COMPONENT]   built dateRange:', dateRange);
+      
+      if (!dateRange) {
+        console.warn('[APP-COMPONENT]   No valid date range, not clearing search to preserve scope');
+        return;
+      }
+
+      // Trigger date search immediately
+      this.searchService.triggerSearch('', this.selectedScope, dateRange);
+      return;
+    }
+
+    // Text search scopes (all, name, tags)
     if (this.searchTerm.trim()) {
-      this.searchService.setSearchTerm(this.searchTerm);
-      this.searchService.setSearchScope(this.selectedScope);
+      console.log('[APP-COMPONENT]   Text search — triggering:', this.searchTerm);
+      this.searchService.triggerSearch(this.searchTerm, this.selectedScope);
+    } else {
+      // Empty text = clear search
+      console.log('[APP-COMPONENT]   Empty text — clearing search');
+      this.clearSearch();
+    }
+  }
+
+  onDateChanged(): void {
+    console.log('[APP-DATE] onDateChanged() triggered');
+    console.log('[APP-DATE]   startDate:', this.startDate);
+    console.log('[APP-DATE]   endDate:', this.endDate);
+    console.log('[APP-DATE]   selectedScope:', this.selectedScope);
+    
+    const dateRange = this.buildDateRange();
+    console.log('[APP-DATE]   built dateRange string:', dateRange);
+    
+    if (!dateRange) {
+      console.warn('[APP-DATE]   No valid date range — skipping search');
+      return;
     }
     
-    // If date scope is selected, build and send date range string
-    if (this.selectedScope === 'date' && (this.startDate || this.endDate)) {
-      const dateRange = this.buildDateRange();
-      this.searchService.setSearchDate(dateRange);
-    }
+    console.log('[APP-DATE]   triggering search with scope=date, dateRange=' + dateRange);
+    this.searchService.triggerSearch('', 'date', dateRange);
   }
 
   onSearchInputChanged(): void {
@@ -695,6 +745,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   clearSearch(): void {
+    console.log('[APP-COMPONENT] clearSearch() called');
     this.searchTerm = '';
     this.selectedScope = 'all';
     this.startDate = '';
@@ -702,6 +753,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.searchService.setSearchTerm('');
     this.searchService.setSearchScope('all');
     this.searchService.setSearchDate('');
+    this.searchService.triggerSearch('', 'all');
   }
 
   /**
