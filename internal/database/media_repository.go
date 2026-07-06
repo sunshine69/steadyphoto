@@ -343,6 +343,11 @@ func (r *PostgresMediaRepository) Search(ctx context.Context, query string, scop
 			queryStr += fmt.Sprintf(" AND tags LIKE $%d", argIdx)
 			args = append(args, "%"+query+"%")
 			argIdx++
+		case "location":
+			// Search GPS coordinates stored in metadata JSONB column
+			queryStr += fmt.Sprintf(` AND (LOWER(metadata->>'gps_latitude') LIKE $%d OR LOWER(metadata->>'gps_longitude') LIKE $%d OR LOWER(metadata->>'gps_altitude') LIKE $%d)`, argIdx, argIdx+1, argIdx+2)
+			args = append(args, "%"+query+"%", "%"+query+"%", "%"+query+"%")
+			argIdx += 3
 		case "all":
 			queryStr += fmt.Sprintf(" AND (LOWER(filename) LIKE $%d OR tags LIKE $%d)", argIdx, argIdx+1)
 			args = append(args, "%"+query+"%", "%"+query+"%")
@@ -394,6 +399,11 @@ func (r *PostgresMediaRepository) Search(ctx context.Context, query string, scop
 			listQuery += fmt.Sprintf(" AND tags LIKE $%d", listArgIdx)
 			listArgs = append(listArgs, "%"+query+"%")
 			listArgIdx++
+		case "location":
+			// Search GPS coordinates stored in metadata JSONB column
+			listQuery += fmt.Sprintf(` AND (LOWER(metadata->>'gps_latitude') LIKE $%d OR LOWER(metadata->>'gps_longitude') LIKE $%d OR LOWER(metadata->>'gps_altitude') LIKE $%d)`, listArgIdx, listArgIdx+1, listArgIdx+2)
+			listArgs = append(listArgs, "%"+query+"%", "%"+query+"%", "%"+query+"%")
+			listArgIdx += 3
 		case "all":
 			listQuery += fmt.Sprintf(" AND (LOWER(filename) LIKE $%d OR tags LIKE $%d)", listArgIdx, listArgIdx+1)
 			listArgs = append(listArgs, "%"+query+"%", "%"+query+"%")

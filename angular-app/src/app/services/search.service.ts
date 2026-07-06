@@ -6,7 +6,7 @@ import { environment } from '../../environments/environment';
 import { Photo } from '../models/photo.model';
 import { PhotoService } from './photo.service';
 
-export type SearchScope = 'all' | 'name' | 'tags' | 'date';
+export type SearchScope = 'all' | 'name' | 'tags' | 'date' | 'location';
 
 export interface SearchResponse {
   results: Photo[];

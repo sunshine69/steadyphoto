@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"steadyphoto/internal/domain"
+	"steadyphoto/internal/processor"
 	"steadyphoto/internal/storage"
 
 	"github.com/google/uuid"
@@ -278,7 +279,13 @@ func (h *MediaUploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 			ID: uuid.New(), UserID: userID, Filename: header.Filename, MediaType: mediaType, Path: relPathFromRoot, SizeBytes: n, Hash: hash, CapturedAt: time.Now(), ClientSource: clientSource,
 		}
 
+		// Extract GPS coordinates from EXIF and store in metadata
+		meta.Metadata = extractGPSCoords(absTargetPath)
+
 		log.Printf("[INFO] UploadHandler: Detected client source '%s' for '%s'", clientSource, header.Filename)
+		if meta.Metadata != nil && meta.Metadata["gps_latitude"] != "" {
+			log.Printf("[INFO] UploadHandler: GPS found - lat=%s lon=%s", meta.Metadata["gps_latitude"], meta.Metadata["gps_longitude"])
+		}
 		log.Printf("[DEBUG] UploadHandler: Inserting record into DB for '%s'...", meta.ID)
 
 		if err := h.mediaRepo.Create(ctx, meta); err != nil {
@@ -316,6 +323,26 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// extractGPSCoords opens the file at absPath, reads GPS EXIF data, and returns a map[string]string.
+// Returns nil if no GPS data is found or if the file cannot be read.
+func extractGPSCoords(absPath string) domain.Metadata {
+	f, err := os.Open(absPath)
+	if err != nil {
+		log.Printf("[WARN] extractGPSCoords: failed to open %s: %v", absPath, err)
+		return domain.Metadata{}
+	}
+	defer f.Close()
+
+	reader := processor.NewExifReader()
+	gps, err := reader.ReadGPS(f)
+	if err != nil {
+		log.Printf("[WARN] extractGPSCoords: failed to read GPS from %s: %v", absPath, err)
+		return domain.Metadata{}
+	}
+
+	return processor.GPSMetadataToMap(gps)
 }
 
 // isValidMediaType checks if the detected MIME type matches the file extension.

@@ -41,6 +41,97 @@ type ExifTag struct {
 	Value     string `json:"value"`
 }
 
+// GPSMetadata represents GPS coordinates as decimal degrees.
+type GPSMetadata struct {
+	Latitude  float64
+	Longitude float64
+	Altitude  float64
+	HasGPS    bool
+}
+
+// ReadGPS reads only the GPS coordinates from the given file.
+// Returns a GPSMetadata struct with HasGPS=true if coordinates were found.
+func (r *ExifReader) ReadGPS(file *os.File) (*GPSMetadata, error) {
+	if _, err := file.Seek(0, 0); err != nil {
+		return nil, fmt.Errorf("failed to seek file: %w", err)
+	}
+
+	format, err := detectImageFormat(file)
+	if err != nil {
+		return &GPSMetadata{}, nil
+	}
+
+	if _, err := file.Seek(0, 0); err != nil {
+		return nil, fmt.Errorf("failed to seek file: %w", err)
+	}
+
+	var (
+		latRef     string
+		lonRef     string
+		latRaw     string
+		lonRaw     string
+		altRaw     string
+	)
+
+	opts := imagemeta.Options{
+		R:           file,
+		ImageFormat: convertImageFormat(format),
+		Sources:     imagemeta.EXIF | imagemeta.XMP,
+		HandleTag: func(info imagemeta.TagInfo) error {
+			if strings.EqualFold(info.Tag, "GPSLatitudeRef") {
+				latRef = fmt.Sprintf("%v", info.Value)
+			} else if strings.EqualFold(info.Tag, "GPSLatitude") {
+				latRaw = fmt.Sprintf("%v", info.Value)
+			} else if strings.EqualFold(info.Tag, "GPSLongitudeRef") {
+				lonRef = fmt.Sprintf("%v", info.Value)
+			} else if strings.EqualFold(info.Tag, "GPSLongitude") {
+				lonRaw = fmt.Sprintf("%v", info.Value)
+			} else if strings.EqualFold(info.Tag, "GPSAltitude") {
+				altRaw = fmt.Sprintf("%v", info.Value)
+			}
+			return nil
+		},
+	}
+
+	_, decodeErr := imagemeta.Decode(opts)
+	if decodeErr != nil {
+		log.Printf("[EXIF] Decode returned error: %v", decodeErr)
+	}
+
+	gps := &GPSMetadata{}
+
+	// Only report GPS if we have both lat and lon
+	if latRaw != "" && lonRaw != "" {
+		latitude, err := parseGPSCoordinate(latRaw, latRef)
+		if err == nil {
+			gps.Latitude = latitude
+			longitude, err := parseGPSCoordinate(lonRaw, lonRef)
+			if err == nil {
+				gps.Longitude = longitude
+				gps.HasGPS = true
+			}
+		}
+	}
+
+	if altRaw != "" && gps.HasGPS {
+		gps.Altitude = parseAltitude(altRaw)
+	}
+
+	return gps, nil
+}
+
+// GPSMetadataToMap converts GPS data into a map suitable for storing in Metadata JSONB.
+func GPSMetadataToMap(gps *GPSMetadata) map[string]string {
+	if gps == nil || !gps.HasGPS {
+		return nil
+	}
+	result := make(map[string]string)
+	result["gps_latitude"] = fmt.Sprintf("%.6f", gps.Latitude)
+	result["gps_longitude"] = fmt.Sprintf("%.6f", gps.Longitude)
+	result["gps_altitude"] = fmt.Sprintf("%.1f", gps.Altitude)
+	return result
+}
+
 // ExifReader reads EXIF metadata using the bep/imagemeta library.
 type ExifReader struct{}
 
