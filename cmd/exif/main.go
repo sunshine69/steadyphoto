@@ -34,10 +34,8 @@ Usage:
   exifupdater [flags]
 
 Flags:
-  -v                    Verbose output
-  -json                 Output as JSON
+  -verbose              Verbose output (JSON per-item + detailed logs)
   -dry-run              Show what would be updated without writing to DB
-  -force                Force update even if metadata already exists
   -media-id <uuid>      Process a specific media item by UUID
   -user <email>         Process all media owned by user (by email)
   -help                 Show this help message
@@ -60,11 +58,8 @@ Examples:
   # Process all media for a user
   exifupdater -user admin@steadyphoto.com
 
-  # Force update all media with verbose output
-  exifupdater -force -v
-
-  # JSON output for programmatic use
-  exifupdater -json
+  # Verbose output with JSON per item
+  exifupdater -verbose
 `
 
 func main() {
@@ -74,6 +69,7 @@ func main() {
 	}
 
 	// CLI flags
+	verbose := flag.Bool("verbose", false, "Verbose output (JSON per-item + detailed logs)")
 	dryRun := flag.Bool("dry-run", false, "Show what would be updated without writing to DB")
 	mediaID := flag.String("media-id", "", "Process a specific media item by UUID")
 	userEmail := flag.String("user", "", "Process all media owned by user (by email)")
@@ -180,15 +176,9 @@ func main() {
 	errors := 0
 	var results []ExifUpdateResult
 
-	// Output clean JSON array - exactly what will be saved to DB
-	fmt.Println("{")
-	fmt.Printf("  \"mode\": \"%s\",\n", mode)
-	fmt.Printf("  \"totalItems\": %d,\n", len(mediaList))
-	fmt.Printf("  \"mediaItems\": [\n")
-
 	for i, media := range mediaList {
-		if i > 0 {
-			fmt.Println(",")
+		if *verbose {
+			fmt.Printf("Processing %d/%d: %s\n", i+1, len(mediaList), media.Path)
 		}
 
 		// Build full file path
@@ -199,7 +189,9 @@ func main() {
 
 		// Check if file exists
 		if _, statErr := os.Stat(fullPath); os.IsNotExist(statErr) {
-			log.Printf("  File not found, skipping: %s", fullPath)
+			if *verbose {
+				log.Printf("  File not found, skipping: %s", fullPath)
+			}
 			skipped++
 			continue
 		}
@@ -207,7 +199,9 @@ func main() {
 		// Read EXIF data from file
 		file, openErr := os.Open(fullPath)
 		if openErr != nil {
-			log.Printf("  Failed to open file: %v", openErr)
+			if *verbose {
+				log.Printf("  Failed to open file: %v", openErr)
+			}
 			errors++
 			continue
 		}
@@ -216,12 +210,17 @@ func main() {
 		file.Close()
 
 		if readErr != nil {
-			log.Printf("  Failed to read EXIF: %v", readErr)
+			if *verbose {
+				log.Printf("  Failed to read EXIF: %v", readErr)
+			}
 			errors++
 			continue
 		}
 
 		if exifInfo == nil {
+			if *verbose {
+				log.Printf("  No EXIF data found")
+			}
 			processed++
 			continue
 		}
@@ -229,16 +228,15 @@ func main() {
 		// Build metadata from EXIF info
 		metadata := buildMetadataFromExif(exifInfo)
 
+		if *verbose {
+			// Verbose: print per-item JSON
+			resultJSON, _ := json.MarshalIndent(metadata, "  ", "  ")
+			fmt.Printf("  %s: metadata extracted (%d tags)\n", media.Path, len(metadata))
+			fmt.Printf("  metadata: %s\n", string(resultJSON))
+		}
+
 		processed++
 		updated++
-
-		// Output this media item's metadata exactly as it will be saved to DB
-		resultJSON, _ := json.MarshalIndent(metadata, "    ", "  ")
-		fmt.Printf("    {\n")
-		fmt.Printf("      \"id\": \"%s\",\n", media.ID.String())
-		fmt.Printf("      \"path\": \"%s\",\n", media.Path)
-		fmt.Printf("      \"metadata\": %s\n", string(resultJSON))
-		fmt.Printf("    }")
 
 		// Store for final summary
 		result := ExifUpdateResult{
@@ -258,38 +256,45 @@ func main() {
 
 		updateErr := mediaRepo.Update(ctx, media)
 		if updateErr != nil {
-			log.Printf("  Failed to update database: %v", updateErr)
+			if *verbose {
+				log.Printf("  Failed to update database: %v", updateErr)
+			}
 			errors++
 			continue
 		}
 	}
 
-	fmt.Println()
-	fmt.Printf("  ]\n")
-	fmt.Println("}")
+	// Only output JSON if verbose mode
+	if *verbose {
+		// Output clean JSON array - exactly what will be saved to DB
+		output := map[string]interface{}{
+			"mode":       mode,
+			"totalItems": len(mediaList),
+			"processed":  processed,
+			"updated":    updated,
+			"skipped":    skipped,
+			"errors":     errors,
+			"mediaItems": results,
+		}
+		jsonBytes, _ := json.MarshalIndent(output, "", "  ")
+		fmt.Println(string(jsonBytes))
+	}
 
+	// Print final stats (always shown)
 	log.Printf("\n=== EXIF Update Complete ===")
 	log.Printf("Mode: %s", mode)
+	log.Printf("Total items: %d", len(mediaList))
 	log.Printf("Processed: %d", processed)
 	log.Printf("Updated: %d", updated)
 	log.Printf("Skipped: %d", skipped)
 	log.Printf("Errors: %d", errors)
 }
 
-// hasExistingMetadata checks if media has existing EXIF metadata
-func hasExistingMetadata(metadata domain.Metadata) bool {
-	if metadata == nil {
-		return false
-	}
-	return len(metadata) > 0
-}
-
 // ExifUpdateResult represents the result of an EXIF update
 type ExifUpdateResult struct {
-	ID          string              `json:"id"`
-	Path        string              `json:"path"`
-	Metadata    domain.Metadata     `json:"metadata"`
-	RawJSON     string              `json:"-"`
+	ID       string          `json:"id"`
+	Path     string          `json:"path"`
+	Metadata domain.Metadata `json:"metadata"`
 }
 
 // buildMetadataFromExif converts ExifInfo to Metadata map
@@ -332,12 +337,3 @@ func buildMetadataFromExif(info *processor.ExifInfo) domain.Metadata {
 	return metadata
 }
 
-// printTextSummary prints a human-readable summary
-func printTextSummary(processed, updated, skipped, errors int, mode string) {
-	fmt.Println("\n=== EXIF Update Summary ===")
-	fmt.Printf("Mode: %s\n", mode)
-	fmt.Printf("Processed: %d\n", processed)
-	fmt.Printf("Updated: %d\n", updated)
-	fmt.Printf("Skipped: %d\n", skipped)
-	fmt.Printf("Errors: %d\n", errors)
-}
