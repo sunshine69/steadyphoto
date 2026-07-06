@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/bep/imagemeta"
@@ -291,20 +292,33 @@ func (r *ExifReader) ReadExif(file *os.File) (*ExifInfo, error) {
 	return info, nil
 }
 
-// parseGPSCoordinate converts GPS coordinate string to decimal degrees
+// parseGPSCoordinate converts GPS coordinate string to decimal degrees.
+// Accepts both EXIF "degrees minutes/1 seconds/1" format (e.g., "40/1 25/1 47/1")
+// AND decimal degrees format (e.g., "27.578691666666668").
 func parseGPSCoordinate(coordStr, ref string) (float64, error) {
-	// Format: "degrees minutes/1 seconds/1" or "degrees/1 minutes/1 seconds/1"
-	// Example: "40/1 25/1 47/1" or "40 25 47"
 	coordStr = strings.TrimSpace(coordStr)
 	if coordStr == "" {
 		return 0, fmt.Errorf("empty coordinate string")
 	}
 
-	// Split by space to get components
-	parts := strings.Fields(coordStr)
-	if len(parts) < 2 {
-		return 0, fmt.Errorf("invalid coordinate format: %s", coordStr)
+	// Check if the coordinate is already in decimal degrees format.
+	// Decimal degrees are a single number like "27.578691666666668",
+	// whereas EXIF format uses spaces between degrees/minutes/seconds.
+	if len(strings.Fields(coordStr)) == 1 {
+		// Single value — treat as decimal degrees
+		decimal, err := strconv.ParseFloat(coordStr, 64)
+		if err != nil {
+			return 0, fmt.Errorf("failed to parse decimal degrees: %v", err)
+		}
+		// Apply reference direction
+		if ref == "S" || ref == "W" {
+			decimal = -decimal
+		}
+		return decimal, nil
 	}
+
+	// Multiple parts — EXIF DMS format: "degrees minutes/1 seconds/1"
+	parts := strings.Fields(coordStr)
 
 	// Try to parse degrees, minutes, seconds
 	var degrees, minutes, seconds float64

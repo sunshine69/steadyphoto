@@ -327,6 +327,15 @@ func buildMetadataFromExif(info *processor.ExifInfo) domain.Metadata {
 		}
 	}
 
+	// Store normalized GPS fields so location search works.
+	// NOTE: info.GPSLatitude/GPSLongitude are already signed by parseGPSCoordinate
+	// (which applies S/W ref), so we just use them directly without re-applying signs.
+	if info.GPSLatitude != 0 && info.GPSLongitude != 0 {
+		metadata["gps_latitude"] = fmt.Sprintf("%.6f", info.GPSLatitude)
+		metadata["gps_longitude"] = fmt.Sprintf("%.6f", info.GPSLongitude)
+		metadata["gps_altitude"] = fmt.Sprintf("%.1f", info.GPSAltitude)
+	}
+
 	// Set DateTimeOriginal: prefer the actual EXIF tag, fallback to ModifyDate
 	if dateTimeOriginal != "" {
 		metadata["DateTimeOriginal"] = dateTimeOriginal

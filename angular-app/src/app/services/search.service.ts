@@ -6,7 +6,7 @@ import { environment } from '../../environments/environment';
 import { Photo } from '../models/photo.model';
 import { PhotoService } from './photo.service';
 
-export type SearchScope = 'all' | 'name' | 'tags' | 'date' | 'location';
+export type SearchScope = 'all' | 'name' | 'tags' | 'date' | 'location' | 'place';
 
 export interface SearchResponse {
   results: Photo[];
@@ -112,7 +112,7 @@ export class SearchService {
   /**
    * Searches media by text across filename, tags, and metadata.
    * @param query Search text
-   * @param scope Search scope: 'all' (default), 'name', 'tags', 'date'
+   * @param scope Search scope: 'all' (default), 'name', 'tags', 'date', 'location', 'place'
    * @param limit Number of results per page
    * @param offset Pagination offset
    * @param dateRange Date range string in format: "dd/mm/yyyy", "yyyy/mm/dd", "dd/mm/yyyy - dd/mm/yyyy", etc.

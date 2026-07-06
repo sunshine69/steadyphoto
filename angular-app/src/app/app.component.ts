@@ -44,12 +44,13 @@ import { ExifDataPopupComponent } from './components/exif-data-popup/exif-data-p
             <!-- Search Scope Dropdown -->
             <select 
               class="search-scope-select"
-              [(ngModel)]="selectedScope"
-              (change)="onSearch()">
+              [(ngModel)]="selectedScope">
               <option value="all">All</option>
               <option value="name">Name</option>
               <option value="tags">Tags</option>
               <option value="date">Date</option>
+              <option value="location">GPS lat, lon</option>
+              <option value="place">Place</option>
             </select>
             
             <input 
@@ -708,14 +709,17 @@ export class AppComponent implements OnInit, OnDestroy {
       return;
     }
 
-    // Text search scopes (all, name, tags)
+    // Text search scopes (all, name, tags, location, place)
     if (this.searchTerm.trim()) {
       console.log('[APP-COMPONENT]   Text search — triggering:', this.searchTerm);
       this.searchService.triggerSearch(this.searchTerm, this.selectedScope);
     } else {
-      // Empty text = clear search
-      console.log('[APP-COMPONENT]   Empty text — clearing search');
-      this.clearSearch();
+      // Empty text = clear search but preserve the scope selection
+      console.log('[APP-COMPONENT]   Empty text — clearing search, preserving scope:', this.selectedScope);
+      this.searchTerm = '';
+      this.searchService.setSearchTerm('');
+      this.searchService.setSearchDate('');
+      this.searchService.triggerSearch('', this.selectedScope);
     }
   }
 
