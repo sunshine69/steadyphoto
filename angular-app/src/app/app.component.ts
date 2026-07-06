@@ -49,6 +49,7 @@ import { ExifDataPopupComponent } from './components/exif-data-popup/exif-data-p
               <option value="all">All</option>
               <option value="name">Name</option>
               <option value="tags">Tags</option>
+              <option value="date">Date</option>
             </select>
             
             <input 
@@ -60,6 +61,23 @@ import { ExifDataPopupComponent } from './components/exif-data-popup/exif-data-p
               (ngModelChange)="onSearchInputChanged()"
             />
             <button *ngIf="searchTerm" class="clear-search-btn" (click)="clearSearch()">×</button>
+
+            <!-- Date Range Input -->
+            <div *ngIf="selectedScope === 'date'" class="date-range-container">
+              <input 
+                type="date" 
+                class="date-input"
+                [(ngModel)]="startDate"
+                placeholder="Start date"
+              />
+              <span class="date-range-separator">to</span>
+              <input 
+                type="date" 
+                class="date-input"
+                [(ngModel)]="endDate"
+                placeholder="End date"
+              />
+            </div>
           </div>
 
           <div class="header-actions">
@@ -352,6 +370,40 @@ import { ExifDataPopupComponent } from './components/exif-data-popup/exif-data-p
       color: #e5e7eb;
     }
 
+    /* Date Range Container */
+    .date-range-container {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: 12px;
+      padding: 4px 12px;
+      background-color: #2d3748;
+      border: 1px solid #374151;
+      border-radius: 8px;
+    }
+
+    .date-input {
+      padding: 8px 12px;
+      background-color: #1e293b;
+      border: 1px solid #374151;
+      border-radius: 6px;
+      color: #e5e7eb;
+      font-size: 13px;
+      outline: none;
+      width: 140px;
+    }
+
+    .date-input:focus {
+      border-color: #6366f1;
+      background-color: #0f172a;
+    }
+
+    .date-range-separator {
+      color: #9ca3af;
+      font-size: 13px;
+      font-weight: 500;
+    }
+
     .header-actions {
       display: flex;
       align-items: center;
@@ -490,6 +542,8 @@ import { ExifDataPopupComponent } from './components/exif-data-popup/exif-data-p
 export class AppComponent implements OnInit, OnDestroy {
   searchTerm = '';
   selectedScope: SearchScope = 'all';
+  startDate: string = '';
+  endDate: string = '';
   isAdmin = false;
   avatarInitial = 'U';
 
@@ -625,6 +679,12 @@ export class AppComponent implements OnInit, OnDestroy {
       this.searchService.setSearchTerm(this.searchTerm);
       this.searchService.setSearchScope(this.selectedScope);
     }
+    
+    // If date scope is selected, build and send date range string
+    if (this.selectedScope === 'date' && (this.startDate || this.endDate)) {
+      const dateRange = this.buildDateRange();
+      this.searchService.setSearchDate(dateRange);
+    }
   }
 
   onSearchInputChanged(): void {
@@ -637,8 +697,35 @@ export class AppComponent implements OnInit, OnDestroy {
   clearSearch(): void {
     this.searchTerm = '';
     this.selectedScope = 'all';
+    this.startDate = '';
+    this.endDate = '';
     this.searchService.setSearchTerm('');
     this.searchService.setSearchScope('all');
+    this.searchService.setSearchDate('');
+  }
+
+  /**
+   * Builds a date range string in the format expected by the backend parser.
+   * Format: "dd/mm/yyyy - dd/mm/yyyy" or "dd/mm/yyyy" if only one date is selected.
+   */
+  private buildDateRange(): string {
+    const formatDate = (dateStr: string): string => {
+      if (!dateStr) return '';
+      const date = new Date(dateStr);
+      const day = String(date.getDate()).padStart(2, '0');
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const year = date.getFullYear();
+      return `${day}/${month}/${year}`;
+    };
+
+    if (this.startDate && this.endDate) {
+      return `${formatDate(this.startDate)} - ${formatDate(this.endDate)}`;
+    } else if (this.startDate) {
+      return formatDate(this.startDate);
+    } else if (this.endDate) {
+      return formatDate(this.endDate);
+    }
+    return '';
   }
 
   openUserManagement(): void {

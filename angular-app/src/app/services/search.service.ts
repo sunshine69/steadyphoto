@@ -6,7 +6,7 @@ import { environment } from '../../environments/environment';
 import { Photo } from '../models/photo.model';
 import { PhotoService } from './photo.service';
 
-export type SearchScope = 'all' | 'name' | 'tags';
+export type SearchScope = 'all' | 'name' | 'tags' | 'date';
 
 export interface SearchResponse {
   results: Photo[];
@@ -25,9 +25,11 @@ export class SearchService {
 
   private searchTermSource = new BehaviorSubject<string>('');
   private searchScopeSource = new BehaviorSubject<SearchScope>('all');
+  private searchDateSource = new BehaviorSubject<string>('');
 
   searchTerm$ = this.searchTermSource.asObservable();
   searchScope$ = this.searchScopeSource.asObservable();
+  searchDate$ = this.searchDateSource.asObservable();
 
   setSearchTerm(term: string) {
     this.searchTermSource.next(term);
@@ -35,6 +37,10 @@ export class SearchService {
 
   setSearchScope(scope: SearchScope) {
     this.searchScopeSource.next(scope);
+  }
+
+  setSearchDate(dateRange: string) {
+    this.searchDateSource.next(dateRange);
   }
 
   /**
@@ -76,17 +82,22 @@ export class SearchService {
   /**
    * Searches media by text across filename, tags, and metadata.
    * @param query Search text
-   * @param scope Search scope: 'all' (default), 'name', 'tags'
+   * @param scope Search scope: 'all' (default), 'name', 'tags', 'date'
    * @param limit Number of results per page
    * @param offset Pagination offset
+   * @param dateRange Date range string in format: "dd/mm/yyyy", "yyyy/mm/dd", "dd/mm/yyyy - dd/mm/yyyy", etc.
    */
-  searchMedia(query: string, scope: SearchScope = 'all', limit: number = 20, offset: number = 0): Observable<SearchResponse> {
+  searchMedia(query: string, scope: SearchScope = 'all', limit: number = 20, offset: number = 0, dateRange?: string): Observable<SearchResponse> {
     const params = new URLSearchParams({
       query: query,
       scope: scope,
       limit: limit.toString(),
       offset: offset.toString()
     });
+
+    if (dateRange) {
+      params.append('dateRange', dateRange);
+    }
 
     return this.http.get<any>(`${this.API_BASE_URL}/media/search?${params}`).pipe(
       map(response => ({

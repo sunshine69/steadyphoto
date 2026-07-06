@@ -4,12 +4,86 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
+	"time"
 
 	"steadyphoto/internal/domain"
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 )
+
+// Helper function to parse date range strings in various formats
+func parseDateRange(dateRange string) (start time.Time, end time.Time, err error) {
+	if dateRange == "" {
+		return time.Time{}, time.Time{}, nil
+	}
+
+	// First check if this is a range (contains "-" but not as part of date)
+	if strings.Contains(dateRange, " - ") {
+		parts := strings.SplitN(dateRange, " - ", 2)
+		start, err = parseSingleDate(parts[0])
+		if err != nil {
+			return time.Time{}, time.Time{}, err
+		}
+		end, err = parseSingleDate(parts[1])
+		if err != nil {
+			return time.Time{}, time.Time{}, err
+		}
+	} else {
+		// Single date - search for that day only
+		start, err = parseSingleDate(dateRange)
+		if err != nil {
+			return time.Time{}, time.Time{}, err
+		}
+		end = start.Add(24*time.Hour - time.Second)
+	}
+
+	// Swap if start > end
+	if start.After(end) {
+		start, end = end, start
+	}
+
+	return start, end, nil
+}
+
+// parseSingleDate parses a date string in various formats
+func parseSingleDate(dateStr string) (time.Time, error) {
+	dateStr = strings.TrimSpace(dateStr)
+	if dateStr == "" {
+		return time.Time{}, nil
+	}
+
+	// Try different formats
+	formats := []string{
+		"01/02/2006",
+		"2006/01/02",
+		"01/02/2006 15:04:05",
+		"2006/01/02 15:04:05",
+		"01-02-2006",
+		"2006-01-02",
+		"01.02.2006",
+		"2006.01.02",
+		"2006",
+		"2006/01",
+	}
+
+	for _, format := range formats {
+		if t, err := time.Parse(format, dateStr); err == nil {
+			// For year-only format, set to Jan 1 of that year
+			if format == "2006" {
+				t = time.Date(t.Year(), 1, 1, 0, 0, 0, 0, time.UTC)
+			}
+			// For year/month format, set to first day of that month
+			if format == "2006/01" {
+				t = time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, time.UTC)
+			}
+			return t, nil
+		}
+	}
+
+	return time.Time{}, fmt.Errorf("unable to parse date: %s", dateStr)
+}
 
 type PostgresMediaRepository struct {
 	db *sqlx.DB
@@ -186,9 +260,7 @@ func (r *PostgresMediaRepository) ListByType(ctx context.Context, mediaType doma
 	return mediaList, total, nil
 }
 
-
 // Search searches for media by query string with optional scope and pagination
-
 // ListAll returns all non-deleted media across all users (admin/worker use only)
 func (r *PostgresMediaRepository) ListAll(ctx context.Context, limit int, offset int) ([]*domain.Media, int, error) {
 	var mediaList []*domain.Media
@@ -208,9 +280,34 @@ func (r *PostgresMediaRepository) ListAll(ctx context.Context, limit int, offset
 
 	return mediaList, total, nil
 }
-func (r *PostgresMediaRepository) Search(ctx context.Context, query string, scope string, limit int, offset int, userID *uuid.UUID) ([]*domain.Media, int, error) {
+
+func (r *PostgresMediaRepository) Search(ctx context.Context, query string, scope string, limit int, offset int, userID *uuid.UUID, startDate string, endDate string) ([]*domain.Media, int, error) {
 	var mediaList []*domain.Media
 	var total int
+
+	// Parse date range
+	var startDateParsed, endDateParsed time.Time
+	if startDate != "" || endDate != "" {
+		var err error
+		if startDate != "" && endDate != "" {
+			startDateParsed, endDateParsed, err = parseDateRange(startDate + " - " + endDate)
+		} else if startDate != "" {
+			startDateParsed, err = parseSingleDate(startDate)
+			if err != nil {
+				return nil, 0, fmt.Errorf("failed to parse start date: %w", err)
+			}
+			endDateParsed = startDateParsed.Add(24*time.Hour - time.Second)
+		} else {
+			endDateParsed, err = parseSingleDate(endDate)
+			if err != nil {
+				return nil, 0, fmt.Errorf("failed to parse end date: %w", err)
+			}
+			startDateParsed = time.Time{}
+		}
+		if err != nil && (startDateParsed.IsZero() && endDateParsed.IsZero()) {
+			return nil, 0, fmt.Errorf("failed to parse date range: %w", err)
+		}
+	}
 
 	// Start with base query
 	queryStr := `SELECT COUNT(*) FROM media WHERE deleted_at IS NULL`
@@ -220,6 +317,18 @@ func (r *PostgresMediaRepository) Search(ctx context.Context, query string, scop
 	if userID != nil {
 		queryStr += fmt.Sprintf(" AND user_id = $%d", argIdx)
 		args = append(args, *userID)
+		argIdx++
+	}
+
+	// Add date range filters
+	if !startDateParsed.IsZero() {
+		queryStr += fmt.Sprintf(" AND captured_at >= $%d", argIdx)
+		args = append(args, startDateParsed)
+		argIdx++
+	}
+	if !endDateParsed.IsZero() {
+		queryStr += fmt.Sprintf(" AND captured_at <= $%d", argIdx)
+		args = append(args, endDateParsed)
 		argIdx++
 	}
 
@@ -263,6 +372,18 @@ func (r *PostgresMediaRepository) Search(ctx context.Context, query string, scop
 		listArgIdx++
 	}
 
+	// Add date range filters
+	if !startDateParsed.IsZero() {
+		listQuery += fmt.Sprintf(" AND captured_at >= $%d", listArgIdx)
+		listArgs = append(listArgs, startDateParsed)
+		listArgIdx++
+	}
+	if !endDateParsed.IsZero() {
+		listQuery += fmt.Sprintf(" AND captured_at <= $%d", listArgIdx)
+		listArgs = append(listArgs, endDateParsed)
+		listArgIdx++
+	}
+
 	if query != "" {
 		switch scope {
 		case "name":
@@ -296,6 +417,7 @@ func (r *PostgresMediaRepository) Search(ctx context.Context, query string, scop
 
 	return mediaList, total, nil
 }
+
 func (r *PostgresMediaRepository) SearchByTags(ctx context.Context, tags string, userID *uuid.UUID) ([]*domain.Media, error) {
 	var mediaList []*domain.Media
 	query := `SELECT * FROM media WHERE deleted_at IS NULL AND tags LIKE $1`
@@ -359,7 +481,6 @@ func (r *PostgresMediaRepository) GetTrashedMedia(ctx context.Context, id uuid.U
 		query += ` AND user_id = $2`
 		args = append(args, userID)
 	}
-
 
 	err := r.db.GetContext(ctx, &media, query, args...)
 	if err != nil {

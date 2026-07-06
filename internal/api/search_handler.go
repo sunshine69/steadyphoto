@@ -21,6 +21,7 @@ func (s *Server) handleSearchMedia(w http.ResponseWriter, r *http.Request) {
 	scope := r.URL.Query().Get("scope")
 	limitStr := r.URL.Query().Get("limit")
 	offsetStr := r.URL.Query().Get("offset")
+	dateRange := r.URL.Query().Get("dateRange")
 
 	// Parse limit and offset with defaults
 	limit := 20
@@ -36,7 +37,20 @@ func (s *Server) handleSearchMedia(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	matchingMedia, total, err := s.mediaRepo.Search(ctx, query, scope, limit, offset, &userID)
+	// Parse date range
+	var startDate, endDate string
+	if dateRange != "" {
+		start, end, err := parseDateRange(dateRange)
+		if err != nil {
+			log.Printf("[ERROR] handleSearchMedia - dateRange parse: %v", err)
+			http.Error(w, "Invalid date range format", http.StatusBadRequest)
+			return
+		}
+		startDate = start.Format("2006/01/02")
+		endDate = end.Format("2006/01/02")
+	}
+
+	matchingMedia, total, err := s.mediaRepo.Search(ctx, query, scope, limit, offset, &userID, startDate, endDate)
 	if err != nil {
 		log.Printf("[ERROR] handleSearchMedia - search: %v", err)
 		http.Error(w, "Failed to search media: "+err.Error(), http.StatusInternalServerError)
