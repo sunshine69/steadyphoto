@@ -446,6 +446,8 @@ func (h *MediaUploadHandlerSingle) HandleSingleFileUpload(w http.ResponseWriter,
 		CapturedAt: time.Now(),
 	}
 
+	meta.Metadata = extractExif(absTargetPath)
+
 	if err := h.mediaRepo.Create(dbCtx, meta); err != nil {
 		log.Printf("[ERROR] UploadHandlerSingle: Failed to insert media %s (hash=%s): %v", newFilename, hash[:8]+"...", err)
 		http.Error(w, "Failed to save media record.", http.StatusInternalServerError)
@@ -885,6 +887,8 @@ func (h *MediaUploadHandlerSingle) HandleComplete(w http.ResponseWriter, r *http
 		Hash:       hash,
 		CapturedAt: time.Now(),
 	}
+
+	meta.Metadata = extractExif(absTargetPath)
 
 	if err := h.mediaRepo.Create(dbCtx, meta); err != nil {
 		log.Printf("[ERROR] UploadHandlerComplete: Failed to insert media %s (hash=%s): %v", newFilename, hash[:8]+"...", err)

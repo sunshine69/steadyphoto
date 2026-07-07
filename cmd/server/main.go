@@ -83,7 +83,7 @@ func runWorker() {
 	}
 
 	// Use platform-specific path for worker
-	for _, commandStr := range []string{"/app/worker", "/app/exif-update"} {
+	for _, commandStr := range []string{"/app/worker"} {
 		cmd = exec.Command(commandStr)
 
 		// Capture stdout and stderr

@@ -280,7 +280,7 @@ func (h *MediaUploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Extract GPS coordinates from EXIF and store in metadata
-		meta.Metadata = extractGPSCoords(absTargetPath)
+		meta.Metadata = extractExif(absTargetPath)
 
 		log.Printf("[INFO] UploadHandler: Detected client source '%s' for '%s'", clientSource, header.Filename)
 		if meta.Metadata != nil && meta.Metadata["gps_latitude"] != "" {
@@ -325,24 +325,42 @@ func min(a, b int) int {
 	return b
 }
 
-// extractGPSCoords opens the file at absPath, reads GPS EXIF data, and returns a map[string]string.
-// Returns nil if no GPS data is found or if the file cannot be read.
-func extractGPSCoords(absPath string) domain.Metadata {
+// extractExif opens the file at absPath, reads full EXIF data (orientation + GPS + tags), and returns a domain.Metadata map.
+// Returns an empty metadata map if the file cannot be read or no EXIF data is found.
+func extractExif(absPath string) domain.Metadata {
 	f, err := os.Open(absPath)
 	if err != nil {
-		log.Printf("[WARN] extractGPSCoords: failed to open %s: %v", absPath, err)
+		log.Printf("[WARN] extractExif: failed to open %s: %v", absPath, err)
 		return domain.Metadata{}
 	}
 	defer f.Close()
 
 	reader := processor.NewExifReader()
-	gps, err := reader.ReadGPS(f)
+	info, err := reader.ReadExif(f)
 	if err != nil {
-		log.Printf("[WARN] extractGPSCoords: failed to read GPS from %s: %v", absPath, err)
+		log.Printf("[WARN] extractExif: failed to read EXIF from %s: %v", absPath, err)
+		return domain.Metadata{}
+	}
+	if info == nil {
 		return domain.Metadata{}
 	}
 
-	return processor.GPSMetadataToMap(gps)
+	md := domain.Metadata{}
+	if info.Orientation > 0 && info.Orientation != processor.OrientationNormal {
+		md["exif_orientation"] = fmt.Sprintf("%d", info.Orientation)
+	}
+	if info.GPSLatitude != 0 {
+		md["gps_latitude"] = fmt.Sprintf("%f", info.GPSLatitude)
+	}
+	if info.GPSLongitude != 0 {
+		md["gps_longitude"] = fmt.Sprintf("%f", info.GPSLongitude)
+	}
+	if info.GPSAltitude != 0 {
+		md["gps_altitude"] = fmt.Sprintf("%f", info.GPSAltitude)
+	}
+
+	log.Printf("[EXIF] Extracted metadata for %s: %v", filepath.Base(absPath), md)
+	return md
 }
 
 // isValidMediaType checks if the detected MIME type matches the file extension.
