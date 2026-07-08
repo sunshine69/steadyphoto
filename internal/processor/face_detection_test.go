@@ -109,8 +109,8 @@ func (m *MockMediaRepository) PermanentlyDeleteMedia(ctx context.Context, id uui
 	args := m.Called(ctx, id, userID)
 	return args.Error(0)
 }
-func (m *MockMediaRepository) Search(ctx context.Context, query string, scope string, limit, offset int, userID *uuid.UUID) ([]*domain.Media, int, error) {
-	args := m.Called(ctx, query, scope, limit, offset, userID)
+func (m *MockMediaRepository) Search(ctx context.Context, query string, scope string, limit, offset int, userID *uuid.UUID, startDate string, endDate string) ([]*domain.Media, int, error) {
+	args := m.Called(ctx, query, scope, limit, offset, userID, startDate, endDate)
 	if args.Get(0) == nil {
 		return nil, 0, args.Error(2)
 	}
