@@ -52,25 +52,12 @@ export class SearchService {
   triggerSearch(query: string, scope: SearchScope = 'all', dateRange?: string): void {
     console.log('[SEARCH-SERVICE] triggerSearch() called with:', { query, scope, dateRange });
     
-    // Update streams IMMEDIATELY so photo-list can react and call loadPhotos()
-    // BEFORE the HTTP response arrives
+    // Update streams so photo-list's combineLatest pipeline makes ONE HTTP request.
+    // We do NOT call searchMedia() here directly — that would cause duplicate requests.
     this.searchTermSource.next(query);
     this.searchScopeSource.next(scope);
     this.searchDateSource.next(dateRange || '');
-    console.log('[SEARCH-SERVICE]   streams updated:', { query, scope, dateRange: dateRange || '' });
-    
-    this.searchMedia(query, scope, 20, 0, dateRange).subscribe({
-      next: (response) => {
-        console.log('[SEARCH-SERVICE] triggerSearch() results:', response.results.length, 'items, total:', response.total);
-        // Update streams again with final values (redundant but safe)
-        this.searchTermSource.next(query);
-        this.searchScopeSource.next(scope);
-        this.searchDateSource.next(dateRange || '');
-      },
-      error: (err) => {
-        console.error('[SEARCH-SERVICE] triggerSearch() error:', err);
-      }
-    });
+    console.log('[SEARCH-SERVICE] streams updated:', { query, scope, dateRange: dateRange || '' });
   }
 
   /**

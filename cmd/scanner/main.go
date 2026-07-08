@@ -13,6 +13,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/joho/godotenv"
 )
 
 func getBaseURL() string {
@@ -240,6 +242,10 @@ func (c *ScannerClient) uploadFile(ctx context.Context, filePath string) error {
 }
 
 func main() {
+	if err := godotenv.Load(); err != nil {
+		log.Printf("Warning: Failed to load .env file: %v", err)
+	}
+
 	apiURL := ""
 
 	var sourceDir string

@@ -547,16 +547,22 @@ func (r *PostgresMediaRepository) Search(ctx context.Context, query string, scop
 		argIdx++
 	}
 
-	// Add date range filters
-	if !startDateParsed.IsZero() {
-		queryStr += fmt.Sprintf(" AND captured_at >= $%d", argIdx)
-		args = append(args, startDateParsed)
-		argIdx++
-	}
-	if !endDateParsed.IsZero() {
-		queryStr += fmt.Sprintf(" AND captured_at <= $%d", argIdx)
-		args = append(args, endDateParsed)
-		argIdx++
+	// Add date range filters - prefer EXIF DateTimeOriginal, fall back to captured_at
+	if !startDateParsed.IsZero() && !endDateParsed.IsZero() {
+		dateFilter := fmt.Sprintf(`
+			(
+				(metadata->>'DateTimeOriginal' IS NOT NULL AND metadata->>'DateTimeOriginal' != '')
+				AND TO_TIMESTAMP(REPLACE(metadata->>'DateTimeOriginal', ':', '/'), 'YYYY/MM/DD HH24:MI:SS') BETWEEN $%d AND $%d
+			)
+			OR
+			(
+				(metadata->>'DateTimeOriginal' IS NULL OR metadata->>'DateTimeOriginal' = '')
+				AND captured_at BETWEEN $%d AND $%d
+			)
+		`, argIdx, argIdx+1, argIdx+2, argIdx+3)
+		queryStr += " AND (" + dateFilter + ")"
+		args = append(args, startDateParsed, endDateParsed, startDateParsed, endDateParsed)
+		argIdx += 4
 	}
 
 	// Add search conditions based on scope
@@ -608,13 +614,15 @@ func (r *PostgresMediaRepository) Search(ctx context.Context, query string, scop
 		}
 	}
 
+	// Log SQL query for debugging
+	log.Printf("[DEBUG] ===== SEARCH SQL (COUNT) =====")
+	log.Printf("[DEBUG] QUERY: %s", queryStr)
+	log.Printf("[DEBUG] ARGS: %v", args)
+	log.Printf("[DEBUG] SCOPE: %s | QUERY: %s", scope, query)
+
 	// Execute count query
 	err := r.db.GetContext(ctx, &total, queryStr, args...)
 	if err != nil {
-
-	log.Printf("[DEBUG] SEARCH SQL: %s", queryStr)
-	log.Printf("[DEBUG] SEARCH ARGS: %v", args)
-	log.Printf("[DEBUG] SEARCH SCOPE: %s QUERY: %s", scope, query)
 		return nil, 0, err
 	}
 
@@ -629,16 +637,22 @@ func (r *PostgresMediaRepository) Search(ctx context.Context, query string, scop
 		listArgIdx++
 	}
 
-	// Add date range filters
-	if !startDateParsed.IsZero() {
-		listQuery += fmt.Sprintf(" AND captured_at >= $%d", listArgIdx)
-		listArgs = append(listArgs, startDateParsed)
-		listArgIdx++
-	}
-	if !endDateParsed.IsZero() {
-		listQuery += fmt.Sprintf(" AND captured_at <= $%d", listArgIdx)
-		listArgs = append(listArgs, endDateParsed)
-		listArgIdx++
+	// Add date range filters - use EXIF DateTimeOriginal if available, fall back to captured_at
+	if !startDateParsed.IsZero() && !endDateParsed.IsZero() {
+		listQuery += fmt.Sprintf(`
+			AND (
+				(
+					(metadata->>'DateTimeOriginal' IS NOT NULL AND metadata->>'DateTimeOriginal' != '')
+					AND to_timestamp(REPLACE(metadata->>'DateTimeOriginal', ':', '/'), 'YYYY/MM/DD HH24:MI:SS') BETWEEN $%d AND $%d
+				)
+				OR (
+					(metadata->>'DateTimeOriginal' IS NULL OR metadata->>'DateTimeOriginal' = '')
+					AND captured_at BETWEEN $%d AND $%d
+				)
+			)
+		`, listArgIdx, listArgIdx+1, listArgIdx+2, listArgIdx+3)
+		listArgs = append(listArgs, startDateParsed, endDateParsed, startDateParsed, endDateParsed)
+		listArgIdx += 4
 	}
 
 	if query != "" {
@@ -691,6 +705,12 @@ func (r *PostgresMediaRepository) Search(ctx context.Context, query string, scop
 	// Append limit/offset, then use their final positions in the query
 	listArgs = append(listArgs, int64(limit), int64(offset))
 	listQuery += fmt.Sprintf(" ORDER BY captured_at DESC LIMIT $%d OFFSET $%d", len(listArgs)-1, len(listArgs))
+
+	// Log SQL query for debugging
+	log.Printf("[DEBUG] ===== SEARCH SQL (LIST) =====")
+	log.Printf("[DEBUG] QUERY: %s", listQuery)
+	log.Printf("[DEBUG] ARGS: %v", listArgs)
+	log.Printf("[DEBUG] LIMIT: %d | OFFSET: %d", limit, offset)
 
 	// Execute list query
 	err = r.db.SelectContext(ctx, &mediaList, listQuery, listArgs...)

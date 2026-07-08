@@ -44,7 +44,8 @@ import { ExifDataPopupComponent } from './components/exif-data-popup/exif-data-p
             <!-- Search Scope Dropdown -->
             <select 
               class="search-scope-select"
-              [(ngModel)]="selectedScope">
+              [(ngModel)]="selectedScope"
+              (ngModelChange)="onScopeChange($event)">
               <option value="all">All</option>
               <option value="name">Name</option>
               <option value="tags">Tags</option>
@@ -59,7 +60,6 @@ import { ExifDataPopupComponent } from './components/exif-data-popup/exif-data-p
               class="search-input"
               [(ngModel)]="searchTerm"
               (keyup)="onKeyUp($event)"
-              (ngModelChange)="onSearchInputChanged()"
             />
             <button *ngIf="searchTerm" class="clear-search-btn" (click)="clearSearch()">×</button>
 
@@ -69,14 +69,14 @@ import { ExifDataPopupComponent } from './components/exif-data-popup/exif-data-p
                 type="date" 
                 class="date-input"
                 [(ngModel)]="startDate"
-                (ngModelChange)="onDateChanged()"
+                (keyup.enter)="onDateSearch()"
               />
               <span class="date-range-separator">to</span>
               <input 
                 type="date" 
                 class="date-input"
                 [(ngModel)]="endDate"
-                (ngModelChange)="onDateChanged()"
+                (keyup.enter)="onDateSearch()"
               />
             </div>
           </div>
@@ -607,16 +607,22 @@ export class AppComponent implements OnInit, OnDestroy {
 
   onKeyUp(event: KeyboardEvent): void {
     if (event.key === 'Enter') {
-      // On Enter: trigger immediate search by emitting current value
+      // On Enter: trigger search immediately
       this.searchInput$.next(this.searchTerm);
-    } else {
-      // For regular typing: emit to Subject for debounced processing
-      this.searchInput$.next(this.searchTerm);
+    }
+    // For regular typing: do NOT emit — wait for Enter key only
+  }
+
+  onDateSearch(): void {
+    // Only fire on Enter when both dates are set
+    if (this.startDate && this.endDate) {
+      const dateRange = this.buildDateRange();
+      this.searchService.triggerSearch('', 'date', dateRange);
     }
   }
 
   ngOnInit(): void {
-    // Set up the RxJS search pipeline
+    // Set up the RxJS search pipeline — debounce 500ms so typing doesn't fire search
     this.searchSubscription = this.searchInput$
       .pipe(
         debounceTime(500),
@@ -630,7 +636,10 @@ export class AppComponent implements OnInit, OnDestroy {
           }
         }
       });
-    
+
+    // Populate date inputs on load: today - 3 months → today
+    this.populateDateDefaults();
+
     // Listen for presentation mode close events from child components
     window.addEventListener('presentationModeClosed', this.handlePresentationClose.bind(this));
     
@@ -760,6 +769,31 @@ export class AppComponent implements OnInit, OnDestroy {
     this.searchService.triggerSearch('', 'all');
   }
 
+  populateDateDefaults(): void {
+    const today = new Date();
+    const threeMonthsAgo = new Date();
+    threeMonthsAgo.setMonth(today.getMonth() - 3);
+    
+    const formatDateForInput = (date: Date): string => {
+      const day = String(date.getDate()).padStart(2, '0');
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const year = date.getFullYear();
+      return `${day}/${month}/${year}`;
+    };
+    
+    this.startDate = formatDateForInput(threeMonthsAgo);
+    this.endDate = formatDateForInput(today);
+  }
+
+  onScopeChange(scope: string): void {
+    if (scope === 'date') {
+      this.populateDateDefaults();
+    }
+    // Clear search term when changing scope
+    this.searchTerm = '';
+    this.searchService.setSearchTerm('');
+  }
+
   /**
    * Builds a date range string in the format expected by the backend parser.
    * Format: "dd/mm/yyyy - dd/mm/yyyy" or "dd/mm/yyyy" if only one date is selected.
@@ -767,7 +801,16 @@ export class AppComponent implements OnInit, OnDestroy {
   private buildDateRange(): string {
     const formatDate = (dateStr: string): string => {
       if (!dateStr) return '';
-      const date = new Date(dateStr);
+      // Handle both input formats: YYYY-MM-DD (from HTML date input) and DD/MM/YYYY
+      let date: Date;
+      if (dateStr.includes('/')) {
+        // Already in DD/MM/YYYY format
+        const parts = dateStr.split('/');
+        date = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+      } else {
+        date = new Date(dateStr);
+      }
+      
       const day = String(date.getDate()).padStart(2, '0');
       const month = String(date.getMonth() + 1).padStart(2, '0');
       const year = date.getFullYear();

@@ -1,7 +1,7 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Subscription } from 'rxjs';
+import { Subscription, combineLatest, switchMap, debounceTime, distinctUntilChanged, of } from 'rxjs';
 import { PhotoService } from '../../services/photo.service';
 import { GalleryStateService } from '../../services/gallery-state.service';
 import { SearchService, SearchScope, SearchResponse } from '../../services/search.service';
@@ -95,12 +95,11 @@ export class PhotoListComponent implements OnInit, OnDestroy {
   activeTagFilter: string | null = null;
   searchScope: SearchScope = 'all';
   
-  // Local selection state — kept in sync with the service via selectedIds$ subscription
+  // Local selection state
   selectedPhotoIds: Set<string> = new Set();
 
-  private subscription: Subscription | null = null;
-  private searchSubscription: Subscription | null = null;
-  private routeSub: Subscription | null = null;
+  private mainSub: Subscription | null = null;
+  private directSub: Subscription | null = null;
   private selectAllTriggerSub: Subscription | null = null;
   private selectedIdsSub: Subscription | null = null;
   private readonly SCROLL_KEY = 'photo_list_scroll_pos';
@@ -121,26 +120,83 @@ export class PhotoListComponent implements OnInit, OnDestroy {
     this.currentPage = savedPage;
     this.offset = (savedPage - 1) * this.limit;
     
-    // Subscribe to search service changes
-    this.searchSubscription = this.searchService.searchTerm$.subscribe(term => {
-      // Reset to page 1 when search is cleared (transitioning from search to full list)
-      if (term === '' && this.currentSearchTerm !== '') {
-        this.currentPage = 1;
-        this.offset = 0;
+    // Use combineLatest to react to any search parameter change, but only
+    // trigger ONE request after 300ms of inactivity (debounce) and skip
+    // identical consecutive states (distinctUntilChanged).
+    const searchParams$ = combineLatest([
+      this.searchService.searchTerm$,
+      this.searchService.searchDate$,
+      this.searchService.searchScope$
+    ]).pipe(
+      debounceTime(300),
+      distinctUntilChanged((prev, curr) => 
+        prev[0] === curr[0] && prev[1] === curr[1] && prev[2] === curr[2]
+      ),
+      switchMap(([term, dateRange, scope]) => {
+        this.currentSearchTerm = term;
+        this.currentDateRange = dateRange;
+        this.searchScope = scope;
+        
+        // Reset page when search starts or scope changes
+        if (this.currentPage !== 1) {
+          this.currentPage = 1;
+          this.offset = 0;
+        }
+
+        const hasSearchTerm = term.trim() !== '';
+        const isDateSearch = scope === 'date' && dateRange !== '';
+
+        if (hasSearchTerm || isDateSearch) {
+          console.log('[PHOTO-LIST] loadPhotos() -> searchMedia:', {
+            query: term, scope, dateRange: isDateSearch ? dateRange : undefined,
+            limit: this.limit, offset: this.offset
+          });
+          return this.searchService.searchMedia(term, scope, this.limit, this.offset, isDateSearch ? dateRange : undefined);
+        } else {
+          console.log('[PHOTO-LIST] loadPhotos() -> listMedia (no search, no date filter)');
+          return this.photoService.listMedia(this.limit, this.offset).pipe(
+            switchMap((response: ListPhotosResponse) => of({
+              results: response.photos,
+              total: response.total,
+              limit: this.limit,
+              offset: this.offset
+            }))
+          );
+        }
+      })
+    );
+
+    // Subscribe to the combined search stream
+    this.mainSub = searchParams$.subscribe({
+      next: (response: SearchResponse | ListPhotosResponse) => {
+        console.log('[PHOTO-LIST] response received:', { 
+          total: (response as any).total, 
+          results: (response as any).results?.length 
+        });
+        
+        // The listMedia path wraps its response, so results is always available
+        const data = response as any;
+        let allMedia = data.results || data.photos || [];
+
+        // Apply tag filter from URL if present
+        if (this.activeTagFilter) {
+          const tagLower = this.activeTagFilter.toLowerCase();
+          allMedia = allMedia.filter((p: Photo) => this.getTagsForPhoto(p).some(t => t.toLowerCase().includes(tagLower)));
+        }
+
+        this.photos = allMedia;
+        this.totalPhotos = data.total ?? 0;
+        this.loading = false;
+      },
+      error: (err) => {
+        console.error('[PHOTO-LIST] loadPhotos error:', err);
+        this.photos = [];
+        this.totalPhotos = 0;
+        this.loading = false;
       }
-      this.currentSearchTerm = term;
-      
-      // For date scope with empty term, don't reload yet — wait for date range to arrive
-      // so we don't call listMedia() with stale data
-      if (this.searchScope === 'date' && !term.trim()) {
-        console.log('[PHOTO-LIST] date scope with empty term, waiting for date range...');
-        return;
-      }
-      
-      this.loadPhotos();
     });
 
-    // Subscribe to "Select All" trigger from the top header
+    // Subscribe to "Select All" trigger
     this.selectAllTriggerSub = this.selectionService.selectAllTrigger$.subscribe(() => {
       if (this.photos && this.photos.length > 0) {
         const ids = this.photos.map(p => p.id);
@@ -148,110 +204,48 @@ export class PhotoListComponent implements OnInit, OnDestroy {
       }
     });
 
-    // Subscribe to the service's selectedIds$ BehaviorSubject so the local
-    // selectedPhotoIds Set stays in sync whenever any selection action occurs
-    // (selectAll, add, remove, toggle, clear). The service is the single source
-    // of truth — we never write to selectedPhotoIds directly except via the
-    // subscription callback.
+    // Keep selectedPhotoIds in sync with selection service
     this.selectedIdsSub = this.selectionService.selectedIds$.subscribe(ids => {
       this.selectedPhotoIds = new Set(ids);
     });
 
-    this.searchService.searchScope$.subscribe(scope => {
-      this.searchScope = scope;
-      console.log('[PHOTO-LIST] scope changed to:', scope);
-      this.loadPhotos();
-    });
-
-    // Subscribe to date range changes for date-only search
-    this.searchService.searchDate$.subscribe(dateRange => {
-      this.currentDateRange = dateRange;
-      console.log('[PHOTO-LIST] dateRange changed to:', dateRange);
-      // Only reload if we're in date scope or there's an active search
-      if (this.searchScope === 'date' || this.currentSearchTerm.trim()) {
-        this.loadPhotos();
+    // Subscribe to route query params for tag filter — just reload directly,
+    // no need to go through the search stream debounce.
+    this.route.queryParams.subscribe(params => {
+      const newTag = params['tag'] || null;
+      if (newTag !== this.activeTagFilter) {
+        this.activeTagFilter = newTag;
+        this.currentPage = 1;
+        this.offset = 0;
+        this.loadPhotosDirect();
       }
     });
 
-    this.routeSub = this.route.queryParams.subscribe(params => {
-      this.activeTagFilter = params['tag'] || null;
-      this.loadPhotos();
-    });
-
-    this.loadPhotos();
+    // Initial load — push empty search term to trigger the stream
+    this.loading = true;
+    this.searchService.setSearchTerm('');
   }
 
   /**
-   * Toggle the selection state of a photo.
-   * Delegates to the service so the service's BehaviorSubject is updated,
-   * which triggers the selectedIds$ subscription that updates our local Set.
+   * Direct synchronous load for tag filter changes — bypasses the debounce.
    */
-  toggleSelection(id: string): void {
-    this.selectionService.toggle(id);
-  }
-
-  /**
-   * Check whether a photo is currently selected.
-   * Reads from the local Set which is kept in sync via the subscription.
-   */
-  isPhotoSelected(id: string): boolean { return this.selectedPhotoIds.has(id); }
-
-  /**
-   * Clear all selections.
-   * Delegates to the service; the subscription will reset our local Set.
-   */
-  clearSelection(): void { 
-    this.selectionService.clear();
-  }
-
-  /**
-   * Load photos from the backend.
-   * - If searching by date, use server-side search with date range filter
-   * - If there's a search term, use server-side search via SearchService
-   * - Otherwise, use the standard list endpoint
-   */
-  loadPhotos(): void {
-    if (!this.photoService) { this.loading = false; return; }
+  private loadPhotosDirect(): void {
+    if (!this.photoService) { 
+      this.loading = false; 
+      return; 
+    }
     this.loading = true;
 
-    let request$: Subscription | null = null;
-
-    // Use search endpoint for: text search OR date-only search (scope='date' with dateRange)
     const hasSearchTerm = this.currentSearchTerm.trim() !== '';
     const isDateSearch = this.searchScope === 'date' && this.currentDateRange !== '';
 
     if (hasSearchTerm || isDateSearch) {
-      // Use server-side search
       const dateRange = isDateSearch ? this.currentDateRange : undefined;
-      console.log('[PHOTO-LIST] loadPhotos() -> searchMedia:', {
-        query: this.currentSearchTerm,
-        scope: this.searchScope,
-        dateRange: dateRange,
-        limit: this.limit,
-        offset: this.offset
-      });
-
-      request$ = this.searchService.searchMedia(
-        this.currentSearchTerm,
-        this.searchScope,
-        this.limit,
-        this.offset,
-        dateRange
+      this.directSub = this.searchService.searchMedia(
+        this.currentSearchTerm, this.searchScope,
+        this.limit, this.offset, dateRange
       ).subscribe({
-        next: (response: SearchResponse) => {
-          console.log('[PHOTO-LIST] searchMedia response:', { total: response.total, results: response.results.length });
-          let allMedia = response.results;
-
-          // Apply tag filter from URL if present (client-side filter on top of search results)
-          if (this.activeTagFilter) {
-            const tagLower = this.activeTagFilter.toLowerCase();
-            allMedia = allMedia.filter(p => this.getTagsForPhoto(p).some(t => t.toLowerCase().includes(tagLower)));
-          }
-
-          this.photos = allMedia;
-          this.totalPhotos = response.total;
-          this.loading = false;
-        },
+        next: (response: SearchResponse) => this.applyResults(response.results, response.total),
         error: (err) => {
           console.error('[PHOTO-LIST] searchMedia error:', err);
           this.photos = [];
@@ -260,22 +254,8 @@ export class PhotoListComponent implements OnInit, OnDestroy {
         }
       });
     } else {
-      // No search term and no date filter - use standard list endpoint
-      console.log('[PHOTO-LIST] loadPhotos() -> listMedia (no search, no date filter)');
-      request$ = this.photoService.listMedia(this.limit, this.offset).subscribe({
-        next: (response: ListPhotosResponse) => {
-          let allMedia = response.photos;
-
-          // Apply tag filter from URL if present
-          if (this.activeTagFilter) {
-            const tagLower = this.activeTagFilter.toLowerCase();
-            allMedia = allMedia.filter(p => this.getTagsForPhoto(p).some(t => t.toLowerCase().includes(tagLower)));
-          }
-
-          this.photos = allMedia;
-          this.totalPhotos = response.total;
-          this.loading = false;
-        },
+      this.directSub = this.photoService.listMedia(this.limit, this.offset).subscribe({
+        next: (response: ListPhotosResponse) => this.applyResults(response.photos, response.total),
         error: () => {
           this.photos = [];
           this.totalPhotos = 0;
@@ -283,9 +263,26 @@ export class PhotoListComponent implements OnInit, OnDestroy {
         }
       });
     }
+  }
 
-    // Store the subscription so we can clean it up
-    this.subscription = request$;
+  private applyResults(allMedia: Photo[], total: number): void {
+    if (this.activeTagFilter) {
+      const tagLower = this.activeTagFilter.toLowerCase();
+      allMedia = allMedia.filter(p => this.getTagsForPhoto(p).some(t => t.toLowerCase().includes(tagLower)));
+    }
+    this.photos = allMedia;
+    this.totalPhotos = total;
+    this.loading = false;
+  }
+
+  toggleSelection(id: string): void {
+    this.selectionService.toggle(id);
+  }
+
+  isPhotoSelected(id: string): boolean { return this.selectedPhotoIds.has(id); }
+
+  clearSelection(): void { 
+    this.selectionService.clear();
   }
 
   getTagsForPhoto(photo: Photo): string[] {
@@ -293,9 +290,29 @@ export class PhotoListComponent implements OnInit, OnDestroy {
     return Array.isArray(photo.tags) ? photo.tags : (typeof photo.tags === 'string' ? [photo.tags] : []);
   }
 
-  clearTagFilter(): void { this.activeTagFilter = null; this.router.navigate(['/'], { replaceUrl: true }); }
-  changePage(dir: number): void { this.offset += (dir * this.limit); this.currentPage += dir; this.galleryState.saveCurrentPage(this.currentPage); this.loadPhotos(); window.scrollTo(0, 0); }
-  onJumpToPage(): void { if (this.jumpPageInput && this.jumpPageInput <= this.totalPages) { this.currentPage = this.jumpPageInput; this.offset = (this.currentPage - 1) * this.limit; this.galleryState.saveCurrentPage(this.currentPage); this.loadPhotos(); window.scrollTo(0, 0); } }
+  clearTagFilter(): void { 
+    this.activeTagFilter = null; 
+    this.router.navigate(['/'], { replaceUrl: true }); 
+  }
+  
+  changePage(dir: number): void { 
+    this.offset += (dir * this.limit); 
+    this.currentPage += dir; 
+    this.galleryState.saveCurrentPage(this.currentPage); 
+    this.loadPhotosDirect();
+    window.scrollTo(0, 0); 
+  }
+  
+  onJumpToPage(): void { 
+    if (this.jumpPageInput && this.jumpPageInput <= this.totalPages) { 
+      this.currentPage = this.jumpPageInput; 
+      this.offset = (this.currentPage - 1) * this.limit; 
+      this.galleryState.saveCurrentPage(this.currentPage); 
+      this.loadPhotosDirect();
+      window.scrollTo(0, 0); 
+    } 
+  }
+  
   onPhotoClick(id: string): void {
     const queryParams: any = {};
     if (this.currentSearchTerm) {
@@ -307,10 +324,9 @@ export class PhotoListComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     sessionStorage.setItem(this.SCROLL_KEY, window.scrollY.toString());
-    this.subscription?.unsubscribe();
-    this.searchSubscription?.unsubscribe();
+    this.mainSub?.unsubscribe();
+    this.directSub?.unsubscribe();
     this.selectAllTriggerSub?.unsubscribe();
     this.selectedIdsSub?.unsubscribe();
-    this.routeSub?.unsubscribe();
   }
 }
