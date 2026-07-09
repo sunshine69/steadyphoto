@@ -278,12 +278,30 @@ func (h *MediaUploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		}
 
 		clientSource := detectClientSource(r)
-		meta := &domain.Media{
-			ID: uuid.New(), UserID: userID, Filename: header.Filename, MediaType: mediaType, Path: relPathFromRoot, SizeBytes: n, Hash: hash, CapturedAt: time.Now(), ClientSource: clientSource,
+
+		// Declare meta early so we can populate CapturedAt and Metadata before building the rest
+		meta := &domain.Media{}
+
+		// Extract EXIF data (GPS, orientation) and DateTimeOriginal for captured_at
+		meta.Metadata = extractExif(absTargetPath)
+
+		// Determine CapturedAt: prefer EXIF DateTimeOriginal, fall back to upload time
+		meta.CapturedAt = time.Now() // default fallback
+		if dateTime, err := processor.NewExifReader().ReadDateTimeOriginal(tempFile); err == nil && !dateTime.IsZero() {
+			meta.CapturedAt = dateTime
+			log.Printf("[INFO] UploadHandler: EXIF DateTimeOriginal found for '%s': %s", header.Filename, dateTime.Format(time.RFC3339))
+		} else {
+			log.Printf("[INFO] UploadHandler: No EXIF DateTimeOriginal for '%s', using upload time", header.Filename)
 		}
 
-		// Extract GPS coordinates from EXIF and store in metadata
-		meta.Metadata = extractExif(absTargetPath)
+		meta.ID = uuid.New()
+		meta.UserID = userID
+		meta.Filename = header.Filename
+		meta.MediaType = mediaType
+		meta.Path = relPathFromRoot
+		meta.SizeBytes = n
+		meta.Hash = hash
+		meta.ClientSource = clientSource
 
 		log.Printf("[INFO] UploadHandler: Detected client source '%s' for '%s'", clientSource, header.Filename)
 		if meta.Metadata != nil && meta.Metadata["gps_latitude"] != "" {
@@ -350,7 +368,7 @@ func (h *MediaUploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 			"mediaType":   string(meta.MediaType),
 			"path":        relPathFromRoot, // Use the actual relative path stored in DB for filesystem resolution.
 			"size":        n,
-			"captured_at": time.Now().Format(time.RFC3339),
+			"captured_at": meta.CapturedAt.Format(time.RFC3339),
 		})
 
 		log.Printf("[INFO] UploadHandler: Successfully processed '%s' (ID=%s)", header.Filename, meta.ID)

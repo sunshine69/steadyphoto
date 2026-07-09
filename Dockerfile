@@ -39,6 +39,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-X main.version=v1.0.0-$(git rev
 # Build worker to generate thumbnail
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-X main.version=v1.0.0-$(git rev-parse --short HEAD) -X main.buildTime=$(date '+%Y%m%d_%H%M%S') -extldflags=-static -w -s" --tags "osusergo netgo" -o /app/steadyphoto/worker cmd/worker/main.go
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-X main.version=v1.0.0-$(git rev-parse --short HEAD) -X main.buildTime=$(date '+%Y%m%d_%H%M%S') -extldflags=-static -w -s" --tags "osusergo netgo" -o /app/steadyphoto/exif-update cmd/exif/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-X main.version=v1.0.0-$(git rev-parse --short HEAD) -X main.buildTime=$(date '+%Y%m%d_%H%M%S') -extldflags=-static -w -s" --tags "osusergo netgo" -o /app/steadyphoto/update-capture-date cmd/update-capture-date/main.go
 
 # Build the migrate binary
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app/steadyphoto/migrate cmd/migrate/main.go
@@ -48,7 +49,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app/steadyphoto/migra
 FROM alpine:3.19
 
 # Install ca-certificates, postgresql-client for health checks, and su-exec to drop privileges
-RUN apk add --no-cache ca-certificates su-exec postgresql-client && \
+RUN apk add --no-cache ca-certificates su-exec postgresql-client ffmpeg && \
     mkdir -p /app/storage
 
 WORKDIR /app
@@ -59,6 +60,7 @@ COPY --from=go-builder /app/steadyphoto/migrate ./migrate
 COPY --from=go-builder /app/steadyphoto/worker ./worker
 COPY --from=go-builder //app/steadyphoto/migrations ./migrations
 COPY --from=go-builder //app/steadyphoto/exif-update ./exif-update 
+COPY --from=go-builder //app/steadyphoto/update-capture-date ./update-capture-date
 
 # Copy the built Angular application to /ui directory
 COPY --from=angular-builder /app/angular-app/dist /app/ui

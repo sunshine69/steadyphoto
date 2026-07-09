@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/bep/imagemeta"
 )
@@ -32,6 +33,7 @@ type ExifInfo struct {
 	GPSLatitude    float64
 	GPSLongitude   float64
 	GPSAltitude    float64
+	CapturedAt     time.Time // DateTimeOriginal from EXIF (zero value if not found)
 }
 
 // ExifTag represents a single EXIF/IPTC/XMP tag.
@@ -195,6 +197,88 @@ func (r *ExifReader) ReadOrientation(file *os.File) (Orientation, error) {
 	return Orientation(capture.value), nil
 }
 
+// ReadDateTimeOriginal extracts the DateTimeOriginal EXIF tag from the file.
+// EXIF stores dates as "2023:05:14 10:30:00" (with colons, not slashes).
+// Returns (time.Time, true) if found and parseable, or (zero_time, false) if not available.
+// Also checks DateTimeDigitized and DateTime as fallbacks.
+func (r *ExifReader) ReadDateTimeOriginal(file *os.File) (time.Time, error) {
+	if _, err := file.Seek(0, 0); err != nil {
+		return time.Time{}, fmt.Errorf("failed to seek file: %w", err)
+	}
+
+	format, err := detectImageFormat(file)
+	if err != nil {
+		return time.Time{}, err
+	}
+
+	if _, err := file.Seek(0, 0); err != nil {
+		return time.Time{}, fmt.Errorf("failed to seek file: %w", err)
+	}
+
+	var capturedAtStr string
+
+	opts := imagemeta.Options{
+		R:           file,
+		ImageFormat: convertImageFormat(format),
+		Sources:     imagemeta.EXIF | imagemeta.XMP | imagemeta.IPTC,
+		HandleTag: func(info imagemeta.TagInfo) error {
+			// Priority order: DateTimeOriginal > DateTimeDigitized > DateTime
+			if capturedAtStr == "" {
+				if strings.EqualFold(info.Tag, "DateTimeOriginal") {
+					capturedAtStr = fmt.Sprintf("%v", info.Value)
+				}
+			}
+			if capturedAtStr == "" && strings.EqualFold(info.Tag, "DateTimeDigitized") {
+				capturedAtStr = fmt.Sprintf("%v", info.Value)
+			}
+			if capturedAtStr == "" && strings.EqualFold(info.Tag, "DateTime") {
+				capturedAtStr = fmt.Sprintf("%v", info.Value)
+			}
+			return nil
+		},
+	}
+
+	_, decodeErr := imagemeta.Decode(opts)
+	if decodeErr != nil {
+		log.Printf("[EXIF] Failed to decode for DateTimeOriginal: %v", decodeErr)
+	}
+
+	if capturedAtStr == "" {
+		return time.Time{}, nil
+	}
+
+	return parseDateTimeOriginal(capturedAtStr)
+}
+
+// parseDateTimeOriginal parses EXIF date strings.
+// EXIF DateTimeOriginal format: "2023:05:14 10:30:00" (colons in date)
+// Fallback formats: "2023/05/14 10:30:00", "2023-05-14 10:30:00", "2023:05:14", etc.
+func parseDateTimeOriginal(dateStr string) (time.Time, error) {
+	dateStr = strings.TrimSpace(dateStr)
+	if dateStr == "" {
+		return time.Time{}, fmt.Errorf("empty date string")
+	}
+
+	// EXIF standard format uses colons: "2023:05:14 10:30:00"
+	// Try the EXIF format first
+	exifFormats := []string{
+		"2006:01:02 15:04:05",
+		"2006/01/02 15:04:05",
+		"2006-01-02 15:04:05",
+		"2006:01:02",
+		"2006/01/02",
+		"2006-01-02",
+	}
+
+	for _, layout := range exifFormats {
+		if t, err := time.Parse(layout, dateStr); err == nil {
+			return t.UTC(), nil
+		}
+	}
+
+	return time.Time{}, fmt.Errorf("unable to parse EXIF date: %s", dateStr)
+}
+
 // ReadExif reads full EXIF info from the given file.
 func (r *ExifReader) ReadExif(file *os.File) (*ExifInfo, error) {
 	if _, err := file.Seek(0, 0); err != nil {
@@ -220,6 +304,8 @@ func (r *ExifReader) ReadExif(file *os.File) (*ExifInfo, error) {
 		latRaw     string
 		lonRaw     string
 		altRaw     string
+		// DateTimeOriginal capture
+		capturedAtStr string
 	)
 
 	opts := imagemeta.Options{
@@ -250,6 +336,15 @@ func (r *ExifReader) ReadExif(file *os.File) (*ExifInfo, error) {
 				lonRaw = fmt.Sprintf("%v", info.Value)
 			} else if strings.EqualFold(info.Tag, "GPSAltitude") {
 				altRaw = fmt.Sprintf("%v", info.Value)
+			}
+
+			// Capture DateTimeOriginal for CapturedAt (only if not already captured)
+			if capturedAtStr == "" {
+				if strings.EqualFold(info.Tag, "DateTimeOriginal") ||
+					strings.EqualFold(info.Tag, "DateTimeDigitized") ||
+					strings.EqualFold(info.Tag, "DateTime") {
+					capturedAtStr = fmt.Sprintf("%v", info.Value)
+				}
 			}
 
 			return nil
@@ -287,6 +382,14 @@ func (r *ExifReader) ReadExif(file *os.File) (*ExifInfo, error) {
 	}
 	if altRaw != "" {
 		info.GPSAltitude = parseAltitude(altRaw)
+	}
+
+
+	// Set CapturedAt from EXIF DateTimeOriginal if found
+	if capturedAtStr != "" {
+		if capturedAt, err := parseDateTimeOriginal(capturedAtStr); err == nil {
+			info.CapturedAt = capturedAt
+		}
 	}
 
 	return info, nil
