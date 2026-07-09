@@ -95,12 +95,12 @@ export class PhotoService {
       type: p.Type ?? p.type,
       mediaType: mediaType,
       metadata: this.normalizeMetadata(p),
-      videoMetadata: p.VideoMetadata ? {
-        duration: p.VideoMetadata.Duration ?? p.VideoMetadata.duration,
-        bitrate: p.VideoMetadata.Bitrate ?? p.VideoMetadata.bitrate,
-        video_codec: p.VideoMetadata.VideoCodec ?? p.VideoMetadata.video_codec,
-        audio_codec: p.VideoMetadata.AudioCodec ?? p.VideoMetadata.audio_codec,
-        frame_rate: p.VideoMetadata.FrameRate ?? p.VideoMetadata.frame_rate,
+      videoMetadata: p.videoMetadata ? {
+        duration: p.videoMetadata.duration,
+        bitrate: p.videoMetadata.bitrate,
+        video_codec: p.videoMetadata.video_codec,
+        audio_codec: p.videoMetadata.audio_codec,
+        frame_rate: p.videoMetadata.frame_rate,
       } : undefined,
       tags: p.Tags ?? p.tags ?? ''
     };
@@ -348,12 +348,12 @@ export class PhotoService {
       type: p.Type ?? p.type,
       mediaType: mediaType,
       metadata: this.normalizeMetadata(p),
-      videoMetadata: p.VideoMetadata ? {
-        duration: p.VideoMetadata.Duration ?? p.VideoMetadata.duration,
-        bitrate: p.VideoMetadata.Bitrate ?? p.VideoMetadata.bitrate,
-        video_codec: p.VideoMetadata.VideoCodec ?? p.VideoMetadata.video_codec,
-        audio_codec: p.VideoMetadata.AudioCodec ?? p.VideoMetadata.audio_codec,
-        frame_rate: p.VideoMetadata.FrameRate ?? p.VideoMetadata.frame_rate,
+      videoMetadata: p.videoMetadata ? {
+        duration: p.videoMetadata.duration,
+        bitrate: p.videoMetadata.bitrate,
+        video_codec: p.videoMetadata.video_codec,
+        audio_codec: p.videoMetadata.audio_codec,
+        frame_rate: p.videoMetadata.frame_rate,
       } : undefined,
       tags: p.Tags ?? p.tags ?? ''
     };
@@ -458,12 +458,12 @@ export class PhotoService {
       type: p.Type ?? p.type,
       mediaType: mediaType,
       metadata: this.normalizeMetadata(p),
-      videoMetadata: p.VideoMetadata ? {
-        duration: p.VideoMetadata.Duration ?? p.VideoMetadata.duration,
-        bitrate: p.VideoMetadata.Bitrate ?? p.VideoMetadata.bitrate,
-        video_codec: p.VideoMetadata.VideoCodec ?? p.VideoMetadata.video_codec,
-        audio_codec: p.VideoMetadata.AudioCodec ?? p.VideoMetadata.audio_codec,
-        frame_rate: p.VideoMetadata.FrameRate ?? p.VideoMetadata.frame_rate,
+      videoMetadata: p.videoMetadata ? {
+        duration: p.videoMetadata.duration,
+        bitrate: p.videoMetadata.bitrate,
+        video_codec: p.videoMetadata.video_codec,
+        audio_codec: p.videoMetadata.audio_codec,
+        frame_rate: p.videoMetadata.frame_rate,
       } : undefined,
       tags: p.Tags ?? p.tags ?? ''
     };

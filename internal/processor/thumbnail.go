@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -56,7 +57,7 @@ func (p *ThumbnailProcessor) ProcessJob(ctx context.Context, job *domain.Job, ph
 
 	// For videos, generate an SVG placeholder with the filename
 	if isVideo {
-		return p.generateVideoPlaceholder(ctx, job, photo)
+		return p.generateVideoThumbnail(ctx, job, photo)
 	}
 
 	// 1. Resolve the absolute path of the original photo
@@ -115,8 +116,75 @@ func (p *ThumbnailProcessor) getThumbnailAbsPath(originalRelPath string) (string
 	return fullThumbPath, nil
 }
 
-// generateVideoPlaceholder creates an SVG placeholder for video files.
-func (p *ThumbnailProcessor) generateVideoPlaceholder(ctx context.Context, job *domain.Job, photo *domain.Media) error {
+// generateVideoThumbnail extracts a real frame from the video using ffmpeg and writes it as webp.
+// It captures the frame at ~5 seconds into the video and outputs base.webp to match
+// the path expected by ServeThumbnailFile for video media.
+func (p *ThumbnailProcessor) generateVideoThumbnail(ctx context.Context, job *domain.Job, photo *domain.Media) error {
+	// 1. Resolve input path
+	inputAbsPath := filepath.Join(p.storageRoot, photo.Path)
+	log.Printf("  [DEBUG] Video input path: %s", inputAbsPath)
+
+	// 2. Calculate destination path: base.webp (matching ServeThumbnailFile expectation for videos)
+	thumbAbsPath, err := p.getVideoThumbnailAbsPath(photo.Path)
+	if err != nil {
+		return fmt.Errorf("failed to calculate video thumbnail path: %w", err)
+	}
+	log.Printf("  [DEBUG] Video thumbnail path: %s", thumbAbsPath)
+
+	// Ensure the thumbnail subdirectories exist
+	err = os.MkdirAll(filepath.Dir(thumbAbsPath), 0755)
+	if err != nil {
+		return fmt.Errorf("failed to create thumbnail subdirectories: %w", err)
+	}
+
+	// 3. Use ffmpeg to extract a frame at 5 seconds and output as webp
+	//    ffmpeg -ss 00:00:05 -i <input> -frames:v 1 -q:v 3 <output.webp>
+	cmd := exec.CommandContext(ctx, "ffmpeg",
+		"-ss", "00:00:05",
+		"-i", inputAbsPath,
+		"-frames:v", "1",
+		"-q:v", "3",
+		thumbAbsPath,
+	)
+
+	// CombinedOutput captures both stdout and stderr together, so no need to set cmd.Stderr separately
+	log.Printf("  [DEBUG] Running ffmpeg: %s", cmd.String())
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Printf("[WARN] ThumbnailProcessor: ffmpeg frame extraction failed for '%s': %v (output: %s)", photo.Path, err, string(out))
+
+		// Fallback: generate SVG placeholder at the same path
+		return p.generateSVGFallback(ctx, job, photo, thumbAbsPath)
+	}
+
+	// VALIDATE: check file exists and has size > 0
+	info, err := os.Stat(thumbAbsPath)
+	if err != nil {
+		return fmt.Errorf("VALIDATION FAILED: video thumbnail does not exist at %s: %v", thumbAbsPath, err)
+	}
+	if info.Size() == 0 {
+		return fmt.Errorf("VALIDATION FAILED: video thumbnail is empty (0 bytes) at %s", thumbAbsPath)
+	}
+
+	log.Printf("  [DEBUG] Video thumbnail created via ffmpeg: %s (%d bytes)", thumbAbsPath, info.Size())
+	return nil
+}
+
+// getVideoThumbnailAbsPath generates the absolute thumbnail path for a video file.
+// Videos use base.webp (not base_thumb.webp) to match ServeThumbnailFile.
+// Preserves full directory structure so it matches the handler's lookup.
+// e.g. "storage/9a362745-.../2024/05/13/video.mp4" -> ".thumbnails/storage/9a362745-.../2024/05/13/video.webp"
+func (p *ThumbnailProcessor) getVideoThumbnailAbsPath(originalRelPath string) (string, error) {
+	relPath := filepath.Clean(originalRelPath)
+	extClean := filepath.Ext(relPath)
+	basePart := strings.TrimSuffix(relPath, extClean)
+	thumbRelPath := basePart + ".webp"
+	fullThumbPath := filepath.Join(p.thumbRoot, thumbRelPath)
+	return fullThumbPath, nil
+}
+
+// generateSVGFallback creates a simple SVG placeholder when ffmpeg fails.
+func (p *ThumbnailProcessor) generateSVGFallback(ctx context.Context, job *domain.Job, photo *domain.Media, thumbAbsPath string) error {
 	filename := filepath.Base(photo.Path)
 	nameWithoutExt := strings.TrimSuffix(filename, filepath.Ext(filename))
 	if len(nameWithoutExt) > 40 {
@@ -139,41 +207,10 @@ func (p *ThumbnailProcessor) generateVideoPlaceholder(ctx context.Context, job *
   <text x="200" y="220" text-anchor="middle" fill="#cccccc" font-family="Arial, sans-serif" font-size="12">%s</text>
 </svg>`, nameWithoutExt)
 
-	thumbAbsPath, err := p.getVideoPlaceholderPath(photo.Path)
+	err := os.WriteFile(thumbAbsPath, []byte(svgContent), 0644)
 	if err != nil {
-		return fmt.Errorf("failed to calculate placeholder path: %w", err)
+		return fmt.Errorf("failed to write fallback SVG: %w", err)
 	}
-	log.Printf("  [DEBUG] Video placeholder path: %s", thumbAbsPath)
-
-	err = os.MkdirAll(filepath.Dir(thumbAbsPath), 0755)
-	if err != nil {
-		return fmt.Errorf("failed to create placeholder directory: %w", err)
-	}
-
-	err = os.WriteFile(thumbAbsPath, []byte(svgContent), 0644)
-	if err != nil {
-		return fmt.Errorf("failed to write placeholder SVG: %w", err)
-	}
-
-	// VALIDATE: check file exists and has size > 0
-	info, err := os.Stat(thumbAbsPath)
-	if err != nil {
-		return fmt.Errorf("VALIDATION FAILED: placeholder file does not exist at %s: %v", thumbAbsPath, err)
-	}
-	if info.Size() == 0 {
-		return fmt.Errorf("VALIDATION FAILED: placeholder file is empty (0 bytes) at %s", thumbAbsPath)
-	}
-	log.Printf("  [DEBUG] Video placeholder created: %s (%d bytes)", thumbAbsPath, info.Size())
-
+	log.Printf("  [DEBUG] Fallback SVG created for video: %s (%d bytes)", thumbAbsPath, 1024)
 	return nil
-}
-
-// getVideoPlaceholderPath generates the path for the video placeholder thumbnail
-func (p *ThumbnailProcessor) getVideoPlaceholderPath(originalRelPath string) (string, error) {
-	relPath := filepath.Clean(originalRelPath)
-	ext := filepath.Ext(relPath)
-	base := strings.TrimSuffix(relPath, ext)
-	thumbRelPath := filepath.Join(base + "_placeholder.svg")
-	fullThumbPath := filepath.Join(p.thumbRoot, thumbRelPath)
-	return fullThumbPath, nil
 }

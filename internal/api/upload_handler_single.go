@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"steadyphoto/internal/domain"
+	"steadyphoto/internal/processor"
 	"steadyphoto/internal/storage"
 
 	"github.com/google/uuid"
@@ -447,6 +448,19 @@ func (h *MediaUploadHandlerSingle) HandleSingleFileUpload(w http.ResponseWriter,
 	}
 
 	meta.Metadata = extractExif(absTargetPath)
+
+	// Extract video metadata if this is a video file
+	if meta.MediaType == domain.MediaTypeVideo && processor.IsVideoFile(fileName) {
+		log.Printf("[INFO] UploadHandlerSingle: Extracting video metadata for '%s'...", fileName)
+		videoMeta, vErr := processor.ExtractVideoMetadata(ctx, absTargetPath)
+		if vErr != nil {
+			log.Printf("[WARN] UploadHandlerSingle: Failed to extract video metadata for '%s': %v", fileName, vErr)
+		} else if videoMeta != nil {
+			meta.VideoMetadata = *videoMeta
+			log.Printf("[INFO] UploadHandlerSingle: Video metadata extracted for '%s' - codec=%s res=%dx%d dur=%.1fs fps=%.2f",
+				fileName, videoMeta.VideoCodec, videoMeta.Width, videoMeta.Height, videoMeta.Duration, videoMeta.FrameRate)
+		}
+	}
 
 	if err := h.mediaRepo.Create(dbCtx, meta); err != nil {
 		log.Printf("[ERROR] UploadHandlerSingle: Failed to insert media %s (hash=%s): %v", newFilename, hash[:8]+"...", err)
@@ -889,6 +903,19 @@ func (h *MediaUploadHandlerSingle) HandleComplete(w http.ResponseWriter, r *http
 	}
 
 	meta.Metadata = extractExif(absTargetPath)
+
+	// Extract video metadata if this is a video file
+	if meta.MediaType == domain.MediaTypeVideo && processor.IsVideoFile(session.Filename) {
+		log.Printf("[INFO] UploadHandlerComplete: Extracting video metadata for '%s'...", session.Filename)
+		videoMeta, vErr := processor.ExtractVideoMetadata(ctx, absTargetPath)
+		if vErr != nil {
+			log.Printf("[WARN] UploadHandlerComplete: Failed to extract video metadata for '%s': %v", session.Filename, vErr)
+		} else if videoMeta != nil {
+			meta.VideoMetadata = *videoMeta
+			log.Printf("[INFO] UploadHandlerComplete: Video metadata extracted for '%s' - codec=%s res=%dx%d dur=%.1fs fps=%.2f",
+				session.Filename, videoMeta.VideoCodec, videoMeta.Width, videoMeta.Height, videoMeta.Duration, videoMeta.FrameRate)
+		}
+	}
 
 	if err := h.mediaRepo.Create(dbCtx, meta); err != nil {
 		log.Printf("[ERROR] UploadHandlerComplete: Failed to insert media %s (hash=%s): %v", newFilename, hash[:8]+"...", err)

@@ -86,12 +86,12 @@ export class SearchService {
       mediaType: mediaType,
       tags: p.Tags ?? p.tags ?? '',
       metadata: p.Metadata ? this.photoService.normalizeMetadata(p.Metadata) : undefined,
-      videoMetadata: p.VideoMetadata ? {
-        duration: p.VideoMetadata.Duration,
-        bitrate: p.VideoMetadata.Bitrate,
-        video_codec: p.VideoMetadata.VideoCodec,
-        audio_codec: p.VideoMetadata.AudioCodec,
-        frame_rate: p.VideoMetadata.FrameRate,
+      videoMetadata: p.videoMetadata ? {
+        duration: p.videoMetadata.duration,
+        bitrate: p.videoMetadata.bitrate,
+        video_codec: p.videoMetadata.video_codec,
+        audio_codec: p.videoMetadata.audio_codec,
+        frame_rate: p.videoMetadata.frame_rate,
       } : undefined,
     };
   }
