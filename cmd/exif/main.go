@@ -228,6 +228,25 @@ func main() {
 		// Build metadata from EXIF info
 		metadata := buildMetadataFromExif(exifInfo)
 
+		// Also extract video metadata if this is a video file
+		var videoMeta *domain.VideoMetadata
+		absPath := fullPath
+		if isVideoFile(fullPath) {
+			log.Printf("  Extracting video metadata from: %s", absPath)
+			vm, vmErr := processor.ExtractVideoMetadata(ctx, absPath)
+			if vmErr != nil {
+				if *verbose {
+					log.Printf("  Failed to extract video metadata: %v", vmErr)
+				}
+				errors++
+				continue
+			}
+			if vm != nil {
+				videoMeta = vm
+				log.Printf("  Video metadata: duration=%.1fs, codec=%s", vm.Duration, vm.VideoCodec)
+			}
+		}
+
 		if *verbose {
 			// Verbose: print per-item JSON
 			resultJSON, _ := json.MarshalIndent(metadata, "  ", "  ")
@@ -240,9 +259,10 @@ func main() {
 
 		// Store for final summary
 		result := ExifUpdateResult{
-			ID:       media.ID.String(),
-			Path:     media.Path,
-			Metadata: metadata,
+			ID:         media.ID.String(),
+			Path:       media.Path,
+			Metadata:   metadata,
+			VideoMeta:  videoMeta,
 		}
 		results = append(results, result)
 
@@ -252,6 +272,9 @@ func main() {
 
 		// Update the media record
 		media.Metadata = metadata
+		if videoMeta != nil {
+			media.VideoMetadata = *videoMeta
+		}
 		media.UpdatedAt = time.Now()
 
 		updateErr := mediaRepo.Update(ctx, media)
@@ -292,9 +315,22 @@ func main() {
 
 // ExifUpdateResult represents the result of an EXIF update
 type ExifUpdateResult struct {
-	ID       string          `json:"id"`
-	Path     string          `json:"path"`
-	Metadata domain.Metadata `json:"metadata"`
+	ID        string          `json:"id"`
+	Path      string          `json:"path"`
+	Metadata  domain.Metadata `json:"metadata"`
+	VideoMeta *domain.VideoMetadata `json:"videoMetadata,omitempty"`
+}
+
+// isVideoFile checks if the file path has a video extension
+func isVideoFile(path string) bool {
+	lower := strings.ToLower(path)
+	videoExts := []string{".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm", ".wmv", ".flv", ".3gp", ".mpg", ".mpeg"}
+	for _, ext := range videoExts {
+		if strings.HasSuffix(lower, ext) {
+			return true
+		}
+	}
+	return false
 }
 
 // buildMetadataFromExif converts ExifInfo to Metadata map

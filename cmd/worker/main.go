@@ -20,11 +20,38 @@ import (
 	"steadyphoto/internal/processor"
 )
 
+// VideoMetadataProcessor handles video metadata extraction jobs.
+type VideoMetadataProcessor struct {
+	mediaRepo   *database.PostgresMediaRepository
+	storageRoot string
+}
+
+// ProcessJob extracts video metadata for the media item associated with the job.
+func (p *VideoMetadataProcessor) ProcessJob(ctx context.Context, job *domain.Job, media *domain.Media) error {
+	absPath := filepath.Join(p.storageRoot, media.Path)
+	log.Printf("Extracting video metadata from: %s", absPath)
+
+	vm, err := processor.ExtractVideoMetadata(ctx, absPath)
+	if err != nil {
+		return fmt.Errorf("video metadata extraction failed: %w", err)
+	}
+
+	if vm == nil {
+		return fmt.Errorf("no video metadata extracted from %s", absPath)
+	}
+
+	media.VideoMetadata = *vm
+
+	// Update the media record with video metadata
+	return p.mediaRepo.Update(ctx, media)
+}
+
 func main() {
 	// CLI flags
 	userEmailFlag := flag.String("user", "", "User email to process all media for")
 	mediaIDFlag := flag.String("media-id", "", "Specific media ID to generate thumbnail for (single mode)")
 	forceFlag := flag.Bool("force", false, "Force thumbnail generation, ignoring existing thumbnails")
+	videoMetaFlag := flag.Bool("video-meta", false, "Extract video metadata for all media items (or just those with missing data)")
 	flag.Parse()
 
 	if *userEmailFlag != "" && *mediaIDFlag != "" {
@@ -74,8 +101,20 @@ func main() {
 	engine := processor.NewStandardImageEngine(85)
 	thumbProcessor := processor.NewThumbnailProcessor(engine, storageRoot, thumbRoot)
 	faceProc := processor.NewFaceDetectionProcessor(detector, faceRepo, mediaRepo, storageRoot)
+	videoMetaProcessor := &VideoMetadataProcessor{mediaRepo: mediaRepo, storageRoot: storageRoot}
 
 	ctx := context.Background()
+
+	// Video metadata backfill mode: extract video metadata for all media items
+	if *videoMetaFlag {
+		log.Println("[VIDEO META BACKFILL] Extracting video metadata for all media...")
+		err = processVideoMetaBackfill(ctx, jobRepo, mediaRepo, videoMetaProcessor)
+		if err != nil {
+			log.Fatalf("error processing video meta backfill: %v", err)
+		}
+		log.Println("Video meta backfill completed.")
+		return
+	}
 
 	// User email mode: find user by email, process all their media
 	if *userEmailFlag != "" {
@@ -84,7 +123,7 @@ func main() {
 			log.Printf("[FORCE MODE] Will regenerate all thumbnails for user: %s", *userEmailFlag)
 		}
 		log.Printf("[USER MODE] Processing all media for user: %s", *userEmailFlag)
-		err = processUserMedia(ctx, jobRepo, mediaRepo, thumbProcessor, faceProc, *userEmailFlag, forceMode)
+		err = processUserMedia(ctx, jobRepo, mediaRepo, thumbProcessor, faceProc, videoMetaProcessor, *userEmailFlag, forceMode)
 		if err != nil {
 			log.Fatalf("error processing user media: %v", err)
 		}
@@ -99,7 +138,7 @@ func main() {
 			log.Printf("[FORCE MODE] Will regenerate thumbnail for media: %s", *mediaIDFlag)
 		}
 		log.Printf("[SINGLE MODE] Processing media ID: %s", *mediaIDFlag)
-		err = processSingleMedia(ctx, jobRepo, mediaRepo, thumbProcessor, faceProc, *mediaIDFlag, forceMode)
+		err = processSingleMedia(ctx, jobRepo, mediaRepo, thumbProcessor, faceProc, videoMetaProcessor, *mediaIDFlag, forceMode)
 		if err != nil {
 			log.Fatalf("error processing single media: %v", err)
 		}
@@ -110,7 +149,7 @@ func main() {
 	// Global force mode: regenerate ALL thumbnails for ALL media across ALL users
 	if *forceFlag {
 		log.Println("[GLOBAL FORCE MODE] Regenerating all thumbnails for ALL users...")
-		err = processGlobalForce(ctx, jobRepo, mediaRepo, thumbProcessor, faceProc)
+		err = processGlobalForce(ctx, jobRepo, mediaRepo, thumbProcessor, faceProc, videoMetaProcessor)
 		if err != nil {
 			log.Fatalf("error processing global force: %v", err)
 		}
@@ -119,7 +158,7 @@ func main() {
 	}
 
 	// One-shot: process all pending jobs until none remain
-	processed, err := processAllJobs(ctx, jobRepo, mediaRepo, thumbProcessor, faceProc)
+	processed, err := processAllJobs(ctx, jobRepo, mediaRepo, thumbProcessor, faceProc, videoMetaProcessor)
 	if err != nil {
 		log.Fatalf("error processing jobs: %v", err)
 	}
@@ -131,8 +170,72 @@ func main() {
 	}
 }
 
+// processVideoMetaBackfill finds all media items and extracts video metadata for videos.
+// For non-videos, it also creates video_metadata extraction jobs if missing.
+func processVideoMetaBackfill(ctx context.Context, jobRepo *database.PostgresJobRepository, mediaRepo *database.PostgresMediaRepository, proc *VideoMetadataProcessor) error {
+	mediaList, total, err := mediaRepo.ListAll(ctx, 1000000, 0)
+	if err != nil {
+		return fmt.Errorf("failed to list all media: %w", err)
+	}
+
+	log.Printf("[VIDEO META BACKFILL] Found %d total media items", total)
+
+	processed := 0
+	for _, media := range mediaList {
+		if media.MediaType != domain.MediaTypeVideo {
+			continue
+		}
+
+		// Check if a video metadata job already exists for this media
+		existingJobs, err := jobRepo.GetJobsByMediaID(ctx, media.ID)
+		if err != nil {
+			log.Printf("[WARN] Failed to check existing jobs for media %s: %v", media.ID, err)
+			continue
+		}
+
+		hasVideoMetaJob := false
+		hasVideoMetadata := media.VideoMetadata.Duration > 0
+		for _, j := range existingJobs {
+			if j.Type == domain.JobTypeVideoMetadata {
+				hasVideoMetaJob = true
+				break
+			}
+		}
+
+		if hasVideoMetaJob {
+			log.Printf("[SKIP] Media %s already has a video metadata job", media.ID)
+			continue
+		}
+
+		if hasVideoMetadata {
+			log.Printf("[SKIP] Media %s already has video metadata in DB", media.ID)
+			continue
+		}
+
+		// Create a new video metadata job
+		job := &domain.Job{
+			ID:        uuid.New(),
+			UserID:    media.UserID,
+			Type:      domain.JobTypeVideoMetadata,
+			Status:    domain.JobStatusPending,
+			MediaID:   media.ID,
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+		if err := jobRepo.Create(ctx, job); err != nil {
+			log.Printf("[ERROR] Failed to create video metadata job for %s: %v", media.ID, err)
+			continue
+		}
+		log.Printf("[CREATE JOB] Created video metadata job %s for media %s (%s)", job.ID, media.ID, media.Filename)
+		processed++
+	}
+
+	log.Printf("[VIDEO META BACKFILL] Created %d new video metadata jobs", processed)
+	return nil
+}
+
 // processUserMedia finds a user by email and processes all their media items
-func processUserMedia(ctx context.Context, jobRepo *database.PostgresJobRepository, mediaRepo *database.PostgresMediaRepository, thumbProc *processor.ThumbnailProcessor, faceProc *processor.FaceDetectionProcessor, userEmail string, force bool) error {
+func processUserMedia(ctx context.Context, jobRepo *database.PostgresJobRepository, mediaRepo *database.PostgresMediaRepository, thumbProc *processor.ThumbnailProcessor, faceProc *processor.FaceDetectionProcessor, videoMetaProc *VideoMetadataProcessor, userEmail string, force bool) error {
 	// Find user by email
 	userID, err := findUserIDByEmail(ctx, mediaRepo, userEmail)
 	if err != nil {
@@ -178,7 +281,7 @@ func processUserMedia(ctx context.Context, jobRepo *database.PostgresJobReposito
 
 	processed := 0
 	for _, media := range materials {
-		err = processSingleMedia(ctx, jobRepo, mediaRepo, thumbProc, faceProc, media.ID.String(), force)
+		err = processSingleMedia(ctx, jobRepo, mediaRepo, thumbProc, faceProc, videoMetaProc, media.ID.String(), force)
 		if err != nil {
 			log.Printf("[ERROR] Failed to process media %s: %v", media.ID, err)
 			continue
@@ -192,7 +295,7 @@ func processUserMedia(ctx context.Context, jobRepo *database.PostgresJobReposito
 }
 
 // processGlobalForce regenerates thumbnails for ALL media across ALL users
-func processGlobalForce(ctx context.Context, jobRepo *database.PostgresJobRepository, mediaRepo *database.PostgresMediaRepository, thumbProc *processor.ThumbnailProcessor, faceProc *processor.FaceDetectionProcessor) error {
+func processGlobalForce(ctx context.Context, jobRepo *database.PostgresJobRepository, mediaRepo *database.PostgresMediaRepository, thumbProc *processor.ThumbnailProcessor, faceProc *processor.FaceDetectionProcessor, videoMetaProc *VideoMetadataProcessor) error {
 	// Get all media across all users
 	log.Printf("[GLOBAL FORCE MODE] Listing all media across all users...")
 	materials, _, err := mediaRepo.ListAll(ctx, 100000, 0)
@@ -231,7 +334,7 @@ func processGlobalForce(ctx context.Context, jobRepo *database.PostgresJobReposi
 	// Process each media item with force mode
 	processed := 0
 	for _, media := range materials {
-		err = processSingleMedia(ctx, jobRepo, mediaRepo, thumbProc, faceProc, media.ID.String(), true)
+		err = processSingleMedia(ctx, jobRepo, mediaRepo, thumbProc, faceProc, videoMetaProc, media.ID.String(), true)
 		if err != nil {
 			log.Printf("[ERROR] Failed to process media %s: %v", media.ID, err)
 			continue
@@ -257,7 +360,7 @@ func findUserIDByEmail(ctx context.Context, mediaRepo *database.PostgresMediaRep
 
 // processSingleMedia handles a single media ID by checking for existing jobs,
 // printing their status, generating the thumbnail (overriding if exists), and updating DB.
-func processSingleMedia(ctx context.Context, jobRepo *database.PostgresJobRepository, mediaRepo *database.PostgresMediaRepository, thumbProc *processor.ThumbnailProcessor, faceProc *processor.FaceDetectionProcessor, mediaIDStr string, force bool) error {
+func processSingleMedia(ctx context.Context, jobRepo *database.PostgresJobRepository, mediaRepo *database.PostgresMediaRepository, thumbProc *processor.ThumbnailProcessor, faceProc *processor.FaceDetectionProcessor, videoMetaProc *VideoMetadataProcessor, mediaIDStr string, force bool) error {
 	mediaID, err := uuid.Parse(mediaIDStr)
 	if err != nil {
 		return fmt.Errorf("invalid media ID %q: %w", mediaIDStr, err)
@@ -374,7 +477,7 @@ func processSingleMedia(ctx context.Context, jobRepo *database.PostgresJobReposi
 }
 
 // processAllJobs processes all pending jobs one at a time until the queue is empty.
-func processAllJobs(ctx context.Context, jobRepo *database.PostgresJobRepository, mediaRepo *database.PostgresMediaRepository, thumbProc *processor.ThumbnailProcessor, faceProc *processor.FaceDetectionProcessor) (int, error) {
+func processAllJobs(ctx context.Context, jobRepo *database.PostgresJobRepository, mediaRepo *database.PostgresMediaRepository, thumbProc *processor.ThumbnailProcessor, faceProc *processor.FaceDetectionProcessor, videoMetaProc *VideoMetadataProcessor) (int, error) {
 	processed := 0
 	skippedErrors := 0
 
@@ -417,6 +520,13 @@ func processAllJobs(ctx context.Context, jobRepo *database.PostgresJobRepository
 					return logError(jobRepo, job.ID, "face detection failed: "+err.Error())
 				}
 				log.Printf("  [DEBUG] Face detection job %s completed successfully", job.ID)
+			case domain.JobTypeVideoMetadata:
+				log.Printf("  [DEBUG] Extracting video metadata for: %s", media.Path)
+				err = videoMetaProc.ProcessJob(ctx, job, media)
+				if err != nil {
+					return logError(jobRepo, job.ID, "video metadata extraction failed: "+err.Error())
+				}
+				log.Printf("  [DEBUG] Video metadata job %s completed successfully", job.ID)
 			default:
 				return logError(jobRepo, job.ID, "unknown job type: "+string(job.Type))
 			}

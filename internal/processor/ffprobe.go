@@ -30,16 +30,16 @@ func NewFFProbeExtractor() *FFProbeExtractor {
 
 // FFProbeFormat represents the "format" section of ffprobe output
 type FFProbeFormat struct {
-	FileName         string  `json:"filename"`
-	NbStreams        int     `json:"nb_streams"`
-	FormatName       string  `json:"format_name"`
-	FormatLongName   string  `json:"format_long_name"`
-	StartTime        string  `json:"start_time"`
-	Duration         string  `json:"duration"`
-	BitRate          string  `json:"bit_rate"`
-	Size             string  `json:"size"`
-	ProbeSize        string  `json:"probe_size"`
-	Tag              FFProbeTags `json:"tags,omitempty"`
+	FileName         string        `json:"filename"`
+	NbStreams        int           `json:"nb_streams"`
+	FormatName       string        `json:"format_name"`
+	FormatLongName   string        `json:"format_long_name"`
+	StartTime        string        `json:"start_time"`
+	Duration         string        `json:"duration"`
+	BitRate          string        `json:"bit_rate"`
+	Size             string        `json:"size"`
+	ProbeSize        string        `json:"probe_size"`
+	Tag              FFProbeTags   `json:"tags,omitempty"`
 }
 
 // FFProbeStream represents a single stream entry from ffprobe output
@@ -68,20 +68,20 @@ type FFProbeStream struct {
 
 // FFProbeDisposition represents the "disposition" object in stream data
 type FFProbeDisposition struct {
-	Default     int `json:"default"`
-	Dub         int `json:"dub"`
-	Original    int `json:"original"`
-	Comment     int `json:"comment"`
-	Lyrics      int `json:"lyrics"`
-	Karaoke     int `json:"karaoke"`
-	Forced        int `json:"forced"`
+	Default         int `json:"default"`
+	Dub             int `json:"dub"`
+	Original        int `json:"original"`
+	Comment         int `json:"comment"`
+	Lyrics          int `json:"lyrics"`
+	Karaoke         int `json:"karaoke"`
+	Forced          int `json:"forced"`
 	HearingImpaired int `json:"hearing_impaired"`
-	VisualImpaired int `json:"visual_impaired"`
-	CleanEffects  int `json:"clean_effects"`
-	AttachedPic   int `json:"attached_pic"`
+	VisualImpaired  int `json:"visual_impaired"`
+	CleanEffects    int `json:"clean_effects"`
+	AttachedPic     int `json:"attached_pic"`
 	TimedThumbnails int `json:"timed_thumbnails"`
-	Captions      int `json:"captions"`
-	Description int `json:"description"`
+	Captions        int `json:"captions"`
+	Description     int `json:"description"`
 }
 
 // FFProbeTags represents key-value metadata tags

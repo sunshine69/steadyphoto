@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"steadyphoto/internal/database"
 	"steadyphoto/internal/domain"
 	"steadyphoto/internal/processor"
 	"steadyphoto/internal/storage"
@@ -90,13 +91,15 @@ func detectClientSource(r *http.Request) domain.ClientSource {
 type MediaUploadHandler struct {
 	mediaRepo      domain.MediaRepository
 	albumRepo      domain.AlbumRepository // Added for album association support
+	jobRepo        *database.PostgresJobRepository
 	storageService *storage.StorageService
 }
 
-func NewMediaUploadHandler(mediaRepo domain.MediaRepository, albumRepo domain.AlbumRepository, storageService *storage.StorageService) *MediaUploadHandler {
+func NewMediaUploadHandler(mediaRepo domain.MediaRepository, albumRepo domain.AlbumRepository, jobRepo *database.PostgresJobRepository, storageService *storage.StorageService) *MediaUploadHandler {
 	return &MediaUploadHandler{
 		mediaRepo:      mediaRepo,
 		albumRepo:      albumRepo,
+		jobRepo:        jobRepo,
 		storageService: storageService,
 	}
 }
@@ -270,7 +273,7 @@ func (h *MediaUploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		extLower = strings.ToLower(ext)
 		var mediaType domain.MediaType = domain.MediaTypePhoto
 		switch extLower {
-		case ".mp4", ".mov", ".avi":
+		case ".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v", ".flv", ".wmv", ".3gp":
 			mediaType = domain.MediaTypeVideo
 		}
 
@@ -286,11 +289,58 @@ func (h *MediaUploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		if meta.Metadata != nil && meta.Metadata["gps_latitude"] != "" {
 			log.Printf("[INFO] UploadHandler: GPS found - lat=%s lon=%s", meta.Metadata["gps_latitude"], meta.Metadata["gps_longitude"])
 		}
+
+		// Extract video metadata if this is a video file
+		if meta.MediaType == domain.MediaTypeVideo && processor.IsVideoFile(header.Filename) {
+			log.Printf("[INFO] UploadHandler: Extracting video metadata for '%s'...", header.Filename)
+			videoMeta, vErr := processor.ExtractVideoMetadata(ctx, absTargetPath)
+			if vErr != nil {
+				log.Printf("[WARN] UploadHandler: Failed to extract video metadata for '%s': %v", header.Filename, vErr)
+				// Non-fatal: continue without video metadata
+			} else if videoMeta != nil {
+				meta.VideoMetadata = *videoMeta
+				log.Printf("[INFO] UploadHandler: Video metadata extracted for '%s' - codec=%s res=%dx%d dur=%.1fs fps=%.2f",
+					header.Filename, videoMeta.VideoCodec, videoMeta.Width, videoMeta.Height, videoMeta.Duration, videoMeta.FrameRate)
+			}
+		}
 		log.Printf("[DEBUG] UploadHandler: Inserting record into DB for '%s'...", meta.ID)
 
 		if err := h.mediaRepo.Create(ctx, meta); err != nil {
 			log.Printf("[ERROR] UploadHandler: Failed to insert media %s (hash=%s): %v", newFilename, hash[:8]+"...", err)
 			continue
+		}
+
+		// Create a background job to extract video metadata for video files (in case we want to re-process later)
+		if meta.MediaType == domain.MediaTypeVideo {
+			// Check if a video metadata job already exists for this media
+			existingJobs, err := h.jobRepo.GetJobsByMediaID(ctx, meta.ID)
+			if err != nil {
+				log.Printf("[WARN] UploadHandler: Failed to check existing jobs for video metadata: %v", err)
+			} else {
+				hasVideoMetaJob := false
+				for _, j := range existingJobs {
+					if j.Type == domain.JobTypeVideoMetadata {
+						hasVideoMetaJob = true
+						break
+					}
+				}
+				if !hasVideoMetaJob {
+					videoJob := &domain.Job{
+						ID:        uuid.New(),
+						UserID:    meta.UserID,
+						Type:      domain.JobTypeVideoMetadata,
+						Status:    domain.JobStatusPending,
+						MediaID:   meta.ID,
+						CreatedAt: time.Now(),
+						UpdatedAt: time.Now(),
+					}
+					if err := h.jobRepo.Create(ctx, videoJob); err != nil {
+						log.Printf("[WARN] UploadHandler: Failed to create video metadata job for '%s': %v", header.Filename, err)
+					} else {
+						log.Printf("[INFO] UploadHandler: Created background video metadata job %s for '%s'", videoJob.ID.String(), header.Filename)
+					}
+				}
+			}
 		}
 
 		// FIX: Return the actual filesystem relative path instead of an API URL.

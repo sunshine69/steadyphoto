@@ -19,7 +19,6 @@ import { PhotoService } from './services/photo.service';
 import { AlbumService } from './services/album.service';
 import { Album } from './models/album.model';
 import { ExifTriggerService } from './services/exif-trigger.service';
-import { ExifDataPopupComponent } from './components/exif-data-popup/exif-data-popup.component';
 
 @Component({
   selector: 'app-root',
@@ -65,19 +64,69 @@ import { ExifDataPopupComponent } from './components/exif-data-popup/exif-data-p
 
             <!-- Date Range Input -->
             <div *ngIf="selectedScope === 'date'" class="date-range-container">
-              <input 
-                type="date" 
-                class="date-input"
-                [(ngModel)]="startDate"
-                (keyup.enter)="onDateSearch()"
-              />
+              <div class="date-part-group">
+                <input 
+                  type="text" 
+                  class="date-segment"
+                  placeholder="DD"
+                  [(ngModel)]="startDay"
+                  (keyup.enter)="onDateSearch()"
+                  maxlength="2"
+                  inputmode="numeric"
+                />
+                <span class="date-separator">/</span>
+                <input 
+                  type="text" 
+                  class="date-segment"
+                  placeholder="MM"
+                  [(ngModel)]="startMonth"
+                  (keyup.enter)="onDateSearch()"
+                  maxlength="2"
+                  inputmode="numeric"
+                />
+                <span class="date-separator">/</span>
+                <input 
+                  type="text" 
+                  class="date-segment date-year"
+                  placeholder="YYYY"
+                  [(ngModel)]="startYear"
+                  (keyup.enter)="onDateSearch()"
+                  maxlength="4"
+                  inputmode="numeric"
+                />
+              </div>
               <span class="date-range-separator">to</span>
-              <input 
-                type="date" 
-                class="date-input"
-                [(ngModel)]="endDate"
-                (keyup.enter)="onDateSearch()"
-              />
+              <div class="date-part-group">
+                <input 
+                  type="text" 
+                  class="date-segment"
+                  placeholder="DD"
+                  [(ngModel)]="endDay"
+                  (keyup.enter)="onDateSearch()"
+                  maxlength="2"
+                  inputmode="numeric"
+                />
+                <span class="date-separator">/</span>
+                <input 
+                  type="text" 
+                  class="date-segment"
+                  placeholder="MM"
+                  [(ngModel)]="endMonth"
+                  (keyup.enter)="onDateSearch()"
+                  maxlength="2"
+                  inputmode="numeric"
+                />
+                <span class="date-separator">/</span>
+                <input 
+                  type="text" 
+                  class="date-segment date-year"
+                  placeholder="YYYY"
+                  [(ngModel)]="endYear"
+                  (keyup.enter)="onDateSearch()"
+                  maxlength="4"
+                  inputmode="numeric"
+                />
+              </div>
             </div>
           </div>
 
@@ -389,8 +438,14 @@ import { ExifDataPopupComponent } from './components/exif-data-popup/exif-data-p
       gap: 2px;
     }
 
-    .date-part-input {
-      width: 28px;
+    .date-part-group {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+    }
+
+    .date-segment {
+      width: 32px;
       height: 32px;
       padding: 4px 2px;
       background-color: #1e293b;
@@ -400,15 +455,28 @@ import { ExifDataPopupComponent } from './components/exif-data-popup/exif-data-p
       font-size: 13px;
       text-align: center;
       outline: none;
+      transition: all 0.2s ease;
     }
 
-    .date-part-input:focus {
+    .date-segment:focus {
       border-color: #6366f1;
       background-color: #0f172a;
     }
 
-    .date-year-input {
-      width: 32px;
+    .date-segment::placeholder {
+      color: #6b7280;
+      font-size: 12px;
+    }
+
+    .date-year {
+      width: 40px;
+    }
+
+    .date-separator {
+      color: #9ca3af;
+      font-size: 13px;
+      font-weight: 500;
+      margin: 0 2px;
     }
 
     .date-range-separator {
@@ -556,8 +624,14 @@ import { ExifDataPopupComponent } from './components/exif-data-popup/exif-data-p
 export class AppComponent implements OnInit, OnDestroy {
   searchTerm = '';
   selectedScope: SearchScope = 'all';
-  startDate: string = '';
-  endDate: string = '';
+  
+  // Custom date parts — separate DD/MM/YYYY to avoid native date input cursor issues
+  startDay: string = '';
+  startMonth: string = '';
+  startYear: string = '';
+  endDay: string = '';
+  endMonth: string = '';
+  endYear: string = '';
   isAdmin = false;
   avatarInitial = 'U';
 
@@ -615,7 +689,8 @@ export class AppComponent implements OnInit, OnDestroy {
 
   onDateSearch(): void {
     // Only fire on Enter when both dates are set
-    if (this.startDate && this.endDate) {
+    if (this.startDay && this.startMonth && this.startYear && 
+        this.endDay && this.endMonth && this.endYear) {
       const dateRange = this.buildDateRange();
       this.searchService.triggerSearch('', 'date', dateRange);
     }
@@ -696,73 +771,16 @@ export class AppComponent implements OnInit, OnDestroy {
     }
   }
 
-  onSearch(): void {
-    console.log('[APP-COMPONENT] onSearch() called');
-    console.log('[APP-COMPONENT]   selectedScope:', this.selectedScope);
-    console.log('[APP-COMPONENT]   searchTerm:', this.searchTerm);
-    console.log('[APP-COMPONENT]   startDate:', this.startDate);
-    console.log('[APP-COMPONENT]   endDate:', this.endDate);
-
-    if (this.selectedScope === 'date') {
-      // Date scope: build and trigger search with date range
-      const dateRange = this.buildDateRange();
-      console.log('[APP-COMPONENT]   built dateRange:', dateRange);
-      
-      if (!dateRange) {
-        console.warn('[APP-COMPONENT]   No valid date range, not clearing search to preserve scope');
-        return;
-      }
-
-      // Trigger date search immediately
-      this.searchService.triggerSearch('', this.selectedScope, dateRange);
-      return;
-    }
-
-    // Text search scopes (all, name, tags, location, place)
-    if (this.searchTerm.trim()) {
-      console.log('[APP-COMPONENT]   Text search — triggering:', this.searchTerm);
-      this.searchService.triggerSearch(this.searchTerm, this.selectedScope);
-    } else {
-      // Empty text = clear search but preserve the scope selection
-      console.log('[APP-COMPONENT]   Empty text — clearing search, preserving scope:', this.selectedScope);
-      this.searchTerm = '';
-      this.searchService.setSearchTerm('');
-      this.searchService.setSearchDate('');
-      this.searchService.triggerSearch('', this.selectedScope);
-    }
-  }
-
-  onDateChanged(): void {
-    console.log('[APP-DATE] onDateChanged() triggered');
-    console.log('[APP-DATE]   startDate:', this.startDate);
-    console.log('[APP-DATE]   endDate:', this.endDate);
-    console.log('[APP-DATE]   selectedScope:', this.selectedScope);
-    
-    const dateRange = this.buildDateRange();
-    console.log('[APP-DATE]   built dateRange string:', dateRange);
-    
-    if (!dateRange) {
-      console.warn('[APP-DATE]   No valid date range — skipping search');
-      return;
-    }
-    
-    console.log('[APP-DATE]   triggering search with scope=date, dateRange=' + dateRange);
-    this.searchService.triggerSearch('', 'date', dateRange);
-  }
-
-  onSearchInputChanged(): void {
-    // If user manually clears the input (backspace/delete), trigger clearSearch
-    if (!this.searchTerm?.trim()) {
-      this.clearSearch();
-    }
-  }
-
   clearSearch(): void {
     console.log('[APP-COMPONENT] clearSearch() called');
     this.searchTerm = '';
     this.selectedScope = 'all';
-    this.startDate = '';
-    this.endDate = '';
+    this.startDay = '';
+    this.startMonth = '';
+    this.startYear = '';
+    this.endDay = '';
+    this.endMonth = '';
+    this.endYear = '';
     this.searchService.setSearchTerm('');
     this.searchService.setSearchScope('all');
     this.searchService.setSearchDate('');
@@ -774,15 +792,21 @@ export class AppComponent implements OnInit, OnDestroy {
     const threeMonthsAgo = new Date();
     threeMonthsAgo.setMonth(today.getMonth() - 3);
     
-    const formatDateForInput = (date: Date): string => {
-      const day = String(date.getDate()).padStart(2, '0');
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const year = date.getFullYear();
-      return `${day}/${month}/${year}`;
-    };
+    const fmt = (d: Date) => ({
+      day: String(d.getDate()).padStart(2, '0'),
+      month: String(d.getMonth() + 1).padStart(2, '0'),
+      year: String(d.getFullYear())
+    });
     
-    this.startDate = formatDateForInput(threeMonthsAgo);
-    this.endDate = formatDateForInput(today);
+    const s = fmt(threeMonthsAgo);
+    this.startDay = s.day;
+    this.startMonth = s.month;
+    this.startYear = s.year;
+    
+    const e = fmt(today);
+    this.endDay = e.day;
+    this.endMonth = e.month;
+    this.endYear = e.year;
   }
 
   onScopeChange(scope: string): void {
@@ -799,30 +823,20 @@ export class AppComponent implements OnInit, OnDestroy {
    * Format: "dd/mm/yyyy - dd/mm/yyyy" or "dd/mm/yyyy" if only one date is selected.
    */
   private buildDateRange(): string {
-    const formatDate = (dateStr: string): string => {
-      if (!dateStr) return '';
-      // Handle both input formats: YYYY-MM-DD (from HTML date input) and DD/MM/YYYY
-      let date: Date;
-      if (dateStr.includes('/')) {
-        // Already in DD/MM/YYYY format
-        const parts = dateStr.split('/');
-        date = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
-      } else {
-        date = new Date(dateStr);
-      }
-      
-      const day = String(date.getDate()).padStart(2, '0');
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const year = date.getFullYear();
+    const fmtDate = (day: string, month: string, year: string): string => {
+      if (!day || !month || !year) return '';
       return `${day}/${month}/${year}`;
     };
 
-    if (this.startDate && this.endDate) {
-      return `${formatDate(this.startDate)} - ${formatDate(this.endDate)}`;
-    } else if (this.startDate) {
-      return formatDate(this.startDate);
-    } else if (this.endDate) {
-      return formatDate(this.endDate);
+    const startRange = fmtDate(this.startDay, this.startMonth, this.startYear);
+    const endRange = fmtDate(this.endDay, this.endMonth, this.endYear);
+
+    if (startRange && endRange) {
+      return `${startRange} - ${endRange}`;
+    } else if (startRange) {
+      return startRange;
+    } else if (endRange) {
+      return endRange;
     }
     return '';
   }

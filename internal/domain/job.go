@@ -11,8 +11,9 @@ import (
 type JobType string
 
 const (
-	JobTypeFaceDetection JobType = "face_detection"
-	JobTypeThumbnail     JobType = "thumbnail_generation"
+	JobTypeFaceDetection       JobType = "face_detection"
+	JobTypeThumbnail           JobType = "thumbnail_generation"
+	JobTypeVideoMetadata       JobType = "video_metadata_extraction"
 )
 
 // JobStatus defines the lifecycle of a background job.
