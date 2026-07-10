@@ -1,3 +1,4 @@
+
 import { Routes } from '@angular/router';
 import { PhotoListComponent } from './components/photo-list/photo-list.component';
 import { PhotoDetailComponent } from './components/photo-detail/photo-detail.component';
@@ -5,7 +6,7 @@ import { AlbumListComponent } from './components/album-list/album-list.component
 import { AlbumDetailComponent } from './components/album-detail/album-detail.component';
 import { LoginComponent } from './components/login/login.component';
 import { RegisterComponent } from './components/register/register.component';
-import { PresentationComponent } from './components/presentation/presentation.component';
+
 import { ExploreComponent } from './components/explore/explore.component';
 import { MapComponent } from './components/map/map.component';
 import { SharingDashboardComponent } from './components/sharing-dashboard/sharing-dashboard.component';
@@ -48,8 +49,6 @@ export const routes: Routes = [
   { path: 'locked', component: LockedComponent, canActivate: [authGuard] },
   { path: 'trash', component: TrashComponent, canActivate: [authGuard] },
   
-  // Special Routes
-  { path: 'presentation', component: PresentationComponent, canActivate: [authGuard] },
   { path: 'settings', component: SettingsComponent, canActivate: [authGuard] },
   
   // Auth Routes (Public)
