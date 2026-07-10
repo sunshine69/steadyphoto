@@ -346,9 +346,17 @@ export class PresentationModeComponent implements OnInit, AfterViewInit, OnDestr
   private router = inject(Router);
 
   closePresentation(): void {
+    // Capture the last viewed item BEFORE closing (close() resets state)
+    const lastItem = this.presentationService.getCurrentItem();
     this.presentationService.close();
-    // Navigate back to the previous view (e.g., photo detail or gallery)
-    window.history.back();
+
+    if (lastItem?.id) {
+      // Navigate directly to the detail page of the last viewed photo
+      this.router.navigate(['/photos', lastItem.id]);
+    } else {
+      // Fallback: go back to previous page (gallery, album, etc.)
+      window.history.back();
+    }
   }
 
   getThumbnailUrl(id: string): string {

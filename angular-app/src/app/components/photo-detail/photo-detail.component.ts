@@ -21,6 +21,12 @@ import { Photo } from '../../models/photo.model';
     <div class="container mt-4">
       <div class="row">
         <div class="col-md-8">
+          <div *ngIf="lastPresentationItem" class="alert alert-info d-flex justify-content-between align-items-center" style="font-size: 13px;">
+            <span>
+              <strong>Presentation returned:</strong> Last viewed item ID — {{ lastPresentationItem }}
+            </span>
+            <button class="btn btn-sm btn-outline-primary" (click)="dismissLastPresentation()">Dismiss</button>
+          </div>
           <div class="photo-detail-container" *ngIf="photo; else loading">
             <!-- Video Player for videos -->
             <div class="video-viewer-wrapper" *ngIf="isVideo()">
@@ -251,6 +257,11 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
   // EXIF popup state
   showExifPopup = false;
 
+  /** Saved presentation item ID displayed as a banner */
+  lastPresentationItem: string | null = null;
+
+  private galleryState = inject(GalleryStateService);
+
   get exifData(): any {
     if (!this.photo?.metadata) return null;
     return this.photo.metadata;
@@ -286,26 +297,37 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit(): void {
-    const id = this.route.snapshot.paramMap.get('id');
-    
-    // Check if navigating from shared media (source=shared query param)
-    const isSharedMedia = this.route.snapshot.queryParams['source'] === 'shared';
-    const shareToken = this.route.snapshot.queryParams['shareToken'];
-    
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log(`🔍 [DEBUG] PhotoDetailComponent.ngOnInit`);
-    console.log(`   Route params: id=${id}, source=${isSharedMedia ? 'shared' : 'owner'}`);
-    console.log(`   Query params:`, this.route.snapshot.queryParams);
-    
+    // Read the saved presentation item ID from localStorage
+    const savedId = this.galleryState.getPresentationItem();
+    if (savedId) {
+      this.lastPresentationItem = savedId;
+      console.log('📌 [PhotoDetail] Found saved presentation item:', savedId);
+    }
+
     // Subscribe to EXIF trigger service - opens EXIF popup when triggered
     this.exifTrigger.exifTrigger$.subscribe(() => {
       console.log('[PhotoDetail] EXIF popup triggered from button');
       this.showExifPopup = true;
     });
     
-    if (id) {
+    // Subscribe to route parameter changes to handle navigation between photos
+    this.route.paramMap.subscribe(params => {
+      const id = params.get('id');
+      
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log(`🔍 [DEBUG] PhotoDetailComponent.route.paramMap`);
+      console.log(`   Route params: id=${id}`);
+      console.log(`   Query params:`, this.route.snapshot.queryParams);
+      
+      if (!id) {
+        this.router.navigate(['/']);
+        return;
+      }
+      
       let fetch$: any;
       let apiCall: string;
+      const isSharedMedia = this.route.snapshot.queryParams['source'] === 'shared';
+      const shareToken = this.route.snapshot.queryParams['shareToken'];
       
       if (isSharedMedia && shareToken) {
         // Use public share endpoint (no auth required)
@@ -325,6 +347,7 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
         console.log(`   API call (ownership): ${apiCall}`);
       }
       
+      this.subscription?.unsubscribe();
       this.subscription = fetch$.subscribe({
         next: (photo: any) => {
           console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
@@ -344,9 +367,7 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
           this.router.navigate(['/']);
         }
       });
-    } else {
-      this.router.navigate(['/']);
-    }
+    });
   }
 
   ngOnDestroy(): void {
@@ -500,7 +521,14 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
     console.log(`🟡 [DEBUG] Media load STARTED: ${this.photo?.path}`);
   }
 
-  private galleryState = inject(GalleryStateService);
+  /**
+   * Clears the saved presentation item from localStorage and hides the banner.
+   */
+  dismissLastPresentation(): void {
+    this.galleryState.clearPresentationItem();
+    this.lastPresentationItem = null;
+  }
+
   goBack(): void {
     // Read the saved page from GalleryStateService
     const savedPage = this.galleryState.getCurrentPage() || 1;
@@ -671,8 +699,12 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
         }
       });
     } else {
-      // No search or album context - fetch all gallery items
-      this.photoService.listMedia(200, 0).subscribe({
+      // No search or album context - fetch gallery items around the current page
+      const galleryPage = this.galleryState.getCurrentPage() || 1;
+      const limit = 20;  // Same as gallery component
+      const offset = (galleryPage - 1) * limit;
+      
+      this.photoService.listMedia(200, offset).subscribe({
         next: (response: any) => {
           mediaItems = response.photos.map((p: any) => ({
             id: p.id,

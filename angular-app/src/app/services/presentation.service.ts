@@ -22,9 +22,11 @@ export class PresentationService {
     currentIndex: 0
   });
 
-  // Observable for components to subscribe to if needed (e.g. for animation triggers)
   private _stateSubject = new BehaviorSubject(this.state());
-  
+
+  // Public observable for components to subscribe to
+  stateChanges$: Observable<PresentationState> = this._stateSubject.asObservable();
+
   getState(): PresentationState { return this.state(); }
   getItems(): MediaItem[] { return this.state().items; }
   getCurrentIndex(): number { return this.state().currentIndex; }
@@ -36,41 +38,55 @@ export class PresentationService {
   
   isOpen$: Observable<boolean> = this._stateSubject.pipe(map(s => s.isOpen));
 
+  private notify(): void {
+    const currentState = this.state();
+    console.log('📤 [SERVICE] Notifying - index:', currentState.currentIndex, 'id:', currentState.items[currentState.currentIndex]?.id);
+    this._stateSubject.next(currentState);
+  }
+
   open(items: MediaItem[], startIndex: number): void {
+    console.log('🔓 [SERVICE] open() - items:', items.length, 'startIndex:', startIndex);
     const clampedIndex = Math.max(0, Math.min(startIndex, items.length - 1));
     this.state.update(prev => ({ ...prev, isOpen: true, items, currentIndex: clampedIndex }));
-    this._stateSubject.next(this.state());
+    this.notify();
   }
 
   close(): void {
+    console.log('🔒 [SERVICE] close()');
     this.state.update(prev => ({ ...prev, isOpen: false, items: [], currentIndex: 0 }));
-    this._stateSubject.next(this.state());
+    this.notify();
   }
 
   next(): boolean {
+    console.log('➡️ [SERVICE] next() - current index:', this.state().currentIndex);
     if (this.state().currentIndex < this.state().items.length - 1) {
       this.state.update(prev => ({ ...prev, currentIndex: prev.currentIndex + 1 }));
-      this._stateSubject.next(this.state());
+      this.notify();
       return true;
     }
+    console.log('   ➡️ next() returned false - no more items');
     return false;
   }
 
   previous(): boolean {
+    console.log('⬅️ [SERVICE] previous() - current index:', this.state().currentIndex);
     if (this.state().currentIndex > 0) {
       this.state.update(prev => ({ ...prev, currentIndex: prev.currentIndex - 1 }));
-      this._stateSubject.next(this.state());
+      this.notify();
       return true;
     }
+    console.log('   ⬅️ previous() returned false - no previous items');
     return false;
   }
 
   goTo(index: number): boolean {
+    console.log('🖱️ [SERVICE] goTo(' + index + ') - current index:', this.state().currentIndex);
     if (index >= 0 && index < this.state().items.length) {
       this.state.update(prev => ({ ...prev, currentIndex: index }));
-      this._stateSubject.next(this.state());
+      this.notify();
       return true;
     }
+    console.log('   ⚠️ goTo(' + index + ') returned false - invalid index');
     return false;
   }
 

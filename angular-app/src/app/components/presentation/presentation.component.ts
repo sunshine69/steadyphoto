@@ -1,8 +1,10 @@
 import { Component, OnInit, OnDestroy, HostListener, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
+import { Subscription } from 'rxjs';
 import { PresentationService, MediaItem } from '../../services/presentation.service';
 import { PhotoService } from '../../services/photo.service';
+import { GalleryStateService } from '../../services/gallery-state.service';
 
 @Component({
   selector: 'app-presentation',
@@ -10,10 +12,8 @@ import { PhotoService } from '../../services/photo.service';
   imports: [CommonModule],
   template: `
     <div class="presentation-container" (click)="close()">
-      <!-- Background dimmer -->
       <div class="overlay"></div>
 
-      <!-- Main Content Area -->
       <div class="content-wrapper" (click)="$event.stopPropagation()">
         
         <!-- Previous Button -->
@@ -46,7 +46,7 @@ import { PhotoService } from '../../services/photo.service';
 
         <!-- Next Button -->
         <button 
-          *ngIf="currentIndex < items.length - 1"
+          *ngIf="currentIndex < allItems.length - 1"
           class="nav-btn next-btn" 
           (click)="next()"
           aria-label="Next">
@@ -60,7 +60,26 @@ import { PhotoService } from '../../services/photo.service';
 
         <!-- Counter / Progress -->
         <div class="progress-indicator">
-          {{ currentIndex + 1 }} / {{ items.length }}
+          {{ currentIndex + 1 }} / {{ allItems.length }}
+        </div>
+
+        <!-- Thumbnail Strip -->
+        <div class="thumbnail-strip" (click)="$event.stopPropagation()">
+          <div 
+            *ngFor="let item of allItems; let i = index"
+            class="thumbnail-item"
+            [class.active]="i === currentIndex"
+            (click)="goTo(i)">
+            <img 
+              [src]="getThumbnailUrl(item)" 
+              [alt]="item.filename || ''"
+              class="thumbnail-image"
+              loading="lazy"
+            >
+            <div *ngIf="item.mediaType === 'video'" class="video-icon-overlay">
+              ▶
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -81,7 +100,7 @@ import { PhotoService } from '../../services/photo.service';
       top: 0;
       left: 0;
       width: 100%;
-      height: 100%;
+      height: calc(100% - 72px);
       cursor: pointer;
     }
 
@@ -96,7 +115,7 @@ import { PhotoService } from '../../services/photo.service';
 
     .media-display {
       max-width: 95vw;
-      max-height: 95vh;
+      max-height: calc(100vh - 72px);
       display: flex;
       justify-content: center;
       align-items: center;
@@ -155,138 +174,214 @@ import { PhotoService } from '../../services/photo.service';
       background-color: rgba(0, 0, 0, 0.5);
       padding: 0.5rem 1rem;
       border-radius: 4px;
+      z-index: 10;
+    }
+
+    .thumbnail-strip {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 72px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      padding: 0 0.75rem;
+      background: linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 100%);
+      z-index: 10;
+      overflow-x: hidden;
+      cursor: pointer;
+    }
+
+    .thumbnail-item {
+      position: relative;
+      width: 56px;
+      height: 56px;
+      border-radius: 4px;
+      overflow: hidden;
+      cursor: pointer;
+      flex-shrink: 0;
+      border: 2px solid transparent;
+      transition: border-color 0.15s, transform 0.15s, opacity 0.15s;
+      opacity: 0.6;
+    }
+
+    .thumbnail-item:hover {
+      opacity: 0.9;
+      transform: scale(1.08);
+    }
+
+    .thumbnail-item.active {
+      border-color: #6366f1;
+      opacity: 1;
+      transform: scale(1.12);
+      box-shadow: 0 0 8px rgba(99, 102, 241, 0.6);
+    }
+
+    .thumbnail-image {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      pointer-events: none;
+    }
+
+    .video-icon-overlay {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: white;
+      font-size: 16px;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.7);
+      pointer-events: none;
     }
 
     @media (max-width: 768px) {
       .nav-btn { font-size: 2rem; padding: 0.5rem 1rem; }
       .prev-btn { left: 0.5rem; }
       .next-btn { right: 0.5rem; }
+      .thumbnail-strip { height: 56px; gap: 3px; padding: 0 0.5rem; }
+      .thumbnail-item { width: 44px; height: 44px; }
     }
   `]
 })
 export class PresentationComponent implements OnInit, OnDestroy {
-  items: MediaItem[] = [];
-  currentIndex: number = 0;
-
   private route = inject(ActivatedRoute);
-
-  constructor(
-    private presentationService: PresentationService,
-    private photoService: PhotoService
-  ) {}
+  private router = inject(Router);
+  private presentationService = inject(PresentationService);
+  private photoService = inject(PhotoService);
+  private galleryState = inject(GalleryStateService);
+  private subscriptions = new Subscription();
 
   ngOnInit(): void {
-    // Load the current state from service if available (e.g. navigated to route)
     const state = this.presentationService.getState();
+    console.log('🎬 [COMP] ngOnInit - service items:', state.items.length, 'index:', state.currentIndex);
     
-    if (state.items.length > 0 && state.currentIndex >= 0) {
-      this.items = state.items;
-      this.currentIndex = state.currentIndex;
-    } else {
-      // Fallback: Fetch main gallery items if no state provided
+    // If no items yet, load from gallery
+    if (state.items.length === 0) {
       this.loadGalleryItems();
     }
-
-    // Subscribe to service changes in case we navigate back and forth without reloading component
-    // Though usually route navigation destroys/recreates, it's good practice for single-page apps
   }
 
-  loadGalleryItems(): void {
-    // Check if we're in public share presentation mode
+  private loadGalleryItems(): void {
     const shareToken = this.route.snapshot.queryParamMap.get('shareToken');
     const isSharedMedia = this.route.snapshot.queryParamMap.get('source') === 'shared';
     
+    const load = (response: any, mapFn: (p: any) => MediaItem) => {
+      const items = response.media?.map(mapFn) || response.items?.map(mapFn) || [];
+      console.log('📥 [COMP] Loaded', items.length, 'items from gallery');
+      if (items.length > 0) {
+        this.presentationService.open(items, 0);
+        console.log('🔓 [COMP] Opened presentation with items, first id:', items[0].id);
+      }
+    };
+
     if (shareToken) {
-      // Fetch from public share endpoint (no auth required)
-      // listPublicShareMedia already normalizes items with proper URLs and password
       this.photoService.listPublicShareMedia(shareToken, 50, 0).subscribe({
-        next: (response: any) => {
-          this.items = response.media.map((p: any) => ({
-            id: p.id,
-            path: p.path,
-            filename: p.filename,
-            mediaType: p.mediaType
-          }));
-          this.currentIndex = 0;
-        },
-        error: (err) => {
-          console.error('Failed to load public share media for presentation', err);
-        }
+        next: (response: any) => load(response, (p: any) => ({
+          id: p.id, path: p.path, filename: p.filename, mediaType: p.mediaType
+        })),
+        error: (err) => console.error('Failed to load public share media', err)
       });
     } else if (isSharedMedia) {
-      // Fetch from authenticated shared media endpoint
       this.photoService.listSharedMedia(50, 0).subscribe({
-        next: (response: any) => {
-          this.items = response.items.map((p: any) => ({
-            id: p.id || p.ID,
-            path: `${this.photoService['API_BASE_URL']}/media/shared/${(p.id || p.ID)}/original`,
-            filename: p.filename || '',
-            mediaType: (p.mediaType || 'photo')
-          }));
-          this.currentIndex = 0;
-        },
-        error: (err) => {
-          console.error('Failed to load shared media for presentation', err);
-        }
+        next: (response: any) => load(response, (p: any) => ({
+          id: p.id || p.ID,
+          path: `${this.photoService['API_BASE_URL']}/media/shared/${(p.id || p.ID)}/original`,
+          filename: p.filename || '',
+          mediaType: (p.mediaType || 'photo')
+        })),
+        error: (err) => console.error('Failed to load shared media', err)
       });
     } else {
-      // Fetch from authenticated endpoint
       this.photoService.listMedia(50, 0).subscribe({
-        next: (response) => {
-          this.items = response.photos;
-          this.currentIndex = 0;
-        },
-        error: (err) => {
-          console.error('Failed to load media for presentation', err);
-        }
+        next: (response: any) => load(response, (p: any) => ({
+          id: p.id, path: p.path, filename: p.filename, mediaType: p.mediaType
+        })),
+        error: (err) => console.error('Failed to load media', err)
       });
     }
+  }
+
+  getThumbnailUrl(item: MediaItem): string {
+    if (item.id) {
+      if (item.path?.includes('/media/shared/')) {
+        return `${this.photoService['API_BASE_URL']}/media/shared/${item.id}/thumb`;
+      }
+      return `${this.photoService['API_BASE_URL']}/media/${item.id}/thumb`;
+    }
+    return '';
+  }
+
+  // Read directly from service - no sync needed
+  get allItems(): MediaItem[] {
+    return this.presentationService.getItems();
+  }
+
+  get currentIndex(): number {
+    const idx = this.presentationService.getCurrentIndex();
+    const item = this.presentationService.getCurrentItem();
+    console.log('📊 [COMP] currentIndex getter:', idx, '| id:', item?.id, '| file:', item?.filename);
+    return idx;
   }
 
   get currentItem(): MediaItem | undefined {
-    return this.items[this.currentIndex];
+    const item = this.presentationService.getCurrentItem();
+    console.log('🖼️ [COMP] currentItem getter:', item?.id, '| file:', item?.filename);
+    return item;
   }
 
   next(): void {
-    if (this.presentationService.next()) {
-      // Service updated state, we just need to ensure our local index matches
-      this.currentIndex = this.presentationService.getCurrentIndex();
-    } else {
-      // Optional: Loop back to start or stop
-      console.log('End of presentation');
-    }
+    console.log('➡️ [COMP] next() called');
+    this.presentationService.next();
   }
 
   previous(): void {
-    if (this.presentationService.previous()) {
-      this.currentIndex = this.presentationService.getCurrentIndex();
-    }
+    console.log('⬅️ [COMP] previous() called');
+    this.presentationService.previous();
+  }
+
+  goTo(index: number): void {
+    console.log('🖱️ [COMP] goTo(' + index + ') called');
+    this.presentationService.goTo(index);
   }
 
   close(): void {
+    console.log('❌ [COMP] close() called');
+    // CRITICAL: Save current item to localStorage BEFORE closing (close() clears items)
+    const currentItem = this.presentationService.getCurrentItem();
+    console.log('   Current item id before close:', currentItem?.id);
+    
+    if (currentItem?.id) {
+      // Store in localStorage like gallery_current_page
+      this.galleryState.savePresentationItem(currentItem.id);
+      console.log('   💾 Saved presentation_current_item to localStorage:', currentItem.id);
+    }
+    
     this.presentationService.close();
-    // Navigate back to home or previous route
-    window.history.back(); 
+    
+    if (currentItem?.id) {
+      console.log('🚀 [COMP] Navigating to /photos/', currentItem.id);
+      this.router.navigate(['/photos', currentItem.id]);
+    } else {
+      console.log('⚠️ [COMP] No item, going back');
+      window.history.back();
+    }
   }
 
   @HostListener('document:keydown', ['$event'])
   handleKeyboard(event: KeyboardEvent): void {
-    if (!this.items.length) return;
-
+    if (!this.allItems.length) return;
     switch (event.key) {
-      case 'ArrowRight':
-        this.next();
-        break;
-      case 'ArrowLeft':
-        this.previous();
-        break;
-      case 'Escape':
-        this.close();
-        break;
+      case 'ArrowRight': this.next(); break;
+      case 'ArrowLeft': this.previous(); break;
+      case 'Escape': this.close(); break;
     }
   }
 
   ngOnDestroy(): void {
-    // Clean up if needed
+    this.subscriptions.unsubscribe();
   }
 }

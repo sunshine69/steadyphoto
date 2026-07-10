@@ -5,29 +5,35 @@ import { Injectable } from '@angular/core';
 })
 export class GalleryStateService {
   private STORAGE_KEY = 'gallery_current_page';
+  private PRESENTATION_KEY = 'presentation_current_item';
 
   constructor() {}
 
-  /**
-   * Save the current page number to localStorage
-   */
   saveCurrentPage(page: number): void {
     localStorage.setItem(this.STORAGE_KEY, page.toString());
   }
 
-  /**
-   * Retrieve the current page number from localStorage
-   * Returns 1 as default if no value found
-   */
   getCurrentPage(): number {
     const stored = localStorage.getItem(this.STORAGE_KEY);
     return stored ? parseInt(stored, 10) : 1;
   }
 
-  /**
-   * Clear the stored page state (useful for logout or reset)
-   */
+  savePresentationItem(itemId: string): void {
+    if (itemId) {
+      localStorage.setItem(this.PRESENTATION_KEY, itemId);
+    }
+  }
+
+  getPresentationItem(): string | null {
+    return localStorage.getItem(this.PRESENTATION_KEY);
+  }
+
+  clearPresentationItem(): void {
+    localStorage.removeItem(this.PRESENTATION_KEY);
+  }
+
   clearState(): void {
     localStorage.removeItem(this.STORAGE_KEY);
+    localStorage.removeItem(this.PRESENTATION_KEY);
   }
 }
