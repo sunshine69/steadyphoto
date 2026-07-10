@@ -33,31 +33,25 @@ export class SearchService {
 
   setSearchTerm(term: string) {
     this.searchTermSource.next(term);
-    console.log('[SEARCH-SERVICE] setSearchTerm:', term);
   }
 
   setSearchScope(scope: SearchScope) {
     this.searchScopeSource.next(scope);
-    console.log('[SEARCH-SERVICE] setSearchScope:', scope);
   }
 
   setSearchDate(dateRange: string) {
     this.searchDateSource.next(dateRange);
-    console.log('[SEARCH-SERVICE] setSearchDate:', dateRange);
   }
 
   /**
    * Triggers an actual search call to the backend.
    */
   triggerSearch(query: string, scope: SearchScope = 'all', dateRange?: string): void {
-    console.log('[SEARCH-SERVICE] triggerSearch() called with:', { query, scope, dateRange });
-    
     // Update streams so photo-list's combineLatest pipeline makes ONE HTTP request.
     // We do NOT call searchMedia() here directly — that would cause duplicate requests.
     this.searchTermSource.next(query);
     this.searchScopeSource.next(scope);
     this.searchDateSource.next(dateRange || '');
-    console.log('[SEARCH-SERVICE] streams updated:', { query, scope, dateRange: dateRange || '' });
   }
 
   /**
@@ -105,7 +99,6 @@ export class SearchService {
    * @param dateRange Date range string in format: "dd/mm/yyyy", "yyyy/mm/dd", "dd/mm/yyyy - dd/mm/yyyy", etc.
    */
   searchMedia(query: string, scope: SearchScope = 'all', limit: number = 20, offset: number = 0, dateRange?: string): Observable<SearchResponse> {
-    console.log('[SEARCH-SERVICE] searchMedia called with:', { query, scope, limit, offset, dateRange });
     const params = new URLSearchParams({
       query: query,
       scope: scope,
@@ -118,11 +111,9 @@ export class SearchService {
     }
 
     const url = `${this.API_BASE_URL}/media/search?${params}`;
-    console.log('[SEARCH-SERVICE] Request URL:', url);
 
     return this.http.get<any>(url).pipe(
       map(response => {
-        console.log('[SEARCH-SERVICE] Response received:', response);
         return {
           results: (response.results || []).map((p: any) => this.normalizeMedia(p)),
           total: response.total ?? 0,

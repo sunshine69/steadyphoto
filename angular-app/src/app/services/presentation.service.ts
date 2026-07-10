@@ -40,53 +40,44 @@ export class PresentationService {
 
   private notify(): void {
     const currentState = this.state();
-    console.log('📤 [SERVICE] Notifying - index:', currentState.currentIndex, 'id:', currentState.items[currentState.currentIndex]?.id);
     this._stateSubject.next(currentState);
   }
 
   open(items: MediaItem[], startIndex: number): void {
-    console.log('🔓 [SERVICE] open() - items:', items.length, 'startIndex:', startIndex);
     const clampedIndex = Math.max(0, Math.min(startIndex, items.length - 1));
     this.state.update(prev => ({ ...prev, isOpen: true, items, currentIndex: clampedIndex }));
     this.notify();
   }
 
   close(): void {
-    console.log('🔒 [SERVICE] close()');
     this.state.update(prev => ({ ...prev, isOpen: false, items: [], currentIndex: 0 }));
     this.notify();
   }
 
   next(): boolean {
-    console.log('➡️ [SERVICE] next() - current index:', this.state().currentIndex);
     if (this.state().currentIndex < this.state().items.length - 1) {
       this.state.update(prev => ({ ...prev, currentIndex: prev.currentIndex + 1 }));
       this.notify();
       return true;
     }
-    console.log('   ➡️ next() returned false - no more items');
     return false;
   }
 
   previous(): boolean {
-    console.log('⬅️ [SERVICE] previous() - current index:', this.state().currentIndex);
     if (this.state().currentIndex > 0) {
       this.state.update(prev => ({ ...prev, currentIndex: prev.currentIndex - 1 }));
       this.notify();
       return true;
     }
-    console.log('   ⬅️ previous() returned false - no previous items');
     return false;
   }
 
   goTo(index: number): boolean {
-    console.log('🖱️ [SERVICE] goTo(' + index + ') - current index:', this.state().currentIndex);
     if (index >= 0 && index < this.state().items.length) {
       this.state.update(prev => ({ ...prev, currentIndex: index }));
       this.notify();
       return true;
     }
-    console.log('   ⚠️ goTo(' + index + ') returned false - invalid index');
     return false;
   }
 

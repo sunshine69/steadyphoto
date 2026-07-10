@@ -51,7 +51,7 @@ export class AuthService {
   getProfile(): Observable<any> {
     return this.http.get(`${this.API_BASE_URL}/auth/profile`, { withCredentials: true })
       .pipe(
-        tap((res) => console.log('AuthService: Profile fetched', res)),
+        tap((res) => res),
         catchError(err => {
           console.error('AuthService: Failed to fetch profile', err);
           return throwError(() => err);
@@ -63,7 +63,7 @@ export class AuthService {
   updateEmail(newEmail: string): Observable<any> {
     return this.http.patch(`${this.API_BASE_URL}/auth/profile/email`, { new_email: newEmail }, { withCredentials: true })
       .pipe(
-        tap((res) => console.log('AuthService: Email updated', res)),
+        tap((res) => res),
         catchError(err => {
           console.error('AuthService: Failed to update email', err);
           return throwError(() => err);
@@ -78,7 +78,7 @@ export class AuthService {
       new_password: newPassword
     }, { withCredentials: true })
       .pipe(
-        tap((res) => console.log('AuthService: Password changed', res)),
+        tap((res) => res),
         catchError(err => {
           console.error('AuthService: Failed to change password', err);
           return throwError(() => err);
@@ -91,8 +91,6 @@ export class AuthService {
     return this.http.post<AuthResponse>(`${this.API_BASE_URL}/auth/login`, { email, password }, { withCredentials: true })
       .pipe(
         tap((res) => {
-          console.log('AuthService: Login successful', res);
-          
           // Store access_token in sessionStorage (cleared on tab close) for Bearer token usage.
           if (res.access_token) {
             sessionStorage.setItem('access_token', res.access_token);
@@ -129,9 +127,7 @@ export class AuthService {
           // Ensure we don't trigger token refresh for registration errors
           return throwError(() => err);
         }),
-        tap(() => {
-          console.log('AuthService: Registration request completed');
-        })
+        tap(() => {})
       );
   }
 
@@ -143,7 +139,7 @@ export class AuthService {
     return this.http.post(`${this.API_BASE_URL}/auth/logout`, {}, { withCredentials: true })
       .pipe(
         tap(() => {
-          console.log('AuthService: Logout successful');
+          // Logout successful
         }),
         catchError(err => {
           console.error('AuthService: Logout failed', err);
@@ -165,7 +161,7 @@ export class AuthService {
   refreshToken(): Observable<any> {
     return this.http.post(`${this.API_BASE_URL}/auth/refresh`, {}, { withCredentials: true })
       .pipe(
-        tap(() => console.log('AuthService: Token refreshed')),
+        tap(() => {}),
         catchError(err => {
           console.error('AuthService: Refresh failed', err);
           // If refresh fails, we must assume the user is truly logged out
@@ -182,21 +178,17 @@ export class AuthService {
   handle401(): Observable<boolean> {
     // If logout is in progress, don't try to refresh at all — just fail with 401 immediately
     if (this._isLoggingOutSubject.value) {
-      console.warn('AuthService: Skipping refresh during logout');
       return throwError(() => new Error('Logout in progress'));
     }
 
     // If a refresh is already in flight, wait for it and then emit to signal completion
     if (!this._refreshInFlightSubject.observed && this._isRefreshing) {
-      console.log('AuthService: Refresh already in progress, waiting...');
       return throwError(() => new Error('Refresh in progress'));
     }
 
     // Mark refresh as in-flight (only the first caller does this)
     if (!this._refreshInFlightSubject.observed && !this._isRefreshing) {
       this._isRefreshing = true;
-      
-      console.log('AuthService: Starting token refresh due to 401');
       
       return this.refreshToken().pipe(
         switchMap(() => {
@@ -254,7 +246,6 @@ export class AuthService {
   initializeAuth(): void {
     this.getProfile().subscribe({
       next: () => {
-        console.log('AuthService: Session verified, user authenticated');
         this.setAuthenticated(true);
         // Also set the current user if not already set
         if (!this.getCurrentUser()) {

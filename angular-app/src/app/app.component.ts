@@ -720,7 +720,7 @@ export class AppComponent implements OnInit, OnDestroy {
     
     // Listen for upload complete event to refresh gallery
     window.addEventListener('media-upload-complete', () => {
-      console.log('Upload completed, refreshing media list...');
+      // Refresh gallery logic can be added here if needed
     });
 
     // Subscribe to auth state changes to keep isAdmin and avatarInitial reactive
@@ -766,13 +766,12 @@ export class AppComponent implements OnInit, OnDestroy {
         const user = JSON.parse(currentUser);
         this.isAdmin = user.role === 'admin';
       } catch (e) {
-        console.error('Failed to parse current user', e);
+        // Silently fail if user data is corrupted
       }
     }
   }
 
   clearSearch(): void {
-    console.log('[APP-COMPONENT] clearSearch() called');
     this.searchTerm = '';
     this.selectedScope = 'all';
     this.startDay = '';
@@ -861,9 +860,6 @@ export class AppComponent implements OnInit, OnDestroy {
   openShareModal(itemId?: string, itemType: 'media' | 'album' = 'media'): void {
     if (itemId) {
       this.shareTrigger.open(itemId, itemType);
-    } else {
-      // No item to share - could show a toast or alert
-      console.warn('No item selected to share');
     }
   }
 
@@ -874,7 +870,6 @@ export class AppComponent implements OnInit, OnDestroy {
   onSelectAll(): void {
     // Trigger select all - the photo-list component will handle it
     // by listening to selectAllTrigger$ and selecting all photos on the current page
-    console.log('[SELECT-ALL-DEBUG] AppComponent.onSelectAll() called');
     this.selectionService.triggerSelectAll();
     // Also trigger the EXIF popup
     this.exifTriggerService.triggerExifPopup();
