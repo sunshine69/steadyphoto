@@ -102,6 +102,7 @@ export class PhotoListComponent implements OnInit, OnDestroy {
   private directSub: Subscription | null = null;
   private selectAllTriggerSub: Subscription | null = null;
   private selectedIdsSub: Subscription | null = null;
+  private restorePage = false;
   private readonly SCROLL_KEY = 'photo_list_scroll_pos';
 
   constructor(
@@ -118,6 +119,8 @@ export class PhotoListComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     const savedPage = this.galleryState.getCurrentPage();
     this.currentPage = savedPage;
+    // Prevent switchMap from resetting page on initial load
+    this.restorePage = true;
     this.offset = (savedPage - 1) * this.limit;
     
     // Use combineLatest to react to any search parameter change, but only
@@ -137,8 +140,8 @@ export class PhotoListComponent implements OnInit, OnDestroy {
         this.currentDateRange = dateRange;
         this.searchScope = scope;
         
-        // Reset page when search starts or scope changes
-        if (this.currentPage !== 1) {
+        // Reset page when search starts or scope changes (skip during initial restore)
+        if (!this.restorePage && this.currentPage !== 1) {
           this.currentPage = 1;
           this.offset = 0;
         }
@@ -184,8 +187,26 @@ export class PhotoListComponent implements OnInit, OnDestroy {
           allMedia = allMedia.filter((p: Photo) => this.getTagsForPhoto(p).some(t => t.toLowerCase().includes(tagLower)));
         }
 
+        // Clear restore flag after first successful load
+        if (this.restorePage) {
+          this.restorePage = false;
+        }
+
         this.photos = allMedia;
         this.totalPhotos = data.total ?? 0;
+        
+        // If we got empty results but photos exist, our saved page is out of range
+        // (e.g., user deleted photos between sessions). Reset to last page and reload.
+        if (!this.restorePage && allMedia.length === 0 && this.totalPhotos > 0 && this.currentPage > 1) {
+          console.log('[PHOTO-LIST] Out of range page detected, resetting to last page');
+          const lastPage = this.totalPages;
+          this.currentPage = lastPage;
+          this.offset = (lastPage - 1) * this.limit;
+          this.galleryState.saveCurrentPage(this.currentPage);
+          this.loadPhotosDirect();
+          return;
+        }
+
         this.loading = false;
       },
       error: (err) => {
@@ -314,6 +335,9 @@ export class PhotoListComponent implements OnInit, OnDestroy {
   }
   
   onPhotoClick(id: string): void {
+    // Save current page BEFORE navigating so goBack() can restore it
+    this.galleryState.saveCurrentPage(this.currentPage);
+
     const queryParams: any = {};
     if (this.currentSearchTerm) {
       queryParams.searchTerm = this.currentSearchTerm;

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -16,9 +17,9 @@ import (
 )
 
 type MediaRecord struct {
-	ID        string    `db:"id"`
-	Metadata  string    `db:"metadata"`
-	CapturedAt time.Time `db:"captured_at"`
+	ID        string       `db:"id"`
+	Metadata  sql.NullString `db:"metadata"`
+	CapturedAt time.Time    `db:"captured_at"`
 }
 
 func main() {
@@ -68,7 +69,10 @@ func main() {
 	for _, record := range records {
 		// Parse metadata JSONB
 		var metadata map[string]string
-		if err := json.Unmarshal([]byte(record.Metadata), &metadata); err != nil {
+		if !record.Metadata.Valid {
+			continue
+		}
+		if err := json.Unmarshal([]byte(record.Metadata.String), &metadata); err != nil {
 			log.Printf("Failed to parse metadata for %s: %v", record.ID, err)
 			errors++
 			continue

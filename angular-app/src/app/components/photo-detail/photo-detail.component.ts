@@ -9,6 +9,7 @@ import { PresentationService, MediaItem } from '../../services/presentation.serv
 import { SearchService, SearchScope } from '../../services/search.service';
 import { ShareTriggerService } from '../../services/share-trigger.service';
 import { ExifTriggerService } from '../../services/exif-trigger.service';
+import { GalleryStateService } from '../../services/gallery-state.service';
 import { ExifDataPopupComponent } from '../exif-data-popup/exif-data-popup.component';
 import { Photo } from '../../models/photo.model';
 
@@ -499,14 +500,38 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
     console.log(`🟡 [DEBUG] Media load STARTED: ${this.photo?.path}`);
   }
 
+  private galleryState = inject(GalleryStateService);
   goBack(): void {
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('🔙 [DEBUG] PhotoDetailComponent.goBack() called');
-    console.log('   Query params:', this.route.snapshot.queryParams);
-    console.log('   Will navigate back to:', document.referrer);
-    console.log('   History length:', window.history.length);
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    window.history.back();
+    // Read the saved page from GalleryStateService
+    const savedPage = this.galleryState.getCurrentPage() || 1;
+
+    // Rebuild query params from current route
+    const queryParams: any = {};
+    if (this.route.snapshot.queryParams['searchTerm']) {
+      queryParams.searchTerm = this.route.snapshot.queryParams['searchTerm'];
+      queryParams.searchScope = this.route.snapshot.queryParams['searchScope'];
+    }
+    if (this.route.snapshot.queryParams['albumIds']) {
+      queryParams.albumIds = this.route.snapshot.queryParams['albumIds'];
+    }
+    if (this.route.snapshot.queryParams['albumMediaPaths']) {
+      queryParams.albumMediaPaths = this.route.snapshot.queryParams['albumMediaPaths'];
+    }
+    if (this.route.snapshot.queryParams['source'] === 'shared') {
+      queryParams.source = 'shared';
+      if (this.route.snapshot.queryParams['shareToken']) {
+        queryParams.shareToken = this.route.snapshot.queryParams['shareToken'];
+      }
+    }
+    if (this.route.snapshot.queryParams['mediaPath']) {
+      queryParams.mediaPath = this.route.snapshot.queryParams['mediaPath'];
+    }
+    if (this.route.snapshot.queryParams['tag']) {
+      queryParams.tag = this.route.snapshot.queryParams['tag'];
+    }
+
+    console.log('🔙 [DEBUG] PhotoDetailComponent.goBack() navigating to root with page', savedPage, 'and queryParams', queryParams);
+    this.router.navigate(['/' ], { queryParams, queryParamsHandling: 'merge' });
   }
 
   startPresentation(): void {
