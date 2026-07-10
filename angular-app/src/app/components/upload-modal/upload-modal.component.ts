@@ -373,8 +373,10 @@ export class UploadModalComponent implements OnInit, OnDestroy {
              this.response = resData; 
 
              if (this.response && Object.keys(this.response).length > 0) {
-               console.log('Upload successful:', this.response.uploaded?.length || 0, 'uploaded,', 
-                           (this.response.skipped_duplicates as any[])?.length || 0, 'skipped.');
+                 const dupCount = (this.response.skipped_duplicates as any[])?.length || 0;
+                 if (dupCount > 0) {
+                   this.uploadMessage = `Upload complete. ${dupCount} duplicate${dupCount > 1 ? 's' : ''} skipped.`;
+                 }
                  window.dispatchEvent(new CustomEvent('media-upload-complete'));
              } else {
                console.warn('Upload returned empty response');

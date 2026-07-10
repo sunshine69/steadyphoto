@@ -509,7 +509,7 @@ export class ArchiveComponent implements OnInit {
 
     this.trashService.restoreMedia(photo.id).subscribe({
       next: () => {
-        console.log('Restored:', photo.filename);
+        
         this.photos = this.photos.filter(p => p.id !== photo.id);
         this.totalItems--;
         
@@ -553,7 +553,7 @@ export class ArchiveComponent implements OnInit {
 
     this.trashService.permanentlyDelete(photo.id).subscribe({
       next: () => {
-        console.log('Permanently deleted:', photo.filename);
+        
         
         // Remove from list after successful deletion
         setTimeout(() => {

@@ -358,7 +358,6 @@ export class ShareModalComponent implements OnInit, OnDestroy {
       if (isOpen && !this.isVisible) {
         const data = this.shareTrigger['shareDataSubject'].value;
         if (data?.itemId) {
-          console.log('[DEBUG] Share modal opened with:', JSON.stringify(data));
           this.open(data.itemId, data.itemType || 'media');
         }
       } else if (!isOpen && this.isVisible) {
@@ -394,7 +393,6 @@ export class ShareModalComponent implements OnInit, OnDestroy {
 
   /** Open the modal for a specific item */
   open(itemId: string, itemType: 'media' | 'album'): void {
-    console.log('[DEBUG] Modal opening - itemId:', itemId, 'itemType:', itemType);
     
     // Reset state
     this.activeTab = 'user';
@@ -420,7 +418,6 @@ export class ShareModalComponent implements OnInit, OnDestroy {
       this.sharedItems = [{ id: itemId }];
     }
 
-    console.log('[DEBUG] Shared items set to:', JSON.stringify(this.sharedItems));
 
     this.isVisible = true;
   }
@@ -450,7 +447,6 @@ export class ShareModalComponent implements OnInit, OnDestroy {
     if (this.searchTimeout) clearTimeout(this.searchTimeout);
     
     const query = this.searchQuery.trim();
-    console.log('[DEBUG] Search input:', query, 'length:', query.length);
     
     if (query.length < 2) {
       this.searchResults = [];
@@ -463,13 +459,11 @@ export class ShareModalComponent implements OnInit, OnDestroy {
 
     // Debounce search request and call the real API
     this.searchTimeout = setTimeout(() => {
-      console.log('[DEBUG] Starting user search for query:', query);
       this.isSearching = true;
       
       this.shareService.searchUsers(query).subscribe({
         next: (users) => {
           // Map backend SearchUser results to component's user interface (add username as undefined since we don't have it from API)
-          console.log('[DEBUG] User search response:', JSON.stringify(users));
           this.searchResults = users.map(u => ({ id: u.id, email: u.email, username: '' }));
           this.isSearching = false;
         },
@@ -487,25 +481,20 @@ export class ShareModalComponent implements OnInit, OnDestroy {
   }
 
   toggleUserSelection(user: { id: string; email: string; username?: string }): void {
-    console.log('[DEBUG] Toggling user selection:', JSON.stringify(user), 'isSelected:', this.isSelected(user.id));
     
     const index = this.selectedUsers.findIndex(u => u.id === user.id);
     if (index >= 0) {
       // Remove from selection - don't close dropdown, let user keep selecting others
-      console.log('[DEBUG] Removing user at index', index);
       this.selectedUsers.splice(index, 1);
     } else {
       // Add to selection and ALWAYS close the search dropdown
-      console.log('[DEBUG] Adding user to selection');
       this.selectedUsers.push(user);
       this.closeSearchDropdown();
     }
     
-    console.log('[DEBUG] Selected users now:', JSON.stringify(this.selectedUsers));
   }
 
   removeUser(index: number): void {
-    console.log('[DEBUG] Removing user at index', index, 'from selection');
     this.selectedUsers.splice(index, 1);
   }
 
@@ -519,9 +508,6 @@ export class ShareModalComponent implements OnInit, OnDestroy {
   }
 
   async createUserToUserShare(): Promise<void> {
-    console.log('[DEBUG] === CREATE USER-TO-USER SHARE STARTED ===');
-    console.log('[DEBUG] sharedItems:', JSON.stringify(this.sharedItems));
-    console.log('[DEBUG] selectedUsers:', JSON.stringify(this.selectedUsers));
 
     if (this.sharedItems.length === 0) {
       this.hasError = true;
@@ -542,8 +528,6 @@ export class ShareModalComponent implements OnInit, OnDestroy {
     try {
       const mediaIds = this.sharedItems.filter(i => i.id).map(i => i.id);
       
-      console.log('[DEBUG] Media IDs to send:', JSON.stringify(mediaIds));
-      console.log('[DEBUG] Sharee user IDs to send:', JSON.stringify(this.selectedUsers.map(u => u.id)));
 
       // Build request body - use FormData or JSON based on backend expectations
       const requestBody: ShareRequest = {
@@ -551,18 +535,15 @@ export class ShareModalComponent implements OnInit, OnDestroy {
         media_ids: mediaIds,
       };
 
-      console.log('[DEBUG] Request body being sent:', JSON.stringify(requestBody));
 
       await this.shareService.createShare(requestBody).toPromise();
       
       // User-to-user share completed — no public link needed
-      console.log('[DEBUG] User-to-user share created successfully');
 
       this.hasError = false;
       this.shareMessage = 'Items shared successfully!';
       this.shareComplete = true;
     } catch (err) {
-      console.log('[DEBUG] === CREATE USER-TO-USER SHARE FAILED ===');
       console.error('[DEBUG] Error details:', err);
       // Log the error response if available
       if ((err as any)?.error) {
@@ -617,7 +598,6 @@ export class ShareModalComponent implements OnInit, OnDestroy {
         resource_id: item.id,
       };
 
-      console.log('[DEBUG] Public share link request body:', JSON.stringify(requestBody));
 
       if (this.requirePassword && this.sharePassword) {
         requestBody.password = this.sharePassword;
@@ -629,7 +609,6 @@ export class ShareModalComponent implements OnInit, OnDestroy {
 
       const response = await this.shareService.createPublicShareLink(requestBody).toPromise();
       
-      console.log('[DEBUG] Public share link created:', JSON.stringify(response));
       
       this.createdPublicLink = response;
       this.hasError = false;
@@ -653,7 +632,6 @@ export class ShareModalComponent implements OnInit, OnDestroy {
     // Construct the public share URL based on resource type
     const baseUrl = window.location.origin + '/public/shares';
     
-    console.log('[DEBUG] Generating shareable URL - baseUrl:', baseUrl, 'token:', this.createdPublicLink.token, 'resourceType:', this.createdPublicLink.resourceType);
     
     if (this.createdPublicLink.resourceType === 'media') {
       return `${baseUrl}/media/${this.createdPublicLink.token}`;
@@ -663,7 +641,6 @@ export class ShareModalComponent implements OnInit, OnDestroy {
   }
 
   copyToClipboard(text: string): void {
-    console.log('[DEBUG] Copying to clipboard:', text);
     
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(() => {

@@ -203,7 +203,7 @@ export class LoginComponent {
 
     this.authService.login(this.email, this.password).subscribe({
       next: () => {
-        console.log('Login successful');
+        
         this.isLoading = false;
         this.router.navigate(['/']); // Redirect to home (photo list) after login
       },

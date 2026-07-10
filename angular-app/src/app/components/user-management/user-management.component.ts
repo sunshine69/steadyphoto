@@ -658,7 +658,7 @@ export class UserManagementComponent implements OnInit, OnDestroy {
     
     this.userManagementService.bulkApproveUsers(selectedIds).subscribe({
       next: (response) => {
-        console.log('Bulk approval successful:', response);
+        
         alert(response.message || 'Users approved successfully');
         this.loadUsers(); // Refresh the list
       },
@@ -687,7 +687,7 @@ export class UserManagementComponent implements OnInit, OnDestroy {
     
     this.userManagementService.bulkDisableUsers(selectedIds).subscribe({
       next: (response) => {
-        console.log('Bulk disable successful:', response);
+        
         alert(response.message || 'Users disabled successfully');
         this.loadUsers(); // Refresh the list
       },
@@ -716,7 +716,7 @@ export class UserManagementComponent implements OnInit, OnDestroy {
     
     this.userManagementService.bulkDeleteUsers(selectedIds).subscribe({
       next: (response) => {
-        console.log('Bulk deletion successful:', response);
+        
         alert(response.message || 'Users deleted successfully');
         this.loadUsers(); // Refresh the list
       },

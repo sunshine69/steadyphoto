@@ -204,7 +204,7 @@ export class RegisterComponent {
       return;
     }
 
-    console.log('RegisterComponent: Submitting registration form');
+    
     this.isLoading = true;
     this.errorMessage = '';
 
@@ -215,7 +215,7 @@ export class RegisterComponent {
       next: (response) => {
         if (!isSubscribed) return;
         
-        console.log('RegisterComponent: Registration successful', response);
+        
         this.isLoading = false;
         
         // Small delay to ensure UI updates before navigation
@@ -233,7 +233,7 @@ export class RegisterComponent {
         this.isLoading = false;
       },
       complete: () => {
-        console.log('RegisterComponent: Registration request completed');
+        
         if (isSubscribed) {
           this.isLoading = false;
         }
@@ -244,7 +244,7 @@ export class RegisterComponent {
     const originalDestroy = this.ngOnDestroy.bind(this);
     this.ngOnDestroy = () => {
       isSubscribed = false;
-      console.log('RegisterComponent: Component destroyed, subscription cleaned up');
+      
       originalDestroy();
     };
   }

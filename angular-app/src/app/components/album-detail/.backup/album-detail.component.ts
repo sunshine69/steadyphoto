@@ -538,7 +538,6 @@ export class AlbumDetailComponent implements OnInit, OnDestroy {
     // Build set of normalized IDs from existing photos for fuzzy matching
     this.existingAlbumIds = new Set(this.photos?.map(p => this.normalizeId(p.id)) || []); 
     
-    console.log('🔵 [DEBUG] Opening modal, excluding', this.existingAlbumIds.size, 'items already in album');
     
     // Reset pagination and fetch first page
     this.addMediaOffset = 0;
@@ -567,7 +566,6 @@ export class AlbumDetailComponent implements OnInit, OnDestroy {
           next: (response) => {
             if (totalItemsFromApi === 0 && response.total !== undefined) {
               totalItemsFromApi = response.total;
-              console.log(`📊 [DEBUG] API reports TOTAL library items: ${totalItemsFromApi}`);
             }
 
             // Filter out photos already in this album using Fuzzy ID matching

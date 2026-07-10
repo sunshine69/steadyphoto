@@ -132,7 +132,7 @@ export class PhotoListComponent implements OnInit, OnDestroy {
       this.searchService.searchScope$
     ]).pipe(
       debounceTime(300),
-      distinctUntilChanged((prev, curr) => 
+      distinctUntilChanged((prev: any[], curr: any[]) => 
         prev[0] === curr[0] && prev[1] === curr[1] && prev[2] === curr[2]
       ),
       switchMap(([term, dateRange, scope]) => {
@@ -150,13 +150,8 @@ export class PhotoListComponent implements OnInit, OnDestroy {
         const isDateSearch = scope === 'date' && dateRange !== '';
 
         if (hasSearchTerm || isDateSearch) {
-          console.log('[PHOTO-LIST] loadPhotos() -> searchMedia:', {
-            query: term, scope, dateRange: isDateSearch ? dateRange : undefined,
-            limit: this.limit, offset: this.offset
-          });
           return this.searchService.searchMedia(term, scope, this.limit, this.offset, isDateSearch ? dateRange : undefined);
         } else {
-          console.log('[PHOTO-LIST] loadPhotos() -> listMedia (no search, no date filter)');
           return this.photoService.listMedia(this.limit, this.offset).pipe(
             switchMap((response: ListPhotosResponse) => of({
               results: response.photos,
@@ -171,20 +166,14 @@ export class PhotoListComponent implements OnInit, OnDestroy {
 
     // Subscribe to the combined search stream
     this.mainSub = searchParams$.subscribe({
-      next: (response: SearchResponse | ListPhotosResponse) => {
-        console.log('[PHOTO-LIST] response received:', { 
-          total: (response as any).total, 
-          results: (response as any).results?.length 
-        });
-        
+      next: (response: any) => {
         // The listMedia path wraps its response, so results is always available
-        const data = response as any;
-        let allMedia = data.results || data.photos || [];
+        let allMedia = response.results || response.photos || [];
 
         // Apply tag filter from URL if present
         if (this.activeTagFilter) {
           const tagLower = this.activeTagFilter.toLowerCase();
-          allMedia = allMedia.filter((p: Photo) => this.getTagsForPhoto(p).some(t => t.toLowerCase().includes(tagLower)));
+          allMedia = allMedia.filter((p: Photo) => this.getTagsForPhoto(p).some((t: string) => t.toLowerCase().includes(tagLower)));
         }
 
         // Clear restore flag after first successful load
@@ -193,12 +182,11 @@ export class PhotoListComponent implements OnInit, OnDestroy {
         }
 
         this.photos = allMedia;
-        this.totalPhotos = data.total ?? 0;
+        this.totalPhotos = response.total ?? 0;
         
         // If we got empty results but photos exist, our saved page is out of range
         // (e.g., user deleted photos between sessions). Reset to last page and reload.
         if (!this.restorePage && allMedia.length === 0 && this.totalPhotos > 0 && this.currentPage > 1) {
-          console.log('[PHOTO-LIST] Out of range page detected, resetting to last page');
           const lastPage = this.totalPages;
           this.currentPage = lastPage;
           this.offset = (lastPage - 1) * this.limit;
@@ -209,8 +197,7 @@ export class PhotoListComponent implements OnInit, OnDestroy {
 
         this.loading = false;
       },
-      error: (err) => {
-        console.error('[PHOTO-LIST] loadPhotos error:', err);
+      error: () => {
         this.photos = [];
         this.totalPhotos = 0;
         this.loading = false;
@@ -220,19 +207,19 @@ export class PhotoListComponent implements OnInit, OnDestroy {
     // Subscribe to "Select All" trigger
     this.selectAllTriggerSub = this.selectionService.selectAllTrigger$.subscribe(() => {
       if (this.photos && this.photos.length > 0) {
-        const ids = this.photos.map(p => p.id);
+        const ids = this.photos.map((p: Photo) => p.id);
         this.selectionService.selectAll(ids);
       }
     });
 
     // Keep selectedPhotoIds in sync with selection service
-    this.selectedIdsSub = this.selectionService.selectedIds$.subscribe(ids => {
+    this.selectedIdsSub = this.selectionService.selectedIds$.subscribe((ids: Set<string>) => {
       this.selectedPhotoIds = new Set(ids);
     });
 
     // Subscribe to route query params for tag filter — just reload directly,
     // no need to go through the search stream debounce.
-    this.route.queryParams.subscribe(params => {
+    this.route.queryParams.subscribe((params: any) => {
       const newTag = params['tag'] || null;
       if (newTag !== this.activeTagFilter) {
         this.activeTagFilter = newTag;
@@ -267,8 +254,7 @@ export class PhotoListComponent implements OnInit, OnDestroy {
         this.limit, this.offset, dateRange
       ).subscribe({
         next: (response: SearchResponse) => this.applyResults(response.results, response.total),
-        error: (err) => {
-          console.error('[PHOTO-LIST] searchMedia error:', err);
+        error: () => {
           this.photos = [];
           this.totalPhotos = 0;
           this.loading = false;
@@ -289,7 +275,7 @@ export class PhotoListComponent implements OnInit, OnDestroy {
   private applyResults(allMedia: Photo[], total: number): void {
     if (this.activeTagFilter) {
       const tagLower = this.activeTagFilter.toLowerCase();
-      allMedia = allMedia.filter(p => this.getTagsForPhoto(p).some(t => t.toLowerCase().includes(tagLower)));
+      allMedia = allMedia.filter((p: Photo) => this.getTagsForPhoto(p).some((t: string) => t.toLowerCase().includes(tagLower)));
     }
     this.photos = allMedia;
     this.totalPhotos = total;

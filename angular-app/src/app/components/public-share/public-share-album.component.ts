@@ -193,33 +193,17 @@ export class PublicShareAlbumComponent implements OnInit {
 
   ngOnInit(): void {
     const token = this.route.snapshot.paramMap.get('token');
-    console.log('=== PUBLIC SHARE DEBUG: ngOnInit ===');
-    console.log('Route token:', token);
-    console.log('Full route snapshot:', this.route.snapshot);
-    console.log('sessionStorage keys:', Object.keys(sessionStorage));
     if (token) {
-      const storedPassword = sessionStorage.getItem(`share_password_${token}`);
-      console.log('Stored password in sessionStorage:', storedPassword ? 'YES (exists)' : 'NO (null)');
-      console.log('SessionStorage share_password:', sessionStorage.getItem(`share_password_${token}`));
-      console.log('All sessionStorage items:');
-      for (let i = 0; i < sessionStorage.length; i++) {
-        const key = sessionStorage.key(i);
-        const value = sessionStorage.getItem(key ?? '');
-        console.log(`  ${key}: ${value}`);
-      }
-      console.log('=== CALLING loadPublicShareAlbum ===');
       this.loadPublicShareAlbum(token);
     } else {
-      console.log('=== NO TOKEN FOUND - SHOWING ERROR ===');
       this.showError = true;
       this.errorMessage = 'Invalid share link';
     }
   }
 
   private loadPublicShareAlbum(token: string): void {
-    // Check for password in sessionStorage - include it in the initial request if available
     const password = sessionStorage.getItem(`share_password_${token}`);
-    let params: any = undefined;
+    let params: HttpParams | undefined;
     if (password) {
       params = new HttpParams().set('password', password);
     }
@@ -228,59 +212,31 @@ export class PublicShareAlbumComponent implements OnInit {
       params: params 
     }).subscribe({
       next: (response) => {
-        console.log('=== PUBLIC SHARE DEBUG ===');
-        console.log('Full response:', JSON.stringify(response, null, 2));
-        // Backend returns SharedAlbumWithMedia directly (not wrapped in Album)
         const albumData = response;
-        console.log('Album data:', JSON.stringify(albumData, null, 2));
         this.albumData = albumData;
         this.albumName = albumData.name || 'Untitled Album';
         this.albumDescription = albumData.description;
         
-        // Load album media if present in the response
         const mediaItems = albumData.media_items || [];
-        console.log('Media items from album data:', mediaItems);
-        console.log('Media items type:', typeof mediaItems, Array.isArray(mediaItems));
-        console.log('Media items length:', mediaItems.length);
         if (Array.isArray(mediaItems) && mediaItems.length > 0) {
           this.photos = mediaItems.map((p: any) => this.normalizePhoto(p));
           this.totalAlbumPhotos = albumData.totalItems || mediaItems.length;
           this.loading = false;
-          console.log('Loaded photos from album data:', this.photos);
-          console.log('Photos length:', this.photos.length);
         } else {
-          // Fetch media via pagination endpoint if not in response
-          console.log('No media items found, calling fetchMedia');
           this.fetchMedia(token);
         }
       },
       error: (err: any) => {
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log('❌ [DEBUG] loadPublicShareAlbum ERROR');
-        console.log('   Token:', token);
-        console.log('   Status:', err.status);
-        console.log('   Error status === 403:', err.status === 403);
-        console.log('   showPasswordModal:', this.showPasswordModal);
-        console.log('   Password in sessionStorage:', sessionStorage.getItem(`share_password_${token}`));
-        console.log('   Error response:', err.error);
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         if (err.status === 403 && !this.showPasswordModal) {
-          // Password required - show password modal
-          // But first check if we already have a password in sessionStorage
           const storedPassword = sessionStorage.getItem(`share_password_${token}`);
-          console.log('   → Error status 403, showPasswordModal:', this.showPasswordModal);
-          console.log('   → storedPassword:', storedPassword ? 'YES (exists, value: ***' + storedPassword.substring(Math.max(0, storedPassword.length-4)) + '...)' : 'NO (null)');
           if (storedPassword) {
-            // We have a password but it's wrong - show error and clear it
             this.showError = true;
             this.errorMessage = 'Incorrect password. Please try again.';
           } else {
-            // No password stored yet, show the password modal
             this.showPasswordModal = true;
           }
           return;
         } else if (err.status === 410 || err.status === 404) {
-          // Link expired or not found
           this.showError = true;
           const errorData = err.error as any;
           this.errorMessage = errorData?.error || 'Share link not found or has expired';
@@ -294,49 +250,30 @@ export class PublicShareAlbumComponent implements OnInit {
   }
 
   private verifyPassword(): void {
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('🔓 [DEBUG] verifyPassword() called');
     const token = this.route.snapshot.paramMap.get('token');
-    console.log('   Token:', token);
-    console.log('   Password length:', this.passwordInput?.length);
     if (!token || !this.passwordInput) {
-      console.log('   Early return: token or password missing');
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       return;
     }
     
-    // Try with password parameter
     const params = new HttpParams().set('password', this.passwordInput);
-    console.log('   Request params:', params.toString());
-    console.log('   Request URL:', `${environment.apiBaseUrl}/public/shares/album/${token}?${params.toString()}`);
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     
     this.http.get<any>(`${environment.apiBaseUrl}/public/shares/album/${token}`, { 
       params: params,
       headers: { 'Accept': 'application/json' }
     }).subscribe({
       next: (response) => {
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log('🟢 [DEBUG] verifyPassword() SUCCESS');
-        console.log('   Response:', JSON.stringify(response, null, 2));
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        // Backend returns SharedAlbumWithMedia directly (not wrapped in Album)
         const albumData = response;
         this.albumData = albumData;
         this.albumName = albumData.name || 'Untitled Album';
         this.albumDescription = albumData.description;
         
-        // Store password in sessionStorage for subsequent requests
         sessionStorage.setItem(`share_password_${token}`, this.passwordInput);
-        console.log('   Password stored in sessionStorage');
         
-        // Load album media if present in the response
         if (albumData.media_items && Array.isArray(albumData.media_items)) {
           this.photos = albumData.media_items.map((p: any) => this.normalizePhoto(p));
           this.totalAlbumPhotos = albumData.totalItems || albumData.media_items.length;
           this.loading = false;
         } else {
-          // Fetch media via pagination endpoint if not in response
           this.fetchMedia(token);
         }
         
@@ -344,13 +281,7 @@ export class PublicShareAlbumComponent implements OnInit {
         this.passwordInput = '';
       },
       error: (err: any) => {
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log('❌ [DEBUG] verifyPassword() ERROR');
-        console.log('   Status:', err.status);
-        console.log('   Error response:', err.error);
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         if (err.status === 403) {
-          // Wrong password - show error and clear input
           alert('Incorrect password. Please try again.');
           this.passwordInput = '';
         } else {
@@ -402,11 +333,9 @@ export class PublicShareAlbumComponent implements OnInit {
       mediaType = mt === 'video' ? 'video' : 'photo';
     }
 
-    // For public shares, always use the public share thumbnail endpoint (API returns authenticated endpoint)
     const token = this.route.snapshot.paramMap.get('token');
     let photoThumbUrl: string = '';
     if (token && path) {
-      // Use public share thumbnail endpoint for public shares
       photoThumbUrl = this.getThumbnailUrl(id, path);
     } else if (p.thumbnailUrl || p.ThumbnailUrl) {
       const rawThumb = p.thumbnailUrl || p.ThumbnailUrl;
@@ -449,7 +378,6 @@ export class PublicShareAlbumComponent implements OnInit {
     const token = this.route.snapshot.paramMap.get('token');
     if (!token) return '';
     const password = sessionStorage.getItem(`share_password_${token}`);
-    // Use the album media thumbnail endpoint with the share token and media path
     let url = `${environment.apiBaseUrl}/public/shares/album/${token}/media/thumb?path=${encodeURIComponent(path)}`;
     if (password) {
       url += `&password=${encodeURIComponent(password)}`;
@@ -462,7 +390,6 @@ export class PublicShareAlbumComponent implements OnInit {
     
     if (newOffset < 0 || newOffset >= this.totalAlbumPhotos) return;
     
-    // For public shares, use the album media endpoint
     const token = this.route.snapshot.paramMap.get('token');
     if (!token) return;
     
@@ -523,30 +450,23 @@ export class PublicShareAlbumComponent implements OnInit {
   }
 
   onPhotoClick(id: string): void { 
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('📸 [DEBUG] PublicShareAlbum.onPhotoClick()');
-    console.log('   Photo ID:', id);
     const token = this.route.snapshot.paramMap.get('token');
     const path = this.photos.find(p => p.id === id)?.path || '';
     const ids = this.photos.map(p => p.id).join(',');
     const paths = this.photos.map(p => p.path || '').join(',');
-    console.log('   Token:', token);
-    console.log('   Path:', path);
-    console.log('   albumIds:', ids);
-    console.log('   source:', 'shared');
-    console.log('   mediaPaths:', paths);
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    
     if (token && path) {
-      // Use public share endpoint with token and media path
-      console.log('→ Using public share endpoint with token and media path');
-      this.router.navigate(['/photos', id], { queryParams: { albumIds: ids, source: 'shared', shareToken: token, mediaPath: path, mediaPaths: paths } });
+      this.router.navigate(['/photos', id], { 
+        queryParams: { albumIds: ids, source: 'shared', shareToken: token, mediaPath: path, mediaPaths: paths } 
+      });
     } else if (token) {
-      // Token but no path, fall back to authenticated shared media endpoint
-      console.log('→ Using public share endpoint with token, no path');
-      this.router.navigate(['/photos', id], { queryParams: { albumIds: ids, source: 'shared', shareToken: token } });
+      this.router.navigate(['/photos', id], { 
+        queryParams: { albumIds: ids, source: 'shared', shareToken: token } 
+      });
     } else {
-      console.log('→ Using authenticated shared media endpoint');
-      this.router.navigate(['/photos', id], { queryParams: { albumIds: ids, source: 'shared' } });
+      this.router.navigate(['/photos', id], { 
+        queryParams: { albumIds: ids, source: 'shared' } 
+      });
     }
   }
 

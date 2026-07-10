@@ -378,13 +378,13 @@ export class SidebarComponent implements OnInit, OnDestroy {
   }
 
   onSettings(): void {
-    console.log('Settings clicked');
+    
     this.router.navigate(['/settings']);
     this.isMenuOpen = false;
   }
 
   onLogout(): void {
-    console.log('Logout clicked');
+    
     this.authService.logout().subscribe({
       next: () => {
         this.authService.clearUser();

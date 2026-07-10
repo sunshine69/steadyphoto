@@ -43,9 +43,6 @@ export interface SharedAlbumDetail {
   sharerUserId: string; // who shared it with current user
 }
 
-// Debug prefix for console logs - filter by this to see all debug output
-const DEBUG_PREFIX = '[ShareService Debug]';
-
 @Injectable({ providedIn: 'root' })
 export class ShareService {
   private http = inject(HttpClient);
@@ -66,12 +63,11 @@ export class ShareService {
 
   /** Create a share with specific users (user-to-user sharing) */
   createShare(request: ShareRequest): Observable<CreateShareResponseFull> {
-    console.log(`${DEBUG_PREFIX} Creating share...`);
     return this.http.post<CreateShareResponseFull>(`${this.API_BASE_URL}/shares`, request, { withCredentials: true })
       .pipe(
-        tap((res) => console.log(`${DEBUG_PREFIX} Share created`, res)),
+        tap((res) => console.log('Share created', res)),
         catchError(err => {
-          console.error(`${DEBUG_PREFIX} Failed to create share - Status: ${err.status}, Message: ${err.message}`);
+          console.error(`Failed to create share - Status: ${err.status}, Message: ${err.message}`);
           return throwError(() => err);
         })
       );
@@ -79,12 +75,14 @@ export class ShareService {
 
   /** Search users by email for sharing purposes (returns only id and email) */
   searchUsers(query: string): Observable<SearchUser[]> {
-    console.log(`${DEBUG_PREFIX} Searching users: ${query}`);
     return this.http.get<SearchUser[]>(`${this.API_BASE_URL}/auth/users/search?query=${encodeURIComponent(query)}`, { withCredentials: true })
       .pipe(
-        tap((res) => console.log(`${DEBUG_PREFIX} Users searched`, res)),
+        map((res) => {
+          console.log('Users searched');
+          return res;
+        }),
         catchError(err => {
-          console.error(`${DEBUG_PREFIX} Failed to search users - Status: ${err.status}, Message: ${err.message}`);
+          console.error(`Failed to search users - Status: ${err.status}, Message: ${err.message}`);
           return throwError(() => err);
         })
       );
@@ -94,12 +92,11 @@ export class ShareService {
 
   /** Create a public share link for media or albums */
   createPublicShareLink(request: PublicShareRequest): Observable<PublicShareLinkResponse> {
-    console.log(`${DEBUG_PREFIX} Creating public share link...`);
     return this.http.post<PublicShareLinkResponse>(`${this.API_BASE_URL}/public-shares`, request, { withCredentials: true })
       .pipe(
-        tap((res) => console.log(`${DEBUG_PREFIX} Public share link created`, res)),
+        tap((res) => console.log('Public share link created', res)),
         catchError(err => {
-          console.error(`${DEBUG_PREFIX} Failed to create public share link - Status: ${err.status}, Message: ${err.message}`);
+          console.error(`Failed to create public share link - Status: ${err.status}, Message: ${err.message}`);
           return throwError(() => err);
         })
       );
@@ -107,12 +104,11 @@ export class ShareService {
 
   /** Revoke a public share link by ID */
   revokePublicShareLink(id: string): Observable<{ deleted: boolean }> {
-    console.log(`${DEBUG_PREFIX} Revoking public share link: ${id}`);
     return this.http.delete<{ deleted: boolean }>(`${this.API_BASE_URL}/public-shares/${id}`, { withCredentials: true })
       .pipe(
-        tap((res) => console.log(`${DEBUG_PREFIX} Public share link revoked`, res)),
+        tap((res) => console.log('Public share link revoked', res)),
         catchError(err => {
-          console.error(`${DEBUG_PREFIX} Failed to revoke public share link - Status: ${err.status}, Message: ${err.message}`);
+          console.error(`Failed to revoke public share link - Status: ${err.status}, Message: ${err.message}`);
           return throwError(() => err);
         })
       );
@@ -120,13 +116,11 @@ export class ShareService {
 
   /** List all public share links for current user */
   listMyPublicShares(): Observable<PublicShareListItem[]> {
-    console.log(`${DEBUG_PREFIX} Listing public shares...`);
     return this.http.get<any>(`${this.API_BASE_URL}/public-shares`, { withCredentials: true })
       .pipe(
-        tap((res) => console.log(`${DEBUG_PREFIX} Public shares listed`, res)),
         map(response => response || []),
         catchError(err => {
-          console.error(`${DEBUG_PREFIX} Failed to list public shares - Status: ${err.status}, Message: ${err.message}`);
+          console.error(`Failed to list public shares - Status: ${err.status}, Message: ${err.message}`);
           return throwError(() => err);
         })
       );
@@ -137,10 +131,8 @@ export class ShareService {
   /** List media items shared with the current user */
   listSharedMedia(limit = 20, offset = 0): Observable<SharedItemsResponse<SharedMediaItem>> {
     const url = `${this.API_BASE_URL}/media/shared?limit=${limit}&offset=${offset}`;
-    console.log(`${DEBUG_PREFIX} Listing shared media - URL: ${url}`);
     return this.http.get<any>(url, { withCredentials: true })
       .pipe(
-        tap((res) => console.log(`${DEBUG_PREFIX} Shared media listed`, res)),
         map(response => ({
           items: (response?.items || []).map((item: any) => {
             const thumbnailUrl = item.thumbnailUrl
@@ -156,7 +148,7 @@ export class ShareService {
           offset: response?.offset || offset
         })),
         catchError(err => {
-          console.error(`${DEBUG_PREFIX} Failed to list shared media - Status: ${err.status}, Message: ${err.message}`);
+          console.error(`Failed to list shared media - Status: ${err.status}, Message: ${err.message}`);
           return throwError(() => err);
         })
       );
@@ -165,10 +157,8 @@ export class ShareService {
   /** List albums shared with the current user */
   listSharedAlbums(limit = 20, offset = 0): Observable<SharedItemsResponse<SharedAlbumItem>> {
     const url = `${this.API_BASE_URL}/albums/shared?limit=${limit}&offset=${offset}`;
-    console.log(`${DEBUG_PREFIX} Listing shared albums - URL: ${url}`);
     return this.http.get<any>(url, { withCredentials: true })
       .pipe(
-        tap((res) => console.log(`${DEBUG_PREFIX} Shared albums listed`, res)),
         map(response => ({
           items: (response?.items || []).map((item: any) => {
             const thumbnailUrl = item.thumbnailUrl
@@ -184,7 +174,7 @@ export class ShareService {
           offset: response?.offset || offset
         })),
         catchError(err => {
-          console.error(`${DEBUG_PREFIX} Failed to list shared albums - Status: ${err.status}, Message: ${err.message}`);
+          console.error(`Failed to list shared albums - Status: ${err.status}, Message: ${err.message}`);
           return throwError(() => err);
         })
       );
@@ -195,10 +185,8 @@ export class ShareService {
   /** Get full metadata for a single media item that was shared with current user */
   getSharedMediaDetail(id: string): Observable<SharedMediaDetail> {
     const url = `${this.API_BASE_URL}/media/shared/${id}`;
-    console.log(`${DEBUG_PREFIX} Fetching shared media detail - ID: ${id}, URL: ${url}`);
     return this.http.get<any>(url, { withCredentials: true })
       .pipe(
-        tap((res) => console.log(`${DEBUG_PREFIX} Shared media detail fetched`, res)),
         map(response => ({
           id: response.ID ?? response.id,
           userId: response.UserID ?? response.userId,     // owner of the media (may not be current user!)
@@ -209,7 +197,7 @@ export class ShareService {
           sharerUserId: response.SharerUserID ?? response.sharerUserId
         })),
         catchError(err => {
-          console.error(`${DEBUG_PREFIX} Failed to fetch shared media detail - ID: ${id}, Status: ${err.status}, Message: ${err.message}`);
+          console.error(`Failed to fetch shared media detail - ID: ${id}, Status: ${err.status}, Message: ${err.message}`);
           return throwError(() => err);
         })
       );
@@ -224,30 +212,21 @@ export class ShareService {
       map(response => {
         if (response.status === 200) {
           // Thumbnail exists — use it
-          console.log(`${DEBUG_PREFIX} Shared media thumbnail available at:`, thumbPath);
           return thumbPath;
         } else {
           // No thumbnail, fall back to original as fallback
-          const originalPath = `${this.API_BASE_URL}/media/shared/${id}/original`;
-          return originalPath;
+          return `${this.API_BASE_URL}/media/shared/${id}/original`;
         }
       }),
-      catchError(() => {
-        // If even the thumbnail request fails entirely (401/403/etc), 
-        // try fetching via /original instead — this endpoint should succeed if sharee access is valid
-        console.log(`${DEBUG_PREFIX} Thumbnail check failed, using original as fallback`);
-        return of(`${this.API_BASE_URL}/media/shared/${id}/original`);
-      })
+      catchError(() => of(`${this.API_BASE_URL}/media/shared/${id}/original`))
     );
   }
 
-  /** Get full metadata for a single album that was shared with current user */
+  /** Get full metadata for a single album that was shared with the current user */
   getSharedAlbumDetail(id: string): Observable<SharedAlbumDetail> {
     const url = `${this.API_BASE_URL}/albums/shared/${id}`;
-    console.log(`${DEBUG_PREFIX} Fetching shared album detail - ID: ${id}, URL: ${url}`);
     return this.http.get<any>(url, { withCredentials: true })
       .pipe(
-        tap((res) => console.log(`${DEBUG_PREFIX} Shared album detail fetched`, res)),
         map(response => ({
           id: response.ID ?? response.id,
           name: response.Name ?? response.name,
@@ -257,7 +236,7 @@ export class ShareService {
           sharerUserId: response.SharerUserID ?? response.sharerUserId
         })),
         catchError(err => {
-          console.error(`${DEBUG_PREFIX} Failed to fetch shared album detail - ID: ${id}, Status: ${err.status}, Message: ${err.message}`);
+          console.error(`Failed to fetch shared album detail - ID: ${id}, Status: ${err.status}, Message: ${err.message}`);
           return throwError(() => err);
         })
       );
@@ -270,13 +249,11 @@ export class ShareService {
 
   /** List outgoing share groups created by the current user */
   listMyOutgoingShares(): Observable<ShareGroupListItem[]> {
-    console.log(`${DEBUG_PREFIX} Listing outgoing shares...`);
     return this.http.get<any>(`${this.API_BASE_URL}/shares`, { withCredentials: true })
       .pipe(
-        tap((res) => console.log(`${DEBUG_PREFIX} Outgoing shares listed`, res)),
         map(response => response || []),
         catchError(err => {
-          console.error(`${DEBUG_PREFIX} Failed to list outgoing shares - Status: ${err.status}, Message: ${err.message}`);
+          console.error(`Failed to list outgoing shares - Status: ${err.status}, Message: ${err.message}`);
           return throwError(() => err);
         })
       );
@@ -284,24 +261,21 @@ export class ShareService {
 
   /** Revoke an outgoing share group by ID */
   revokeOutgoingShare(id: string): Observable<{ message: string }> {
-    console.log(`${DEBUG_PREFIX} Revoking outgoing share - ID: ${id}`);
     return this.http.delete<{ message: string }>(`${this.API_BASE_URL}/shares/${id}`, { withCredentials: true })
       .pipe(
-        tap((res) => console.log(`${DEBUG_PREFIX} Outgoing share revoked`, res)),
+        tap((res) => console.log('Outgoing share revoked', res)),
         catchError(err => {
-          console.error(`${DEBUG_PREFIX} Failed to revoke outgoing share - Status: ${err.status}, Message: ${err.message}`);
+          console.error(`Failed to revoke outgoing share - Status: ${err.status}, Message: ${err.message}`);
           return throwError(() => err);
         })
       );
   }
 
   refreshToken(): Observable<any> {
-    console.log(`${DEBUG_PREFIX} Refreshing token...`);
     return this.http.post(`${this.API_BASE_URL}/auth/refresh`, {}, { withCredentials: true })
       .pipe(
-        tap(() => console.log(`${DEBUG_PREFIX} Token refreshed`)),
         catchError(err => {
-          console.error(`${DEBUG_PREFIX} Refresh failed - Status: ${err.status}, Message: ${err.message}`);
+          console.error(`Refresh failed - Status: ${err.status}, Message: ${err.message}`);
           // If refresh fails, we must assume the user is truly logged out
           this.setAuthenticated(false);
           return throwError(() => err);
@@ -315,7 +289,6 @@ export class ShareService {
   handle401(): Observable<boolean> {
     // If logout is in progress, don't try to refresh at all — just fail with 401 immediately
     if (this._isLoggingOutSubject.value) {
-      console.warn(`${DEBUG_PREFIX} Skipping refresh during logout`);
       return throwError(() => new Error('Logout in progress'));
     }
 
@@ -323,12 +296,10 @@ export class ShareService {
     const _isRefreshing = this._refreshInFlightSubject.observed;
     
     if (_isRefreshing) {
-      console.log(`${DEBUG_PREFIX} Refresh already in progress, waiting...`);
       return throwError(() => new Error('Refresh in progress'));
     }
 
     // Mark refresh as in-flight (only the first caller does this)
-    console.log(`${DEBUG_PREFIX} Starting token refresh due to 401`);
     
     return this.refreshToken().pipe(
       switchMap(() => {
@@ -338,7 +309,6 @@ export class ShareService {
         return of(true);
       }),
       catchError((err) => {
-        console.error(`${DEBUG_PREFIX} Token refresh failed`, err);
         this.setAuthenticated(false);
         
         // Emit to wake up any waiting requests (they'll fail with 401)

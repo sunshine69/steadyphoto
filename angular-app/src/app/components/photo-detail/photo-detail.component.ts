@@ -301,12 +301,10 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
     const savedId = this.galleryState.getPresentationItem();
     if (savedId) {
       this.lastPresentationItem = savedId;
-      console.log('📌 [PhotoDetail] Found saved presentation item:', savedId);
     }
 
     // Subscribe to EXIF trigger service - opens EXIF popup when triggered
     this.exifTrigger.exifTrigger$.subscribe(() => {
-      console.log('[PhotoDetail] EXIF popup triggered from button');
       this.showExifPopup = true;
     });
     
@@ -314,18 +312,12 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
     this.route.paramMap.subscribe(params => {
       const id = params.get('id');
       
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log(`🔍 [DEBUG] PhotoDetailComponent.route.paramMap`);
-      console.log(`   Route params: id=${id}`);
-      console.log(`   Query params:`, this.route.snapshot.queryParams);
-      
       if (!id) {
         this.router.navigate(['/']);
         return;
       }
       
       let fetch$: any;
-      let apiCall: string;
       const isSharedMedia = this.route.snapshot.queryParams['source'] === 'shared';
       const shareToken = this.route.snapshot.queryParams['shareToken'];
       
@@ -333,37 +325,21 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
         // Use public share endpoint (no auth required)
         const mediaPath = this.route.snapshot.queryParams['mediaPath'] || '';
         fetch$ = this.photoService.getPublicShareMedia(shareToken, mediaPath);
-        apiCall = `GET /public/shares/album/${shareToken}/media?path=${mediaPath}`;
-        console.log(`   API call (public share): ${apiCall}`);
       } else if (isSharedMedia) {
         // Use authenticated shared media endpoint
         fetch$ = this.photoService.getSharedMedia(id);
-        apiCall = `GET /media/shared/${id}`;
-        console.log(`   API call (authenticated shared): ${apiCall}`);
       } else {
         // Use ownership endpoint
         fetch$ = this.photoService.getMedia(id);
-        apiCall = `GET /media/${id}`;
-        console.log(`   API call (ownership): ${apiCall}`);
       }
       
       this.subscription?.unsubscribe();
       this.subscription = fetch$.subscribe({
         next: (photo: any) => {
-          console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-          console.log(`🟢 [DEBUG] PhotoDetailComponent photo loaded successfully!`);
-          console.log(`   ID: ${photo.id}`);
-          console.log(`   Filename: ${photo.filename}`);
-          console.log(`   mediaType: ${photo.mediaType || 'N/A'}`);
-          console.log(`   path (for <img>/<video> src): ${photo.path}`);
-          console.log(`   thumbnailUrl: ${photo.thumbnailUrl || 'N/A'}`);
-          console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
           this.photo = photo;
         },
         error: (err: any) => {
-          console.error('❌ [DEBUG] PhotoDetailComponent Error fetching media', err);
-          console.error('   Status:', err.status);
-          console.error('   URL:', err.url || 'N/A');
+          console.error('Error fetching media', err);
           this.router.navigate(['/']);
         }
       });
@@ -490,35 +466,16 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
 
   onVideoError(event: Event): void {
     const err = (event as any).target?.error;
-    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.error('❌ [DEBUG] Video media load FAILED!');
-    console.error(`   Media type: video`);
-    console.error(`   URL requested: ${this.photo?.path}`);
-    console.error(`   Error details:`, err ? `code=${err.code}, message=${err.message || 'N/A'}` : 'No error object available');
-    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.error('Video media load failed', err);
   }
 
   onImageError(event: Event): void {
-    const img = (event as any).target;
-    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.error('❌ [DEBUG] Image load FAILED!');
-    console.error(`   URL requested: ${this.photo?.path}`);
-    console.error(`   Media type: photo`);
-    console.error(`   Alt text (filename): ${img?.alt || 'N/A'}`);
-    if (typeof img?.complete !== 'undefined') {
-      console.error(`   Image complete flag: ${img.complete}, naturalWidth: ${img.naturalWidth || 0}, naturalHeight: ${img.naturalHeight || 0}`);
-    }
     const err = (event as any).target?.error;
-    if (err) {
-      console.error(`   Error details:`, `code=${err.code}, message=${err.message || 'N/A'}`);
-    } else {
-      console.error('   No error event - image may have been blocked by CORS/same-origin policies');
-    }
-    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.error('Image load failed', err);
   }
 
   onMediaLoadStart(): void {
-    console.log(`🟡 [DEBUG] Media load STARTED: ${this.photo?.path}`);
+    // Media load started
   }
 
   /**
@@ -558,7 +515,6 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
       queryParams.tag = this.route.snapshot.queryParams['tag'];
     }
 
-    console.log('🔙 [DEBUG] PhotoDetailComponent.goBack() navigating to root with page', savedPage, 'and queryParams', queryParams);
     this.router.navigate(['/' ], { queryParams, queryParamsHandling: 'merge' });
   }
 
@@ -592,32 +548,13 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
     };
 
     const startPresentationWithItems = (items: MediaItem[], navigateOpts: any) => {
-      // === DEBUGGING: Track why presentation fails ===
       const currentPhotoId = this.photo?.id || 'NO_PHOTO_ID';
-      const itemCount = items.length;
       const foundIndex = items.findIndex(item => item.id === currentPhotoId);
 
-      console.group('🎬 PRESENTATION START DEBUG');
-      console.log('📌 Current Photo ID:', currentPhotoId);
-      console.log('📌 Current Photo Filename:', this.photo?.filename || 'N/A');
-      console.log('📌 Total items in array:', itemCount);
-      if (itemCount > 0) {
-        console.log('📌 First 5 item IDs:', items.slice(0, 5).map(i => i.id));
-        console.log('📌 All item IDs:', items.map(i => i.id));
-      }
-      console.log('📌 Found current photo in items at index:', foundIndex);
-      console.log('📌 Route snapshot query params:', this.route.snapshot.queryParams);
-      console.groupEnd();
-
       if (foundIndex !== -1 && items.length > 0) {
-        console.log('✅ Presentation will start (found at index', foundIndex, ')');
         this.presentationService.open(items, foundIndex);
         this.router.navigate(['/presentation'], navigateOpts);
       } else {
-        console.error('❌ Presentation blocked!');
-        console.error('   Reason foundIndex === -1:', foundIndex === -1);
-        console.error('   Reason items.length === 0:', items.length === 0);
-        console.error('   Current photo ID not found in items array!');
         alert('No items available for presentation.');
       }
     };

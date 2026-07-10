@@ -443,13 +443,10 @@ export class SharedWithMeComponent implements OnInit {
 
   // View the shared media item (navigate to photo detail page with 'source=shared')
   viewItem(item: SharedMediaItem & { sharerName?: string }): void {
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log(`🔍 [DEBUG] SharedWithMeComponent.viewItem`);
     console.log(`   Item ID: ${item.id}`);
     console.log(`   Filename: ${item.filename}`);
     console.log(`   Thumbnail URL (shown on this page):`, (item as any).thumbnailUrl || 'N/A');
     console.log(`   Navigating to: /photos/${item.id}?source=shared`);
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━' + '━'.repeat(10));
     
     // Navigate using Angular Router with a query param so PhotoDetailComponent knows
     // to use the shared-media endpoint instead of ownership-checking endpoint
