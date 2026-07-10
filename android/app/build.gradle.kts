@@ -19,7 +19,7 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
-
+// Google ai said some OS like OxygenOS they require the fall back 32 bit thus abiFilters.addAll(listOf("arm64-v8a", "armeabi-v7a")) - but I have not tested it for my 2nd phone if it works but it will make my file size bigger so forget abt it.
         val abiFilter = project.findProperty("abiFilter") as String? ?: "arm64-v8a"
         ndk {
             abiFilters.addAll(abiFilter.split(","))

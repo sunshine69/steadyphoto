@@ -23,12 +23,26 @@ usage() {
 BUILD_TYPE="debug"
 ABI_FILTER=""
 
+#arm64-v8a (Mandatory standard for all modern 64-bit mobile devices)
+#armeabi-v7a (Legacy 32-bit mobile fallback)
+#x86_64 (64-bit desktop/emulator target)
+#x86 (Legacy 32-bit desktop/emulator target)
+
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --debug) BUILD_TYPE="debug"; shift ;;
         --release) BUILD_TYPE="release"; shift ;;
-        --arm64) ABI_FILTER="arm64-v8a"; shift ;;
-        --x86_64) ABI_FILTER="x86_64"; shift ;;
+        # add armeabi-v7a if want to support fall back for OxygenOS happy?
+        --arm64)
+        ABI_FILTER="arm64-v8a"
+        GOMOBILE_TARGET="android/arm64"
+        shift
+        ;;
+        --x86_64)
+            ABI_FILTER="x86_64"
+            GOMOBILE_TARGET="android/amd64" # The 32 bit version is android/386
+        shift
+        ;;
         --help) usage; exit 0 ;;
         *) echo "Unknown parameter passed: $1"; usage; exit 1 ;;
     esac
@@ -39,6 +53,7 @@ if [ -z "$ABI_FILTER" ]; then
     # For mobile-focused builds, default to arm64
     # If you want both ABIs, call with: --debug or --release without --arm64/--x86_64
     ABI_FILTER="arm64-v8a,x86_64"
+    GOMOBILE_TARGET="android/arm64,android/amd64"
 fi
 
 # Get the directory where this script is located (the android folder)
@@ -64,8 +79,8 @@ if command -v gomobile &> /dev/null; then
     export CGO_LDFLAGS="-O2 -s -w -Wl,-z,max-page-size=16384"
 
     gomobile bind \
-        -v \
-        -target android/arm64,android/amd64 \
+        -v \ # To support 32 bit arm need to add 'android/arm' but then max-page-size=16384 above wont work as 32 bit use 4k default. Thus probably drop Oxygen Support for all
+        -target $GOMOBILE_TARGET \
         -androidapi 21 \
         -ldflags="-extldflags=-Wl,-z,max-page-size=16384 -s -w" \
         -o "$SCRIPT_DIR/app/libs/mobile-bindings.aar" ./mobile
