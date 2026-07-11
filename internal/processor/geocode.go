@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"github.com/jbrodriguez/mlog"
 	"net/http"
 	"strings"
 	"time"
@@ -39,7 +39,7 @@ func ReverseGeocode(latitude, longitude float64) (string, error) {
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Get(apiURL)
 	if err != nil {
-		log.Printf("[GEOCODE] Failed to call Nominatim API: %v", err)
+		mlog.Info("[GEOCODE] Failed to call Nominatim API: %v", err)
 		return "", fmt.Errorf("geocoding API error: %w", err)
 	}
 	defer resp.Body.Close()

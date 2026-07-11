@@ -7,20 +7,25 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
 	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/jbrodriguez/mlog"
+
 	"github.com/joho/godotenv"
 )
+
+func init() {
+	mlog.Start(mlog.LevelInfo, "")
+}
 
 func getBaseURL() string {
 	baseURL := os.Getenv("API_BASE_URL")
 	if baseURL == "" {
-		log.Fatal("API_BASE_URL environment variable is not set")
+		mlog.Fatal("API_BASE_URL environment variable is not set")
 	}
 	return baseURL
 }
@@ -58,7 +63,7 @@ func NewScannerClient(baseURL, username, password string) (*ScannerClient, error
 		return nil, fmt.Errorf("failed to login: %w", err)
 	}
 
-	log.Printf("Authenticated as user ID: %s", c.userID)
+	mlog.Info("Authenticated as user ID: %s", c.userID)
 	return c, nil
 }
 
@@ -102,7 +107,7 @@ func (c *ScannerClient) login(username string, password string) error {
 
 	c.token = authResp.AccessToken
 	c.userID = authResp.UserID
-	log.Printf("Login successful. Token: %s...", c.token[:min(20, len(c.token))])
+	mlog.Info("Login successful. Token: %s...", c.token[:min(20, len(c.token))])
 	return nil
 }
 
@@ -115,7 +120,7 @@ func (c *ScannerClient) addAuthHeader(req *http.Request) {
 
 // ScanAndUpload scans a source directory for media files and uploads them via the API.
 func (c *ScannerClient) ScanAndUpload(ctx context.Context, sourceDir string) error {
-	log.Printf("Scanning directory: %s", sourceDir)
+	mlog.Info("Scanning directory: %s", sourceDir)
 
 	mediaTypes := map[string]bool{
 		".jpg": true, ".jpeg": true, ".png": true, ".gif": true, ".webp": true,
@@ -125,7 +130,7 @@ func (c *ScannerClient) ScanAndUpload(ctx context.Context, sourceDir string) err
 	var files []string
 	err := filepath.Walk(sourceDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			log.Printf("Error walking path %s: %v", path, err)
+			mlog.Info("Error walking path %s: %v", path, err)
 			return nil // Continue scanning other paths
 		}
 
@@ -144,7 +149,7 @@ func (c *ScannerClient) ScanAndUpload(ctx context.Context, sourceDir string) err
 		return fmt.Errorf("failed to walk source directory: %w", err)
 	}
 
-	log.Printf("Found %d files in %s", len(files), sourceDir)
+	mlog.Info("Found %d files in %s", len(files), sourceDir)
 
 	uploaded := 0
 	skipped := 0
@@ -153,7 +158,7 @@ func (c *ScannerClient) ScanAndUpload(ctx context.Context, sourceDir string) err
 	for _, file := range files {
 		if err := c.uploadFile(ctx, file); err != nil {
 			errors = append(errors, fmt.Sprintf("%s: %v", filepath.Base(file), err))
-			log.Printf("Error uploading %s: %v", file, err)
+			mlog.Info("Error uploading %s: %v", file, err)
 		} else {
 			uploaded++
 		}
@@ -166,7 +171,7 @@ func (c *ScannerClient) ScanAndUpload(ctx context.Context, sourceDir string) err
 		}
 	}
 
-	log.Printf("Scan complete - Uploaded: %d, Skipped: %d, Errors: %d", uploaded, skipped, len(errors))
+	mlog.Info("Scan complete - Uploaded: %d, Skipped: %d, Errors: %d", uploaded, skipped, len(errors))
 
 	if len(errors) > 0 {
 		jsonErrors, _ := json.MarshalIndent(errors, "", "  ")
@@ -178,7 +183,7 @@ func (c *ScannerClient) ScanAndUpload(ctx context.Context, sourceDir string) err
 
 // uploadFile sends a single file to the API for upload.
 func (c *ScannerClient) uploadFile(ctx context.Context, filePath string) error {
-	log.Printf("Uploading: %s", filePath)
+	mlog.Info("Uploading: %s", filePath)
 
 	// Open the file
 	fileHandle, err := os.Open(filePath)
@@ -237,13 +242,13 @@ func (c *ScannerClient) uploadFile(ctx context.Context, filePath string) error {
 		return fmt.Errorf("upload failed with status %d: %s", resp.StatusCode, string(responseBody))
 	}
 
-	log.Printf("Upload successful for %s (status=%d)", filepath.Base(filePath), resp.StatusCode)
+	mlog.Info("Upload successful for %s (status=%d)", filepath.Base(filePath), resp.StatusCode)
 	return nil
 }
 
 func main() {
 	if err := godotenv.Load(); err != nil {
-		log.Printf("Warning: Failed to load .env file: %v", err)
+		mlog.Info("Warning: Failed to load .env file: %v", err)
 	}
 
 	apiURL := ""
@@ -270,28 +275,28 @@ func main() {
 	} else {
 		apiURL = os.Getenv("API_BASE_URL")
 		if apiURL == "" {
-			log.Fatal("API_BASE_URL environment variable is not set and no -api-url flag provided")
+			mlog.Fatal("API_BASE_URL environment variable is not set and no -api-url flag provided")
 		}
 	}
 
-	log.Printf("Starting SteadyPhoto Scanner")
-	log.Printf("  API URL: %s", apiURL)
-	log.Printf("  Source:  %s", sourceDir)
-	log.Printf("  Username:   %s", username)
+	mlog.Info("Starting SteadyPhoto Scanner")
+	mlog.Info("  API URL: %s", apiURL)
+	mlog.Info("  Source:  %s", sourceDir)
+	mlog.Info("  Username:   %s", username)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	client, err := NewScannerClient(apiURL, username, password)
 	if err != nil {
-		log.Fatalf("Failed to create scanner client: %v", err)
+		mlog.Fatalf("Failed to create scanner client: %v", err)
 	}
 
 	if err := client.ScanAndUpload(ctx, sourceDir); err != nil {
-		log.Fatalf("Scan failed: %v", err)
+		mlog.Fatalf("Scan failed: %v", err)
 	}
 
-	log.Println("Done!")
+	mlog.Info("Done!")
 }
 
 func min(a, b int) int {

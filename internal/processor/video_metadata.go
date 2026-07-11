@@ -3,7 +3,7 @@ package processor
 import (
 	"context"
 	"fmt"
-	"log"
+	"github.com/jbrodriguez/mlog"
 	"strings"
 	"time"
 
@@ -115,7 +115,7 @@ func ExtractVideoMetadata(ctx context.Context, filePath string) (*domain.VideoMe
 		}
 	}
 
-	log.Printf("[VIDEO_META] Extracted from %s: codec=%s audio=%s res=%dx%d dur=%.2fs fps=%.2f",
+	mlog.Info("[VIDEO_META] Extracted from %s: codec=%s audio=%s res=%dx%d dur=%.2fs fps=%.2f",
 		filePath, vm.VideoCodec, vm.AudioCodec, vm.Width, vm.Height, vm.Duration, vm.FrameRate)
 
 	return vm, nil

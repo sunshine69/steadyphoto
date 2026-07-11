@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"log"
+	"github.com/jbrodriguez/mlog"
 	"net/http"
 	"os"
 	"time"
@@ -50,7 +50,7 @@ func init() {
 	if val := os.Getenv("SECURE_COOKIES"); val != "" && (val == "true" || val == "1") {
 		CookieSecureMode = true
 	}
-	log.Printf("[CONFIG] Secure cookie mode: %v", CookieSecureMode)
+	mlog.Info("[CONFIG] Secure cookie mode: %v", CookieSecureMode)
 }
 
 // HandleLogin handles POST /api/v1/auth/login
@@ -94,7 +94,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	// 3. Create session (Opaque Token Pattern)
 	refreshToken, err := security.GenerateRandomToken(32)
 	if err != nil {
-		log.Printf("[ERROR] handleLogin: failed to generate refresh token: %v", err)
+		mlog.Info("[ERROR] handleLogin: failed to generate refresh token: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -109,7 +109,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.sessionRepo.CreateSession(r.Context(), session); err != nil {
-		log.Printf("[ERROR] handleLogin: failed to create session: %v", err)
+		mlog.Info("[ERROR] handleLogin: failed to create session: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -157,7 +157,7 @@ func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
 	// 3. Look up session by hash
 	session, err := s.sessionRepo.GetByRefreshTokenHash(r.Context(), tokenHash)
 	if err != nil {
-		log.Printf("[ERROR] handleRefresh: session lookup failed for refresh token: %v", err)
+		mlog.Info("[ERROR] handleRefresh: session lookup failed for refresh token: %v", err)
 		http.Error(w, "Invalid refresh token", http.StatusUnauthorized)
 		return
 	}
@@ -169,7 +169,7 @@ func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
 
 	// 4. Check if the session is revoked or expired (using same logic as AuthMiddleware)
 	if session.IsRevoked || time.Now().After(session.ExpiresAt) {
-		log.Printf("[WARN] handleRefresh: Session %s rejected (revoked=%v, expires_at=%v)",
+		mlog.Info("[WARN] handleRefresh: Session %s rejected (revoked=%v, expires_at=%v)",
 			session.ID, session.IsRevoked, session.ExpiresAt)
 		http.Error(w, "Refresh token has expired or been revoked", http.StatusUnauthorized)
 		return
@@ -177,7 +177,7 @@ func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
 
 	// 5. Revoke the old session (one-time-use refresh tokens)
 	if err := s.sessionRepo.RevokeSession(r.Context(), session.ID); err != nil {
-		log.Printf("[ERROR] handleRefresh: failed to revoke old session %s: %v", session.ID, err)
+		mlog.Info("[ERROR] handleRefresh: failed to revoke old session %s: %v", session.ID, err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -193,7 +193,7 @@ func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.sessionRepo.CreateSession(r.Context(), newSession); err != nil {
-		log.Printf("[ERROR] handleRefresh: failed to create new session for user %s: %v", session.UserID, err)
+		mlog.Info("[ERROR] handleRefresh: failed to create new session for user %s: %v", session.UserID, err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -224,7 +224,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	existingUser, err := s.userRepo.GetByEmail(r.Context(), req.Email)
 	// If the error is NOT "no rows found", it's a real database error
 	if !errors.Is(err, sql.ErrNoRows) { // ErrNoRows means user doesn't exist (not an actual DB error)
-		log.Printf("[ERROR] handleRegister: failed to check existing email (%s): %v", req.Email, err)
+		mlog.Info("[ERROR] handleRegister: failed to check existing email (%s): %v", req.Email, err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -237,7 +237,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	// Hash the password
 	passwordHash, err := security.HashPassword(req.Password)
 	if err != nil {
-		log.Printf("[ERROR] handleRegister: failed to hash password: %v", err)
+		mlog.Info("[ERROR] handleRegister: failed to hash password: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -254,7 +254,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.userRepo.Create(r.Context(), newUser); err != nil {
-		log.Printf("[ERROR] handleRegister: failed to create user (%s): %v", req.Email, err)
+		mlog.Info("[ERROR] handleRegister: failed to create user (%s): %v", req.Email, err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -286,7 +286,7 @@ func (s *Server) handleUpdateProfile(w http.ResponseWriter, r *http.Request) {
 	// Get the user
 	user, err := s.userRepo.GetByID(r.Context(), userID)
 	if err != nil {
-		log.Printf("[ERROR] handleUpdateProfile: failed to get user (%s): %v", userID, err)
+		mlog.Info("[ERROR] handleUpdateProfile: failed to get user (%s): %v", userID, err)
 		http.Error(w, "User not found", http.StatusNotFound)
 		return
 	}
@@ -297,7 +297,7 @@ func (s *Server) handleUpdateProfile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.userRepo.Update(r.Context(), user); err != nil {
-		log.Printf("[ERROR] handleUpdateProfile: failed to update user (%s): %v", userID, err)
+		mlog.Info("[ERROR] handleUpdateProfile: failed to update user (%s): %v", userID, err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -316,7 +316,7 @@ func (s *Server) handleDeleteProfile(w http.ResponseWriter, r *http.Request) {
 
 	// Revoke all sessions for this user first
 	if err := s.sessionRepo.RevokeAllByUserID(r.Context(), userID); err != nil {
-		log.Printf("[ERROR] handleDeleteProfile: failed to revoke sessions for user (%s): %v", userID, err)
+		mlog.Info("[ERROR] handleDeleteProfile: failed to revoke sessions for user (%s): %v", userID, err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -327,14 +327,14 @@ func (s *Server) handleDeleteProfile(w http.ResponseWriter, r *http.Request) {
 	// Since UserRepo doesn't have a Delete method, we'll update status to disabled as a soft-delete
 	user, err := s.userRepo.GetByID(r.Context(), userID)
 	if err != nil {
-		log.Printf("[ERROR] handleDeleteProfile: failed to get user (%s): %v", userID, err)
+		mlog.Info("[ERROR] handleDeleteProfile: failed to get user (%s): %v", userID, err)
 		http.Error(w, "User not found", http.StatusNotFound)
 		return
 	}
 
 	user.Status = domain.UserStatusDisabled
 	if err := s.userRepo.Update(r.Context(), user); err != nil {
-		log.Printf("[ERROR] handleDeleteProfile: failed to disable user (%s): %v", userID, err)
+		mlog.Info("[ERROR] handleDeleteProfile: failed to disable user (%s): %v", userID, err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}

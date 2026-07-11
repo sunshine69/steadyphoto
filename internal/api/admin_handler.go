@@ -2,7 +2,7 @@ package api
 
 import (
 	"encoding/json"
-	"log"
+	"github.com/jbrodriguez/mlog"
 	"net/http"
 	"strings"
 	"time"
@@ -24,7 +24,7 @@ func (s *Server) handleAdminListUsers(w http.ResponseWriter, r *http.Request) {
 
 	users, err := s.userRepo.ListUsers(r.Context(), status)
 	if err != nil {
-		log.Printf("[ERROR] handleAdminListUsers: failed to list users: %v", err)
+		mlog.Info("[ERROR] handleAdminListUsers: failed to list users: %v", err)
 		http.Error(w, "Failed to list users", http.StatusInternalServerError)
 		return
 	}
@@ -50,7 +50,7 @@ func (s *Server) handleAdminGetUser(w http.ResponseWriter, r *http.Request) {
 
 	user, err := s.userRepo.GetByID(r.Context(), userID)
 	if err != nil {
-		log.Printf("[ERROR] handleAdminGetUser: failed to get user: %v", err)
+		mlog.Info("[ERROR] handleAdminGetUser: failed to get user: %v", err)
 		http.Error(w, "User not found", http.StatusNotFound)
 		return
 	}
@@ -108,7 +108,7 @@ func (s *Server) handleAdminUpdateUser(w http.ResponseWriter, r *http.Request) {
 	user.UpdatedAt = time.Now()
 
 	if err := s.userRepo.Update(r.Context(), user); err != nil {
-		log.Printf("[ERROR] handleAdminUpdateUser: failed to update user: %v", err)
+		mlog.Info("[ERROR] handleAdminUpdateUser: failed to update user: %v", err)
 		http.Error(w, "Failed to update user", http.StatusInternalServerError)
 		return
 	}
@@ -143,14 +143,14 @@ func (s *Server) handleAdminDeleteUser(w http.ResponseWriter, r *http.Request) {
 	user.UpdatedAt = time.Now()
 
 	if err := s.userRepo.Update(r.Context(), user); err != nil {
-		log.Printf("[ERROR] handleAdminDeleteUser: failed to delete user: %v", err)
+		mlog.Info("[ERROR] handleAdminDeleteUser: failed to delete user: %v", err)
 		http.Error(w, "Failed to delete user", http.StatusInternalServerError)
 		return
 	}
 
 	// Revoke all sessions for this user
 	if err := s.sessionRepo.RevokeAllByUserID(r.Context(), userID); err != nil {
-		log.Printf("[ERROR] handleAdminDeleteUser: failed to revoke sessions: %v", err)
+		mlog.Info("[ERROR] handleAdminDeleteUser: failed to revoke sessions: %v", err)
 	}
 
 	w.WriteHeader(http.StatusNoContent)
@@ -183,7 +183,7 @@ func (s *Server) handleBulkApproveUsers(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if err := s.userRepo.BulkUpdateStatus(r.Context(), userIDs, domain.UserStatusActive); err != nil {
-		log.Printf("[ERROR] handleBulkApproveUsers: failed to approve users: %v", err)
+		mlog.Info("[ERROR] handleBulkApproveUsers: failed to approve users: %v", err)
 		http.Error(w, "Failed to approve users", http.StatusInternalServerError)
 		return
 	}
@@ -222,7 +222,7 @@ func (s *Server) handleBulkDisableUsers(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if err := s.userRepo.BulkUpdateStatus(r.Context(), userIDs, domain.UserStatusDisabled); err != nil {
-		log.Printf("[ERROR] handleBulkDisableUsers: failed to disable users: %v", err)
+		mlog.Info("[ERROR] handleBulkDisableUsers: failed to disable users: %v", err)
 		http.Error(w, "Failed to disable users", http.StatusInternalServerError)
 		return
 	}
@@ -263,12 +263,12 @@ func (s *Server) handleBulkDeleteUsers(w http.ResponseWriter, r *http.Request) {
 	// Revoke all sessions for these users before deleting
 	for _, userID := range userIDs {
 		if err := s.sessionRepo.RevokeAllByUserID(r.Context(), userID); err != nil {
-			log.Printf("[ERROR] handleBulkDeleteUsers: failed to revoke sessions for user %s: %v", userID, err)
+			mlog.Info("[ERROR] handleBulkDeleteUsers: failed to revoke sessions for user %s: %v", userID, err)
 		}
 	}
 
 	if err := s.userRepo.BulkDeleteUsers(r.Context(), userIDs); err != nil {
-		log.Printf("[ERROR] handleBulkDeleteUsers: failed to delete users: %v", err)
+		mlog.Info("[ERROR] handleBulkDeleteUsers: failed to delete users: %v", err)
 		http.Error(w, "Failed to delete users", http.StatusInternalServerError)
 		return
 	}

@@ -3,7 +3,7 @@ package processor
 import (
 	"fmt"
 	"io"
-	"log"
+	"github.com/jbrodriguez/mlog"
 	"os"
 	"strconv"
 	"strings"
@@ -98,7 +98,7 @@ func (r *ExifReader) ReadGPS(file *os.File) (*GPSMetadata, error) {
 
 	_, decodeErr := imagemeta.Decode(opts)
 	if decodeErr != nil {
-		log.Printf("[EXIF] Decode returned error: %v", decodeErr)
+		mlog.Info("[EXIF] Decode returned error: %v", decodeErr)
 	}
 
 	gps := &GPSMetadata{}
@@ -181,7 +181,7 @@ func (r *ExifReader) ReadOrientation(file *os.File) (Orientation, error) {
 
 	if _, err := imagemeta.Decode(opts); err != nil {
 		// If imagemeta fails to parse (e.g. no EXIF), treat as normal orientation
-		log.Printf("[EXIF] Failed to decode metadata: %v", err)
+		mlog.Info("[EXIF] Failed to decode metadata: %v", err)
 		return OrientationNormal, nil
 	}
 
@@ -190,7 +190,7 @@ func (r *ExifReader) ReadOrientation(file *os.File) (Orientation, error) {
 	}
 
 	if capture.value < 1 || capture.value > 8 {
-		log.Printf("[EXIF] Invalid orientation value: %d", capture.value)
+		mlog.Info("[EXIF] Invalid orientation value: %d", capture.value)
 		return OrientationNormal, nil
 	}
 
@@ -240,7 +240,7 @@ func (r *ExifReader) ReadDateTimeOriginal(file *os.File) (time.Time, error) {
 
 	_, decodeErr := imagemeta.Decode(opts)
 	if decodeErr != nil {
-		log.Printf("[EXIF] Failed to decode for DateTimeOriginal: %v", decodeErr)
+		mlog.Info("[EXIF] Failed to decode for DateTimeOriginal: %v", decodeErr)
 	}
 
 	if capturedAtStr == "" {
@@ -353,7 +353,7 @@ func (r *ExifReader) ReadExif(file *os.File) (*ExifInfo, error) {
 
 	_, decodeErr := imagemeta.Decode(opts)
 	if decodeErr != nil {
-		log.Printf("[EXIF] Decode returned error: %v", decodeErr)
+		mlog.Info("[EXIF] Decode returned error: %v", decodeErr)
 		// If we already collected some tags, still return them (partial data is better than nothing)
 		if len(tags) == 0 {
 			return nil, nil
@@ -518,7 +518,7 @@ func extractIntValue(v any) int {
 	case float64:
 		return int(val)
 	default:
-		log.Printf("[EXIF] Orientation value type %T is not supported", v)
+		mlog.Info("[EXIF] Orientation value type %T is not supported", v)
 		return 0
 	}
 }

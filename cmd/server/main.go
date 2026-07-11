@@ -5,10 +5,11 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"os/exec"
+
+	"github.com/jbrodriguez/mlog"
 
 	"steadyphoto/internal/api"
 	"steadyphoto/internal/database"
@@ -53,19 +54,19 @@ func startWorkerScheduler() {
 		cronTab = defaultCronTab
 	}
 
-	log.Printf("Starting worker scheduler with cron tab: %s", cronTab)
+	mlog.Info("Starting worker scheduler with cron tab: %s", cronTab)
 
 	c := cron.New()
 
 	// Add the worker execution job
 	c.AddFunc(cronTab, func() {
-		log.Println("Running worker job...")
+		mlog.Info("Running worker job...")
 		go runWorker()
 	})
 
 	// Start the scheduler
 	c.Start()
-	log.Println("Worker scheduler started")
+	mlog.Info("Worker scheduler started")
 }
 
 // runWorker executes the worker at /worker.exe and logs output
@@ -89,19 +90,19 @@ func runWorker() {
 		// Capture stdout and stderr
 		stdout, err := cmd.StdoutPipe()
 		if err != nil {
-			log.Printf("Error creating worker stdout pipe: %v", err)
+			mlog.Info("Error creating worker stdout pipe: %v", err)
 			return
 		}
 
 		stderr, err := cmd.StderrPipe()
 		if err != nil {
-			log.Printf("Error creating worker stderr pipe: %v", err)
+			mlog.Info("Error creating worker stderr pipe: %v", err)
 			return
 		}
 
 		// Start the command
 		if err := cmd.Start(); err != nil {
-			log.Printf("Error starting worker: %v", err)
+			mlog.Info("Error starting worker: %v", err)
 			return
 		}
 
@@ -109,7 +110,7 @@ func runWorker() {
 		go func() {
 			scanner := bufio.NewScanner(stdout)
 			for scanner.Scan() {
-				log.Printf("[WORKER STDOUT] %s", scanner.Text())
+				mlog.Info("[WORKER STDOUT] %s", scanner.Text())
 			}
 		}()
 
@@ -117,16 +118,16 @@ func runWorker() {
 		go func() {
 			scanner := bufio.NewScanner(stderr)
 			for scanner.Scan() {
-				log.Printf("[WORKER STDERR] %s", scanner.Text())
+				mlog.Info("[WORKER STDERR] %s", scanner.Text())
 			}
 		}()
 
 		// Wait for the command to complete
 		err = cmd.Wait()
 		if err != nil {
-			log.Printf("Worker completed with error: %v", err)
+			mlog.Info("Worker completed with error: %v", err)
 		} else {
-			log.Println("Worker completed successfully")
+			mlog.Info("Worker completed successfully")
 		}
 	}
 }
@@ -153,7 +154,7 @@ func main() {
 	// Get configuration from environment variables (fallback)
 	dbURL := os.Getenv(dbURLKey)
 	if dbURL == "" {
-		log.Fatal("DATABASE_URL environment variable is not set")
+		mlog.Fatal("DATABASE_URL environment variable is not set")
 	}
 
 	apiPort := os.Getenv(apiPortKey)
@@ -187,13 +188,13 @@ func main() {
 
 	db, err := sqlx.Connect("postgres", dbURL)
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		mlog.Fatalf("Failed to connect to database: %v", err)
 	}
 	defer db.Close()
 
 	// Ensure the connection pool is working
 	if err := db.Ping(); err != nil {
-		log.Fatalf("Failed to ping database: %v", err)
+		mlog.Fatalf("Failed to ping database: %v", err)
 	}
 
 	// Set up repositories
@@ -210,7 +211,7 @@ func main() {
 	// Seed the initial admin user (idempotent - updates if email already exists, creates if not)
 	ctx := context.Background()
 	if err := utils.CreateAdminUser(ctx, userRepo); err != nil {
-		log.Fatalf("Failed to create seed admin user: %v", err)
+		mlog.Fatalf("Failed to create seed admin user: %v", err)
 	}
 
 	// Set up storage service (single parameter: baseDir)
@@ -223,23 +224,23 @@ func main() {
 	server := api.NewServer(mediaRepo, albumRepo, userRepo, sessionRepo, storageService, thumbRoot, shareRepo, mediaShareRepo, albumShareRepo, publicShareRepo, publicAccessRepo, jobRepo)
 
 	addr := ":" + apiPort
-	log.Printf("Starting SteadyPhoto API on port %s", addr)
+	mlog.Info("Starting SteadyPhoto API on port %s", addr)
 
 	// Start worker scheduler
 	startWorkerScheduler()
 
 	if certPath != "" && keyPath != "" {
-		log.Printf("[SECURITY] Starting HTTPS server with TLS (cert=%s, key=%s)", certPath, keyPath)
+		mlog.Info("[SECURITY] Starting HTTPS server with TLS (cert=%s, key=%s)", certPath, keyPath)
 		if err := http.ListenAndServeTLS(addr, certPath, keyPath, server); err != nil {
-			log.Fatalf("Failed to start HTTPS server: %v", err)
+			mlog.Fatalf("Failed to start HTTPS server: %v", err)
 		}
 	} else {
 		// No TLS configured — plain HTTP. This is fine when running behind a reverse proxy (nginx/caddy) that handles TLS termination.
 		if certPath == "" || keyPath == "" {
-			log.Printf("[WARN] TLS not configured (-tls-cert/-tls-key flags or %s/%s env vars). Serving over plain HTTP. Use if behind a reverse proxy with TLS termination.", tlsCertKey, tlsKeyKey)
+			mlog.Info("[WARN] TLS not configured (-tls-cert/-tls-key flags or %s/%s env vars). Serving over plain HTTP. Use if behind a reverse proxy with TLS termination.", tlsCertKey, tlsKeyKey)
 		}
 		if err := http.ListenAndServe(addr, server); err != nil {
-			log.Fatalf("Failed to start HTTP server: %v", err)
+			mlog.Fatalf("Failed to start HTTP server: %v", err)
 		}
 	}
 }

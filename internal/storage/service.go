@@ -3,7 +3,7 @@ package storage
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"github.com/jbrodriguez/mlog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -175,7 +175,7 @@ func (s *StorageService) CleanupOrphanedChunks() int {
 
 	entries, err := os.ReadDir(tempDir)
 	if err != nil {
-		log.Printf("[ERROR] StorageService: Failed to read upload temp dir %s: %v", tempDir, err)
+		mlog.Info("[ERROR] StorageService: Failed to read upload temp dir %s: %v", tempDir, err)
 		return 0
 	}
 
@@ -190,15 +190,15 @@ func (s *StorageService) CleanupOrphanedChunks() int {
 			
 			// Skip if this file belongs to an active session
 			if activeSessions[sessionID] {
-				log.Printf("[INFO] StorageService: Skipping chunk file %s (belongs to active session %s)", entry.Name(), sessionID)
+				mlog.Info("[INFO] StorageService: Skipping chunk file %s (belongs to active session %s)", entry.Name(), sessionID)
 				continue
 			}
 
 			filePath := filepath.Join(tempDir, entry.Name())
 			if err := os.Remove(filePath); err != nil {
-				log.Printf("[WARN] StorageService: Failed to remove orphaned chunk %s: %v", filePath, err)
+				mlog.Info("[WARN] StorageService: Failed to remove orphaned chunk %s: %v", filePath, err)
 			} else {
-				log.Printf("[INFO] StorageService: Removed orphaned chunk file: %s", filePath)
+				mlog.Info("[INFO] StorageService: Removed orphaned chunk file: %s", filePath)
 				removed++
 			}
 		}
@@ -215,14 +215,14 @@ func (s *StorageService) loadActiveSessions(tempDir string) map[string]bool {
 
 	data, err := os.ReadFile(sessionFile)
 	if err != nil {
-		log.Printf("[INFO] StorageService: No session file found at %s: %v", sessionFile, err)
+		mlog.Info("[INFO] StorageService: No session file found at %s: %v", sessionFile, err)
 		return activeSessions
 	}
 
 	// Parse sessions JSON (format: map[string]*UploadSession)
 	var sessions map[string]map[string]interface{}
 	if err := json.Unmarshal(data, &sessions); err != nil {
-		log.Printf("[ERROR] StorageService: Failed to parse session file: %v", err)
+		mlog.Info("[ERROR] StorageService: Failed to parse session file: %v", err)
 		return activeSessions
 	}
 
@@ -231,7 +231,7 @@ func (s *StorageService) loadActiveSessions(tempDir string) map[string]bool {
 		activeSessions[sessionID] = true
 	}
 
-	log.Printf("[INFO] StorageService: Loaded %d active sessions from %s", len(activeSessions), sessionFile)
+	mlog.Info("[INFO] StorageService: Loaded %d active sessions from %s", len(activeSessions), sessionFile)
 	return activeSessions
 }
 

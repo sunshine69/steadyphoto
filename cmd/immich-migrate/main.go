@@ -7,7 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
+	"github.com/jbrodriguez/mlog"
 	"mime/multipart"
 	"net/http"
 	"os"
@@ -52,7 +52,7 @@ func initLogFile() error {
 func logError(prefix string, err error) {
 	if logFile == nil {
 		// Fallback to stderr if log file isn't initialized
-		log.Printf("[%s] %v", prefix, err)
+		mlog.Info("[%s] %v", prefix, err)
 		return
 	}
 
@@ -63,7 +63,7 @@ func logError(prefix string, err error) {
 	)
 
 	if _, writeErr := logFile.WriteString(entry); writeErr != nil {
-		log.Printf("[ERROR] Failed to write to log file: %v", writeErr)
+		mlog.Info("[ERROR] Failed to write to log file: %v", writeErr)
 	}
 }
 
@@ -219,7 +219,7 @@ func (c *steadyPhotoClient) setMediaTags(ctx context.Context, mediaID string, ta
 		return fmt.Errorf("tags API returned status %d for media ID %s: %s", resp.StatusCode, mediaID, string(responseBody))
 	}
 
-	log.Printf("[TAGS] Set tags '%s' on media ID %s", tags, mediaID)
+	mlog.Info("[TAGS] Set tags '%s' on media ID %s", tags, mediaID)
 	return nil
 }
 
@@ -258,7 +258,7 @@ func (c *steadyPhotoClient) login(email, password string) (*steadyPhotoLoginResp
 	}
 
 	c.authToken = result.AccessToken
-	log.Printf("[AUTH] Logged in as user ID: %s (role: %s)", result.UserID, result.Role)
+	mlog.Info("[AUTH] Logged in as user ID: %s (role: %s)", result.UserID, result.Role)
 	return &result, nil
 }
 
@@ -336,7 +336,7 @@ func (c *steadyPhotoClient) uploadFile(ctx context.Context, filename string, mim
 
 			// If we got a non-2xx status and it's not rate-limited, don't retry
 			if resp.StatusCode >= 500 && attempt < maxRateLimitRetries {
-				log.Printf("[WARN] Server error %d for %s, will retry (attempt %d/%d)",
+				mlog.Info("[WARN] Server error %d for %s, will retry (attempt %d/%d)",
 					resp.StatusCode, filename, attempt+1, maxRateLimitRetries)
 				continue // Retry on server errors
 			}
@@ -406,14 +406,14 @@ func (s *migrationStats) recordSkipped(reason string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.skipped++
-	log.Printf("[SKIP] %s", reason)
+	mlog.Info("[SKIP] %s", reason)
 }
 
 func (s *migrationStats) recordError(err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.errors++
-	log.Printf("[ERROR] %v", err)
+	mlog.Info("[ERROR] %v", err)
 	// Also write to the dedicated error log file
 	logError("[MIGRATION]", err)
 }
@@ -446,7 +446,7 @@ func main() {
 
 	// Initialize the error log file
 	if err := initLogFile(); err != nil {
-		log.Fatalf("Failed to initialize log file: %v", err)
+		mlog.Fatalf("Failed to initialize log file: %v", err)
 	}
 	defer closeLogFile()
 
@@ -457,10 +457,10 @@ func main() {
 	if sleepIntervalStr != "" {
 		d, err := time.ParseDuration(sleepIntervalStr)
 		if err != nil {
-			log.Printf("[WARN] Invalid STEADY_UPLOAD_SLEEP_INTERVAL: %s, using default of %vs", sleepIntervalStr, defaultUploadSleepInterval)
+			mlog.Info("[WARN] Invalid STEADY_UPLOAD_SLEEP_INTERVAL: %s, using default of %vs", sleepIntervalStr, defaultUploadSleepInterval)
 			uploadSleep = defaultUploadSleepInterval
 		} else if d < 0 {
-			log.Printf("[WARN] Negative STEADY_UPLOAD_SLEEP_INTERVAL: %s, ignoring (will not add delay)", d.String())
+			mlog.Info("[WARN] Negative STEADY_UPLOAD_SLEEP_INTERVAL: %s, ignoring (will not add delay)", d.String())
 			uploadSleep = 0 // No delay — fast but may hit rate limits
 		} else {
 			uploadSleep = d
@@ -513,7 +513,7 @@ func main() {
 		loginResp, err := steadyClient.login(steadyEmail, steadyPassword)
 		if err != nil {
 			logError("[AUTH]", err)
-			log.Fatalf("Failed to authenticate: %v", err)
+			mlog.Fatalf("Failed to authenticate: %v", err)
 		}
 
 		fmt.Printf("  Authenticated as user ID: %s (role: %s)\n", loginResp.UserID, loginResp.Role)
@@ -534,7 +534,7 @@ func main() {
 		select {
 		case <-ctx.Done():
 			logError("[CTX]", fmt.Errorf("migration cancelled by user"))
-			log.Printf("Migration cancelled by user")
+			mlog.Info("Migration cancelled by user")
 			return
 		default:
 		}
@@ -543,7 +543,7 @@ func main() {
 		assets, err := client.searchAssets(ctx, page)
 		if err != nil {
 			logError("[FETCH]", err)
-			log.Fatalf("Failed to fetch assets: %v", err)
+			mlog.Fatalf("Failed to fetch assets: %v", err)
 		}
 
 		allAssets = append(allAssets, assets...)
@@ -569,7 +569,7 @@ func main() {
 		select {
 		case <-ctx.Done():
 			logError("[CTX]", fmt.Errorf("migration cancelled by user"))
-			log.Printf("Migration cancelled by user")
+			mlog.Info("Migration cancelled by user")
 			return
 		default:
 		}
@@ -646,7 +646,7 @@ func migrateAsset(
 	uploadResp, err := steadyClient.uploadFile(ctx, asset.OriginalFileName, "", fileData)
 	if err != nil {
 		if strings.Contains(err.Error(), "duplicate") {
-			log.Printf("[SKIP] Duplicate detected for %s", asset.OriginalFileName)
+			mlog.Info("[SKIP] Duplicate detected for %s", asset.OriginalFileName)
 			os.Remove(localPath) // Clean up temp file
 			time.Sleep(steadyClient.sleepInterval)
 			return fmt.Errorf("duplicate") // Special error to indicate skip
@@ -663,7 +663,7 @@ func migrateAsset(
 	if tags != "" {
 		fmt.Printf("  Attaching tags: '%s'\n", tags)
 		if err := steadyClient.setMediaTags(ctx, mediaID, tags); err != nil {
-			log.Printf("[WARN] Failed to attach tags to %s: %v", asset.OriginalFileName, err)
+			mlog.Info("[WARN] Failed to attach tags to %s: %v", asset.OriginalFileName, err)
 			// Don't fail the migration if tag attachment fails — upload was successful
 		} else {
 			fmt.Printf("  Tags attached successfully\n")

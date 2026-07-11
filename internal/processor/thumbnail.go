@@ -3,7 +3,7 @@ package processor
 import (
 	"context"
 	"fmt"
-	"log"
+	"github.com/jbrodriguez/mlog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -62,14 +62,14 @@ func (p *ThumbnailProcessor) ProcessJob(ctx context.Context, job *domain.Job, ph
 
 	// 1. Resolve the absolute path of the original photo
 	inputAbsPath := filepath.Join(p.storageRoot, photo.Path)
-	log.Printf("  [DEBUG] Input path: %s", inputAbsPath)
+	mlog.Info("  [DEBUG] Input path: %s", inputAbsPath)
 
 	// 2. Calculate the destination path
 	thumbAbsPath, err := p.getThumbnailAbsPath(photo.Path)
 	if err != nil {
 		return fmt.Errorf("failed to calculate thumbnail path: %w", err)
 	}
-	log.Printf("  [DEBUG] Thumbnail path: %s", thumbAbsPath)
+	mlog.Info("  [DEBUG] Thumbnail path: %s", thumbAbsPath)
 
 	// Ensure the thumbnail subdirectories exist
 	err = os.MkdirAll(filepath.Dir(thumbAbsPath), 0755)
@@ -93,7 +93,7 @@ func (p *ThumbnailProcessor) ProcessJob(ctx context.Context, job *domain.Job, ph
 		return fmt.Errorf("VALIDATION FAILED: cannot stat file %s: %v", thumbAbsPath, err)
 	}
 
-	log.Printf("  [DEBUG] Thumbnail file created successfully: %s (%d bytes)", thumbAbsPath, info.Size())
+	mlog.Info("  [DEBUG] Thumbnail file created successfully: %s (%d bytes)", thumbAbsPath, info.Size())
 
 	if info.Size() == 0 {
 		return fmt.Errorf("VALIDATION FAILED: thumbnail file is empty (0 bytes) at %s", thumbAbsPath)
@@ -122,14 +122,14 @@ func (p *ThumbnailProcessor) getThumbnailAbsPath(originalRelPath string) (string
 func (p *ThumbnailProcessor) generateVideoThumbnail(ctx context.Context, job *domain.Job, photo *domain.Media) error {
 	// 1. Resolve input path
 	inputAbsPath := filepath.Join(p.storageRoot, photo.Path)
-	log.Printf("  [DEBUG] Video input path: %s", inputAbsPath)
+	mlog.Info("  [DEBUG] Video input path: %s", inputAbsPath)
 
 	// 2. Calculate destination path: base.webp (matching ServeThumbnailFile expectation for videos)
 	thumbAbsPath, err := p.getVideoThumbnailAbsPath(photo.Path)
 	if err != nil {
 		return fmt.Errorf("failed to calculate video thumbnail path: %w", err)
 	}
-	log.Printf("  [DEBUG] Video thumbnail path: %s", thumbAbsPath)
+	mlog.Info("  [DEBUG] Video thumbnail path: %s", thumbAbsPath)
 
 	// Ensure the thumbnail subdirectories exist
 	err = os.MkdirAll(filepath.Dir(thumbAbsPath), 0755)
@@ -148,10 +148,10 @@ func (p *ThumbnailProcessor) generateVideoThumbnail(ctx context.Context, job *do
 	)
 
 	// CombinedOutput captures both stdout and stderr together, so no need to set cmd.Stderr separately
-	log.Printf("  [DEBUG] Running ffmpeg: %s", cmd.String())
+	mlog.Info("  [DEBUG] Running ffmpeg: %s", cmd.String())
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		log.Printf("[WARN] ThumbnailProcessor: ffmpeg frame extraction failed for '%s': %v (output: %s)", photo.Path, err, string(out))
+		mlog.Info("[WARN] ThumbnailProcessor: ffmpeg frame extraction failed for '%s': %v (output: %s)", photo.Path, err, string(out))
 
 		// Fallback: generate SVG placeholder at the same path
 		return p.generateSVGFallback(ctx, job, photo, thumbAbsPath)
@@ -166,7 +166,7 @@ func (p *ThumbnailProcessor) generateVideoThumbnail(ctx context.Context, job *do
 		return fmt.Errorf("VALIDATION FAILED: video thumbnail is empty (0 bytes) at %s", thumbAbsPath)
 	}
 
-	log.Printf("  [DEBUG] Video thumbnail created via ffmpeg: %s (%d bytes)", thumbAbsPath, info.Size())
+	mlog.Info("  [DEBUG] Video thumbnail created via ffmpeg: %s (%d bytes)", thumbAbsPath, info.Size())
 	return nil
 }
 
@@ -211,6 +211,6 @@ func (p *ThumbnailProcessor) generateSVGFallback(ctx context.Context, job *domai
 	if err != nil {
 		return fmt.Errorf("failed to write fallback SVG: %w", err)
 	}
-	log.Printf("  [DEBUG] Fallback SVG created for video: %s (%d bytes)", thumbAbsPath, 1024)
+	mlog.Info("  [DEBUG] Fallback SVG created for video: %s (%d bytes)", thumbAbsPath, 1024)
 	return nil
 }

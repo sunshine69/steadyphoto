@@ -3,7 +3,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
-	"log"
+	"github.com/jbrodriguez/mlog"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -33,14 +33,14 @@ func main() {
 	case "up":
 		runUpMigrations()
 	default:
-		log.Fatalf("Unknown action: %s. Supported actions: up", action)
+		mlog.Fatalf("Unknown action: %s. Supported actions: up", action)
 	}
 }
 
 func runUpMigrations() {
 	dbURL := os.Getenv(dbURLKey)
 	if dbURL == "" {
-		log.Fatal("DATABASE_URL environment variable is not set")
+		mlog.Fatal("DATABASE_URL environment variable is not set")
 	}
 
 	migDir := os.Getenv(migrationsDirEnv)
@@ -50,22 +50,22 @@ func runUpMigrations() {
 
 	db, err := sqlx.Connect("postgres", dbURL)
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		mlog.Fatalf("Failed to connect to database: %v", err)
 	}
 	defer db.Close()
 
 	if err := createMigrationTable(db.DB); err != nil {
-		log.Fatalf("Failed to create migration table: %v", err)
+		mlog.Fatalf("Failed to create migration table: %v", err)
 	}
 
 	currentVersion, err := getCurrentVersion(db.DB)
 	if err != nil {
-		log.Fatalf("Failed to get current version: %v", err)
+		mlog.Fatalf("Failed to get current version: %v", err)
 	}
 
 	files, err := os.ReadDir(migDir)
 	if err != nil {
-		log.Fatalf("Failed to read migrations directory %s: %v", migDir, err)
+		mlog.Fatalf("Failed to read migrations directory %s: %v", migDir, err)
 	}
 
 	var versions []int
@@ -73,7 +73,7 @@ func runUpMigrations() {
 		if !file.IsDir() && strings.HasSuffix(file.Name(), ".up.sql") {
 			version, err := extractVersion(file.Name())
 			if err != nil {
-				log.Printf("Skipping %s: invalid version format", file.Name())
+				mlog.Info("Skipping %s: invalid version format", file.Name())
 				continue
 			}
 			if version > currentVersion {
@@ -92,12 +92,12 @@ func runUpMigrations() {
 	for _, version := range versions {
 		filePath := findMigFile(migDir, version)
 		if filePath == "" {
-			log.Fatalf("Migration file for version %d not found", version)
+			mlog.Fatalf("Migration file for version %d not found", version)
 		}
 
 		content, err := os.ReadFile(filePath)
 		if err != nil {
-			log.Fatalf("Failed to read migration file: %v", err)
+			mlog.Fatalf("Failed to read migration file: %v", err)
 		}
 
 		fmt.Printf("Applying migration version %d...\n", version)
@@ -138,7 +138,7 @@ func runUpMigrations() {
 		}()
 
 		if err != nil {
-			log.Fatalf("%v", err)
+			mlog.Fatalf("%v", err)
 		}
 
 		fmt.Printf("Successfully applied migration %d.\n", version)

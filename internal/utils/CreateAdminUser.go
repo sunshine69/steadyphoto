@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"github.com/jbrodriguez/mlog"
 	"os"
 	"time"
 
@@ -37,7 +37,7 @@ func CreateAdminUser(ctx context.Context, userRepo domain.UserRepository) error 
 	// Handle the case where user is found (Update) or not found (Create/Error handling)
 	if existingUser != nil && err == nil {
 		// 2. Update existing user (Idempotency: update credentials/role if they changed)
-		log.Printf("[INFO] Admin user with email %s already exists. Updating credentials.", email)
+		mlog.Info("[INFO] Admin user with email %s already exists. Updating credentials.", email)
 		existingUser.PasswordHash = passwordHash
 		existingUser.Role = domain.UserRoleAdmin
 		existingUser.Status = domain.UserStatusActive // Ensure they are active
@@ -50,7 +50,7 @@ func CreateAdminUser(ctx context.Context, userRepo domain.UserRepository) error 
 		// This case is unlikely with most drivers but for completeness...
 	} else {
 		if existingUser == nil {
-			log.Printf("[INFO] Creating new admin user: %s", email)
+			mlog.Info("[INFO] Creating new admin user: %s", email)
 			adminUser := &domain.User{
 				ID:           uuid.New(),
 				Email:        email,
@@ -70,6 +70,6 @@ func CreateAdminUser(ctx context.Context, userRepo domain.UserRepository) error 
 		}
 	}
 
-	log.Printf("[INFO] Admin user setup complete for: %s", email)
+	mlog.Info("[INFO] Admin user setup complete for: %s", email)
 	return nil
 }

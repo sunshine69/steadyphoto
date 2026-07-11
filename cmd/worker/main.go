@@ -4,7 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
+	"github.com/jbrodriguez/mlog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,7 +29,7 @@ type VideoMetadataProcessor struct {
 // ProcessJob extracts video metadata for the media item associated with the job.
 func (p *VideoMetadataProcessor) ProcessJob(ctx context.Context, job *domain.Job, media *domain.Media) error {
 	absPath := filepath.Join(p.storageRoot, media.Path)
-	log.Printf("Extracting video metadata from: %s", absPath)
+	mlog.Info("Extracting video metadata from: %s", absPath)
 
 	vm, err := processor.ExtractVideoMetadata(ctx, absPath)
 	if err != nil {
@@ -55,42 +55,42 @@ func main() {
 	flag.Parse()
 
 	if *userEmailFlag != "" && *mediaIDFlag != "" {
-		log.Fatal("cannot use both -user and -media-id flags together")
+		mlog.Fatal("cannot use both -user and -media-id flags together")
 	}
 
 	// Load .env from the project root
 	absPath, err := filepath.Abs(".")
 	if err != nil {
-		log.Fatalf("failed to get absolute path: %v", err)
+		mlog.Fatalf("failed to get absolute path: %v", err)
 	}
-	log.Printf("Loading .env from: %s", absPath)
+	mlog.Info("Loading .env from: %s", absPath)
 
 	envFile := filepath.Join(absPath, ".env")
 	if err := godotenv.Load(envFile); err != nil {
-		log.Printf("[WARN] Failed to load %s: %v (using env vars)", envFile, err)
+		mlog.Info("[WARN] Failed to load %s: %v (using env vars)", envFile, err)
 	}
 
 	// Read config from env (now populated from .env)
 	dbURL := getEnv("DATABASE_URL", "")
 	if dbURL == "" {
-		log.Fatal("DATABASE_URL not set in .env or environment")
+		mlog.Fatal("DATABASE_URL not set in .env or environment")
 	}
 
 	storageRoot := getEnv("STORAGE_ROOT", "storage")
 	thumbRoot := getEnv("THUMBNAIL_ROOT", filepath.Join(storageRoot, ".thumbnails"))
 
-	log.Printf("DB URL: %s", maskDBPassword(dbURL))
-	log.Printf("Storage root: %s", storageRoot)
-	log.Printf("Thumbnail root: %s", thumbRoot)
+	mlog.Info("DB URL: %s", maskDBPassword(dbURL))
+	mlog.Info("Storage root: %s", storageRoot)
+	mlog.Info("Thumbnail root: %s", thumbRoot)
 
 	db, err := sqlx.Connect("postgres", dbURL)
 	if err != nil {
-		log.Fatalf("failed to connect to database: %v", err)
+		mlog.Fatalf("failed to connect to database: %v", err)
 	}
 	defer db.Close()
 
 	if err := db.Ping(); err != nil {
-		log.Fatalf("failed to ping database: %v", err)
+		mlog.Fatalf("failed to ping database: %v", err)
 	}
 
 	jobRepo := database.NewPostgresJobRepository(db)
@@ -107,12 +107,12 @@ func main() {
 
 	// Video metadata backfill mode: extract video metadata for all media items
 	if *videoMetaFlag {
-		log.Println("[VIDEO META BACKFILL] Extracting video metadata for all media...")
+		mlog.Info("[VIDEO META BACKFILL] Extracting video metadata for all media...")
 		err = processVideoMetaBackfill(ctx, jobRepo, mediaRepo, videoMetaProcessor)
 		if err != nil {
-			log.Fatalf("error processing video meta backfill: %v", err)
+			mlog.Fatalf("error processing video meta backfill: %v", err)
 		}
-		log.Println("Video meta backfill completed.")
+		mlog.Info("Video meta backfill completed.")
 		return
 	}
 
@@ -120,14 +120,14 @@ func main() {
 	if *userEmailFlag != "" {
 		forceMode := *forceFlag
 		if forceMode {
-			log.Printf("[FORCE MODE] Will regenerate all thumbnails for user: %s", *userEmailFlag)
+			mlog.Info("[FORCE MODE] Will regenerate all thumbnails for user: %s", *userEmailFlag)
 		}
-		log.Printf("[USER MODE] Processing all media for user: %s", *userEmailFlag)
+		mlog.Info("[USER MODE] Processing all media for user: %s", *userEmailFlag)
 		err = processUserMedia(ctx, jobRepo, mediaRepo, thumbProcessor, faceProc, videoMetaProcessor, *userEmailFlag, forceMode)
 		if err != nil {
-			log.Fatalf("error processing user media: %v", err)
+			mlog.Fatalf("error processing user media: %v", err)
 		}
-		log.Println("User media processing completed.")
+		mlog.Info("User media processing completed.")
 		return
 	}
 
@@ -135,38 +135,38 @@ func main() {
 	if *mediaIDFlag != "" {
 		forceMode := *forceFlag
 		if forceMode {
-			log.Printf("[FORCE MODE] Will regenerate thumbnail for media: %s", *mediaIDFlag)
+			mlog.Info("[FORCE MODE] Will regenerate thumbnail for media: %s", *mediaIDFlag)
 		}
-		log.Printf("[SINGLE MODE] Processing media ID: %s", *mediaIDFlag)
+		mlog.Info("[SINGLE MODE] Processing media ID: %s", *mediaIDFlag)
 		err = processSingleMedia(ctx, jobRepo, mediaRepo, thumbProcessor, faceProc, videoMetaProcessor, *mediaIDFlag, forceMode)
 		if err != nil {
-			log.Fatalf("error processing single media: %v", err)
+			mlog.Fatalf("error processing single media: %v", err)
 		}
-		log.Println("Single media processing completed.")
+		mlog.Info("Single media processing completed.")
 		return
 	}
 
 	// Global force mode: regenerate ALL thumbnails for ALL media across ALL users
 	if *forceFlag {
-		log.Println("[GLOBAL FORCE MODE] Regenerating all thumbnails for ALL users...")
+		mlog.Info("[GLOBAL FORCE MODE] Regenerating all thumbnails for ALL users...")
 		err = processGlobalForce(ctx, jobRepo, mediaRepo, thumbProcessor, faceProc, videoMetaProcessor)
 		if err != nil {
-			log.Fatalf("error processing global force: %v", err)
+			mlog.Fatalf("error processing global force: %v", err)
 		}
-		log.Println("Global force processing completed.")
+		mlog.Info("Global force processing completed.")
 		return
 	}
 
 	// One-shot: process all pending jobs until none remain
 	processed, err := processAllJobs(ctx, jobRepo, mediaRepo, thumbProcessor, faceProc, videoMetaProcessor)
 	if err != nil {
-		log.Fatalf("error processing jobs: %v", err)
+		mlog.Fatalf("error processing jobs: %v", err)
 	}
 
 	if processed == 0 {
-		log.Println("No pending jobs found. Exiting.")
+		mlog.Info("No pending jobs found. Exiting.")
 	} else {
-		log.Printf("Processed %d job(s). Exiting.", processed)
+		mlog.Info("Processed %d job(s). Exiting.", processed)
 	}
 }
 
@@ -178,7 +178,7 @@ func processVideoMetaBackfill(ctx context.Context, jobRepo *database.PostgresJob
 		return fmt.Errorf("failed to list all media: %w", err)
 	}
 
-	log.Printf("[VIDEO META BACKFILL] Found %d total media items", total)
+	mlog.Info("[VIDEO META BACKFILL] Found %d total media items", total)
 
 	processed := 0
 	for _, media := range mediaList {
@@ -189,7 +189,7 @@ func processVideoMetaBackfill(ctx context.Context, jobRepo *database.PostgresJob
 		// Check if a video metadata job already exists for this media
 		existingJobs, err := jobRepo.GetJobsByMediaID(ctx, media.ID)
 		if err != nil {
-			log.Printf("[WARN] Failed to check existing jobs for media %s: %v", media.ID, err)
+			mlog.Info("[WARN] Failed to check existing jobs for media %s: %v", media.ID, err)
 			continue
 		}
 
@@ -203,12 +203,12 @@ func processVideoMetaBackfill(ctx context.Context, jobRepo *database.PostgresJob
 		}
 
 		if hasVideoMetaJob {
-			log.Printf("[SKIP] Media %s already has a video metadata job", media.ID)
+			mlog.Info("[SKIP] Media %s already has a video metadata job", media.ID)
 			continue
 		}
 
 		if hasVideoMetadata {
-			log.Printf("[SKIP] Media %s already has video metadata in DB", media.ID)
+			mlog.Info("[SKIP] Media %s already has video metadata in DB", media.ID)
 			continue
 		}
 
@@ -223,14 +223,14 @@ func processVideoMetaBackfill(ctx context.Context, jobRepo *database.PostgresJob
 			UpdatedAt: time.Now(),
 		}
 		if err := jobRepo.Create(ctx, job); err != nil {
-			log.Printf("[ERROR] Failed to create video metadata job for %s: %v", media.ID, err)
+			mlog.Info("[ERROR] Failed to create video metadata job for %s: %v", media.ID, err)
 			continue
 		}
-		log.Printf("[CREATE JOB] Created video metadata job %s for media %s (%s)", job.ID, media.ID, media.Filename)
+		mlog.Info("[CREATE JOB] Created video metadata job %s for media %s (%s)", job.ID, media.ID, media.Filename)
 		processed++
 	}
 
-	log.Printf("[VIDEO META BACKFILL] Created %d new video metadata jobs", processed)
+	mlog.Info("[VIDEO META BACKFILL] Created %d new video metadata jobs", processed)
 	return nil
 }
 
@@ -242,7 +242,7 @@ func processUserMedia(ctx context.Context, jobRepo *database.PostgresJobReposito
 		return fmt.Errorf("failed to find user %q: %w", userEmail, err)
 	}
 
-	log.Printf("Found user ID: %s for email: %s", userID, userEmail)
+	mlog.Info("Found user ID: %s for email: %s", userID, userEmail)
 
 	// Get all media items for this user
 	materials, _, err := mediaRepo.List(ctx, 10000, 0, &userID)
@@ -250,16 +250,16 @@ func processUserMedia(ctx context.Context, jobRepo *database.PostgresJobReposito
 		return fmt.Errorf("failed to list media for user %s: %w", userID, err)
 	}
 
-	log.Printf("Found %d media items for user", len(materials))
+	mlog.Info("Found %d media items for user", len(materials))
 
 	// If force mode, reset all existing job statuses to pending so they get regenerated
 	if force {
-		log.Printf("[FORCE MODE] Resetting all existing jobs for user %s to pending...", userID)
+		mlog.Info("[FORCE MODE] Resetting all existing jobs for user %s to pending...", userID)
 		resetCount, err := jobRepo.ResetJobsByUserID(ctx, userID)
 		if err != nil {
-			log.Printf("[WARN] Failed to reset jobs: %v", err)
+			mlog.Info("[WARN] Failed to reset jobs: %v", err)
 		} else {
-			log.Printf("[FORCE MODE] Reset %d existing job(s) to pending", resetCount)
+			mlog.Info("[FORCE MODE] Reset %d existing job(s) to pending", resetCount)
 		}
 
 		// Also delete existing thumbnail files so they get regenerated
@@ -272,24 +272,24 @@ func processUserMedia(ctx context.Context, jobRepo *database.PostgresJobReposito
 			if _, statErr := os.Stat(thumbAbsPath); statErr == nil {
 				if err := os.Remove(thumbAbsPath); err == nil {
 					thumbCount++
-					log.Printf("  Deleted existing thumbnail: %s", thumbAbsPath)
+					mlog.Info("  Deleted existing thumbnail: %s", thumbAbsPath)
 				}
 			}
 		}
-		log.Printf("[FORCE MODE] Deleted %d existing thumbnail file(s)", thumbCount)
+		mlog.Info("[FORCE MODE] Deleted %d existing thumbnail file(s)", thumbCount)
 	}
 
 	processed := 0
 	for _, media := range materials {
 		err = processSingleMedia(ctx, jobRepo, mediaRepo, thumbProc, faceProc, videoMetaProc, media.ID.String(), force)
 		if err != nil {
-			log.Printf("[ERROR] Failed to process media %s: %v", media.ID, err)
+			mlog.Info("[ERROR] Failed to process media %s: %v", media.ID, err)
 			continue
 		}
 		processed++
 	}
 
-	log.Printf("Processed %d out of %d media items for user %s", processed, len(materials), userEmail)
+	mlog.Info("Processed %d out of %d media items for user %s", processed, len(materials), userEmail)
 	return nil
 
 }
@@ -297,25 +297,25 @@ func processUserMedia(ctx context.Context, jobRepo *database.PostgresJobReposito
 // processGlobalForce regenerates thumbnails for ALL media across ALL users
 func processGlobalForce(ctx context.Context, jobRepo *database.PostgresJobRepository, mediaRepo *database.PostgresMediaRepository, thumbProc *processor.ThumbnailProcessor, faceProc *processor.FaceDetectionProcessor, videoMetaProc *VideoMetadataProcessor) error {
 	// Get all media across all users
-	log.Printf("[GLOBAL FORCE MODE] Listing all media across all users...")
+	mlog.Info("[GLOBAL FORCE MODE] Listing all media across all users...")
 	materials, _, err := mediaRepo.ListAll(ctx, 100000, 0)
 	if err != nil {
 		return fmt.Errorf("failed to list all media: %w", err)
 	}
 
-	log.Printf("[GLOBAL FORCE MODE] Found %d media items across all users", len(materials))
+	mlog.Info("[GLOBAL FORCE MODE] Found %d media items across all users", len(materials))
 
 	// Reset ALL jobs across all users to pending
-	log.Printf("[GLOBAL FORCE MODE] Resetting all jobs to pending...")
+	mlog.Info("[GLOBAL FORCE MODE] Resetting all jobs to pending...")
 	resetCount, err := jobRepo.ResetJobsAll(ctx)
 	if err != nil {
-		log.Printf("[WARN] Failed to reset jobs: %v", err)
+		mlog.Info("[WARN] Failed to reset jobs: %v", err)
 	} else {
-		log.Printf("[GLOBAL FORCE MODE] Reset %d existing jobs to pending", resetCount)
+		mlog.Info("[GLOBAL FORCE MODE] Reset %d existing jobs to pending", resetCount)
 	}
 
 	// Delete ALL existing thumbnail files
-	log.Printf("[GLOBAL FORCE MODE] Deleting all existing thumbnails...")
+	mlog.Info("[GLOBAL FORCE MODE] Deleting all existing thumbnails...")
 	thumbCount := 0
 	for _, media := range materials {
 		thumbAbsPath, err := thumbProc.GetThumbnailAbsPath(media.Path)
@@ -325,24 +325,24 @@ func processGlobalForce(ctx context.Context, jobRepo *database.PostgresJobReposi
 		if _, statErr := os.Stat(thumbAbsPath); statErr == nil {
 			if err := os.Remove(thumbAbsPath); err == nil {
 				thumbCount++
-				log.Printf("  Deleted existing thumbnail: %s", thumbAbsPath)
+				mlog.Info("  Deleted existing thumbnail: %s", thumbAbsPath)
 			}
 		}
 	}
-	log.Printf("[GLOBAL FORCE MODE] Deleted %d existing thumbnail file(s)", thumbCount)
+	mlog.Info("[GLOBAL FORCE MODE] Deleted %d existing thumbnail file(s)", thumbCount)
 
 	// Process each media item with force mode
 	processed := 0
 	for _, media := range materials {
 		err = processSingleMedia(ctx, jobRepo, mediaRepo, thumbProc, faceProc, videoMetaProc, media.ID.String(), true)
 		if err != nil {
-			log.Printf("[ERROR] Failed to process media %s: %v", media.ID, err)
+			mlog.Info("[ERROR] Failed to process media %s: %v", media.ID, err)
 			continue
 		}
 		processed++
 	}
 
-	log.Printf("[GLOBAL FORCE MODE] Processed %d out of %d media items", processed, len(materials))
+	mlog.Info("[GLOBAL FORCE MODE] Processed %d out of %d media items", processed, len(materials))
 	return nil
 }
 
@@ -375,7 +375,7 @@ func processSingleMedia(ctx context.Context, jobRepo *database.PostgresJobReposi
 		return fmt.Errorf("media not found: %s", mediaID)
 	}
 
-	log.Printf("Found media: ID=%s Path=%s Type=%s UserID=%s",
+	mlog.Info("Found media: ID=%s Path=%s Type=%s UserID=%s",
 		media.ID, media.Path, media.MediaType, media.UserID)
 
 	// 2. Check for existing jobs for this media
@@ -386,15 +386,15 @@ func processSingleMedia(ctx context.Context, jobRepo *database.PostgresJobReposi
 
 	var job *domain.Job
 	if len(existingJobs) > 0 {
-		log.Printf("Found %d existing job(s) for this media:", len(existingJobs))
+		mlog.Info("Found %d existing job(s) for this media:", len(existingJobs))
 		for _, j := range existingJobs {
-			log.Printf("  Job ID=%s Status=%s Type=%s CreatedAt=%s",
+			mlog.Info("  Job ID=%s Status=%s Type=%s CreatedAt=%s",
 				j.ID.String(), j.Status, j.Type, j.CreatedAt.Format(time.RFC3339))
 		}
 
 		// Force mode: skip existing thumbnail check, always regenerate
 		if force {
-			log.Printf("[FORCE MODE] Deleting existing thumbnail and regenerating.")
+			mlog.Info("[FORCE MODE] Deleting existing thumbnail and regenerating.")
 			thumbAbsPath, err := thumbProc.GetThumbnailAbsPath(media.Path)
 			if err == nil {
 				os.Remove(thumbAbsPath)
@@ -409,15 +409,15 @@ func processSingleMedia(ctx context.Context, jobRepo *database.PostgresJobReposi
 			// Check if thumbnail exists on disk and is valid (>0 bytes)
 			thumbAbsPath, err := thumbProc.GetThumbnailAbsPath(media.Path)
 			if err != nil {
-				log.Printf("[WARN] Could not determine thumbnail path: %v", err)
+				mlog.Info("[WARN] Could not determine thumbnail path: %v", err)
 			} else {
 				if _, statErr := os.Stat(thumbAbsPath); statErr == nil {
 					info, _ := os.Stat(thumbAbsPath)
 					if info.Size() > 0 {
-						log.Printf("[EXISTING] Thumbnail already exists on disk: %s (%d bytes)", thumbAbsPath, info.Size())
+						mlog.Info("[EXISTING] Thumbnail already exists on disk: %s (%d bytes)", thumbAbsPath, info.Size())
 						// Reuse the most recent job and mark it completed
 						job = existingJobs[0]
-						log.Printf("Reusing existing job: %s (marking as completed)", job.ID.String())
+						mlog.Info("Reusing existing job: %s (marking as completed)", job.ID.String())
 
 						// Update job status to completed if not already
 						if job.Status != domain.JobStatusCompleted {
@@ -428,15 +428,15 @@ func processSingleMedia(ctx context.Context, jobRepo *database.PostgresJobReposi
 						}
 						return nil // Done - no need to generate thumbnail
 					} else {
-						log.Printf("[EMPTY] Thumbnail exists but is empty (0 bytes). Will regenerate.")
+						mlog.Info("[EMPTY] Thumbnail exists but is empty (0 bytes). Will regenerate.")
 					}
 				} else {
-					log.Printf("[NEW] No existing thumbnail found. Will generate new one.")
+					mlog.Info("[NEW] No existing thumbnail found. Will generate new one.")
 				}
 			}
 		}
 	} else {
-		log.Printf("No existing jobs found for this media.")
+		mlog.Info("No existing jobs found for this media.")
 	}
 
 	// 3. Generate the thumbnail (new or regenerate)
@@ -454,20 +454,20 @@ func processSingleMedia(ctx context.Context, jobRepo *database.PostgresJobReposi
 		if err := jobRepo.Create(ctx, job); err != nil {
 			return fmt.Errorf("failed to create job for media %s: %w", mediaID, err)
 		}
-		log.Printf("Created new job: %s", job.ID.String())
+		mlog.Info("Created new job: %s", job.ID.String())
 	}
 
 	// Process the job (generate thumbnail)
-	log.Printf("Processing thumbnail for media: %s", media.Path)
+	mlog.Info("Processing thumbnail for media: %s", media.Path)
 	processErr := thumbProc.ProcessJob(ctx, job, media)
 	if processErr != nil {
 		// Update job status to failed
-		log.Printf("Thumbnail generation failed: %v", processErr)
+		mlog.Info("Thumbnail generation failed: %v", processErr)
 		return jobRepo.UpdateStatus(ctx, job.ID, domain.JobStatusFailed, processErr.Error())
 	}
 
 	// 4. Update job status to completed (this is critical - was missing before!)
-	log.Printf("Thumbnail generated successfully. Updating job status to completed.")
+	mlog.Info("Thumbnail generated successfully. Updating job status to completed.")
 	err = jobRepo.UpdateStatus(ctx, job.ID, domain.JobStatusCompleted, "")
 	if err != nil {
 		return fmt.Errorf("failed to update job status: %w", err)
@@ -492,7 +492,7 @@ func processAllJobs(ctx context.Context, jobRepo *database.PostgresJobRepository
 		}
 
 		job := jobs[0]
-		log.Printf("Processing job ID=%s type=%s mediaID=%s", job.ID.String(), job.Type, job.MediaID)
+		mlog.Info("Processing job ID=%s type=%s mediaID=%s", job.ID.String(), job.Type, job.MediaID)
 
 		processErr := func() error {
 			media, err := mediaRepo.GetByID(ctx, job.MediaID, nil)
@@ -502,41 +502,41 @@ func processAllJobs(ctx context.Context, jobRepo *database.PostgresJobRepository
 			if media == nil {
 				return logError(jobRepo, job.ID, "media not found")
 			}
-			log.Printf("  [DEBUG] Media: ID=%s Path=%s Type=%s UserID=%s CapturedAt=%s",
+			mlog.Info("  [DEBUG] Media: ID=%s Path=%s Type=%s UserID=%s CapturedAt=%s",
 				media.ID, media.Path, media.MediaType, media.UserID, media.CapturedAt)
 
 			switch job.Type {
 			case domain.JobTypeThumbnail:
-				log.Printf("  [DEBUG] Generating thumbnail for: %s", media.Path)
+				mlog.Info("  [DEBUG] Generating thumbnail for: %s", media.Path)
 				err = thumbProc.ProcessJob(ctx, job, media)
 				if err != nil {
 					return logError(jobRepo, job.ID, "thumbnail generation failed: "+err.Error())
 				}
-				log.Printf("  [DEBUG] Thumbnail job %s completed successfully", job.ID)
+				mlog.Info("  [DEBUG] Thumbnail job %s completed successfully", job.ID)
 			case domain.JobTypeFaceDetection:
-				log.Printf("  [DEBUG] Running face detection for: %s", media.Path)
+				mlog.Info("  [DEBUG] Running face detection for: %s", media.Path)
 				err = faceProc.ProcessJob(ctx, job, media)
 				if err != nil {
 					return logError(jobRepo, job.ID, "face detection failed: "+err.Error())
 				}
-				log.Printf("  [DEBUG] Face detection job %s completed successfully", job.ID)
+				mlog.Info("  [DEBUG] Face detection job %s completed successfully", job.ID)
 			case domain.JobTypeVideoMetadata:
-				log.Printf("  [DEBUG] Extracting video metadata for: %s", media.Path)
+				mlog.Info("  [DEBUG] Extracting video metadata for: %s", media.Path)
 				err = videoMetaProc.ProcessJob(ctx, job, media)
 				if err != nil {
 					return logError(jobRepo, job.ID, "video metadata extraction failed: "+err.Error())
 				}
-				log.Printf("  [DEBUG] Video metadata job %s completed successfully", job.ID)
+				mlog.Info("  [DEBUG] Video metadata job %s completed successfully", job.ID)
 			default:
 				return logError(jobRepo, job.ID, "unknown job type: "+string(job.Type))
 			}
 
-			log.Printf("job %s completed successfully", job.ID)
+			mlog.Info("job %s completed successfully", job.ID)
 			return jobRepo.UpdateStatus(ctx, job.ID, domain.JobStatusCompleted, "")
 		}()
 
 		if processErr != nil {
-			log.Printf("error processing job %s: %v", job.ID, processErr)
+			mlog.Info("error processing job %s: %v", job.ID, processErr)
 			skippedErrors++
 		}
 
@@ -544,7 +544,7 @@ func processAllJobs(ctx context.Context, jobRepo *database.PostgresJobRepository
 	}
 
 	if skippedErrors > 0 {
-		log.Printf("[WARNING] %d jobs had errors during processing", skippedErrors)
+		mlog.Info("[WARNING] %d jobs had errors during processing", skippedErrors)
 	}
 
 	return processed, nil
@@ -552,7 +552,7 @@ func processAllJobs(ctx context.Context, jobRepo *database.PostgresJobRepository
 
 // logError updates a job's status to failed and logs the error.
 func logError(jobRepo *database.PostgresJobRepository, jobID uuid.UUID, errMsg string) error {
-	log.Printf("job %s failed: %s", jobID, errMsg)
+	mlog.Info("job %s failed: %s", jobID, errMsg)
 	return jobRepo.UpdateStatus(context.Background(), jobID, domain.JobStatusFailed, errMsg)
 }
 

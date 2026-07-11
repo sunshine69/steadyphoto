@@ -3,7 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"github.com/jbrodriguez/mlog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -64,7 +64,7 @@ type SharedAlbumsListResponse struct {
 // logRequest logs a request with its path and user agent, returning the current time for duration tracking.
 func logRequest(r *http.Request, label string) time.Time {
 	start := time.Now()
-	log.Printf("[INFO] [%s] %s %s from %s", label, r.Method, r.URL.Path, r.RemoteAddr)
+	mlog.Info("[INFO] [%s] %s %s from %s", label, r.Method, r.URL.Path, r.RemoteAddr)
 	return start
 }
 
@@ -76,19 +76,19 @@ func logResponse(label string, startTime time.Time) {
 
 // logUnauthorized logs an unauthorized access attempt with IP address.
 func logUnauthorized(r *http.Request, label string) {
-	log.Printf("[WARN] [%s] Unauthorized request - no user in context. IP: %s", label, r.RemoteAddr)
+	mlog.Info("[WARN] [%s] Unauthorized request - no user in context. IP: %s", label, r.RemoteAddr)
 }
 
 // logError logs an error with its label and duration.
 func logError(label string, err error, startTime time.Time) {
 	duration := time.Since(startTime).String()
-	log.Printf("[ERROR] [%s] %v — took %v", label, err, duration)
+	mlog.Info("[ERROR] [%s] %v — took %v", label, err, duration)
 }
 
 // logInfo logs an info message with its label and duration.
 func logInfo(label string, msg string, startTime time.Time) {
 	duration := time.Since(startTime).String()
-	log.Printf("[INFO] [%s] %s — took %v", label, msg, duration)
+	mlog.Info("[INFO] [%s] %s — took %v", label, msg, duration)
 }
 
 // handleGetSharedMedia returns metadata for a single media item shared with the current user.

@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"log"
+	"github.com/jbrodriguez/mlog"
 	"net/http"
 
 	"steadyphoto/internal/security"
@@ -20,7 +20,7 @@ func (s *Server) handleGetProfile(w http.ResponseWriter, r *http.Request) {
 
 	user, err := s.userRepo.GetByID(r.Context(), userID)
 	if err != nil {
-		log.Printf("[ERROR] handleGetProfile: failed to get user (%s): %v", userID, err)
+		mlog.Info("[ERROR] handleGetProfile: failed to get user (%s): %v", userID, err)
 		http.Error(w, "User not found", http.StatusNotFound)
 		return
 	}
@@ -53,7 +53,7 @@ func (s *Server) handleUpdateProfileEmail(w http.ResponseWriter, r *http.Request
 	// Get the user
 	user, err := s.userRepo.GetByID(r.Context(), userID)
 	if err != nil {
-		log.Printf("[ERROR] handleUpdateProfileEmail: failed to get user (%s): %v", userID, err)
+		mlog.Info("[ERROR] handleUpdateProfileEmail: failed to get user (%s): %v", userID, err)
 		http.Error(w, "User not found", http.StatusNotFound)
 		return
 	}
@@ -62,7 +62,7 @@ func (s *Server) handleUpdateProfileEmail(w http.ResponseWriter, r *http.Request
 	existingUser, err := s.userRepo.GetByEmail(r.Context(), req.NewEmail)
 	if !errors.Is(err, sql.ErrNoRows) {
 		// If error other than no rows found, it's a DB issue
-		log.Printf("[ERROR] handleUpdateProfileEmail: failed to check existing email (%s): %v", req.NewEmail, err)
+		mlog.Info("[ERROR] handleUpdateProfileEmail: failed to check existing email (%s): %v", req.NewEmail, err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -74,7 +74,7 @@ func (s *Server) handleUpdateProfileEmail(w http.ResponseWriter, r *http.Request
 
 	user.Email = req.NewEmail
 	if err := s.userRepo.Update(r.Context(), user); err != nil {
-		log.Printf("[ERROR] handleUpdateProfileEmail: failed to update email for user (%s): %v", userID, err)
+		mlog.Info("[ERROR] handleUpdateProfileEmail: failed to update email for user (%s): %v", userID, err)
 		http.Error(w, "Failed to update email", http.StatusInternalServerError)
 		return
 	}
@@ -103,7 +103,7 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 	// Get the user
 	user, err := s.userRepo.GetByID(r.Context(), userID)
 	if err != nil {
-		log.Printf("[ERROR] handleChangePassword: failed to get user (%s): %v", userID, err)
+		mlog.Info("[ERROR] handleChangePassword: failed to get user (%s): %v", userID, err)
 		http.Error(w, "User not found", http.StatusNotFound)
 		return
 	}
@@ -117,14 +117,14 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 	// Hash the new password
 	newPasswordHash, err := security.HashPassword(req.NewPassword)
 	if err != nil {
-		log.Printf("[ERROR] handleChangePassword: failed to hash new password: %v", err)
+		mlog.Info("[ERROR] handleChangePassword: failed to hash new password: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
 	user.PasswordHash = newPasswordHash
 	if err := s.userRepo.Update(r.Context(), user); err != nil {
-		log.Printf("[ERROR] handleChangePassword: failed to update password for user (%s): %v", userID, err)
+		mlog.Info("[ERROR] handleChangePassword: failed to update password for user (%s): %v", userID, err)
 		http.Error(w, "Failed to change password", http.StatusInternalServerError)
 		return
 	}
@@ -148,7 +148,7 @@ func (s *Server) handleSearchUsers(w http.ResponseWriter, r *http.Request) {
 
 	users, err := s.userRepo.SearchUsers(r.Context(), queryParam)
 	if err != nil {
-		log.Printf("[ERROR] handleSearchUsers: failed to search users for user (%s): %v", userID, err)
+		mlog.Info("[ERROR] handleSearchUsers: failed to search users for user (%s): %v", userID, err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}

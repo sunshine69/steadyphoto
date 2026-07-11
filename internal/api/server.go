@@ -3,7 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"github.com/jbrodriguez/mlog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -232,7 +232,7 @@ func (s *Server) routes() {
 					MediaIDs []string `json:"media_ids"`
 				}
 				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-					log.Printf("[ERROR] handleDeleteMedia - decode body: %v", err)
+					mlog.Info("[ERROR] handleDeleteMedia - decode body: %v", err)
 					http.Error(w, "Invalid request body: "+err.Error(), http.StatusBadRequest)
 					return
 				}
@@ -246,20 +246,20 @@ func (s *Server) routes() {
 				for _, idStr := range req.MediaIDs {
 					id, err := uuid.Parse(idStr)
 					if err != nil {
-						log.Printf("[ERROR] handleDeleteMedia - parse UUID (%s): %v", idStr, err)
+						mlog.Info("[ERROR] handleDeleteMedia - parse UUID (%s): %v", idStr, err)
 						continue // Skip invalid IDs but continue processing others
 					}
 
 					// First get the media to know which files to delete from storage
 					media, err := s.mediaRepo.GetByID(ctx, id, &userID)
 					if err != nil {
-						log.Printf("[ERROR] handleDeleteMedia - GetByID (%s): %v", id, err)
+						mlog.Info("[ERROR] handleDeleteMedia - GetByID (%s): %v", id, err)
 						continue // Skip if media not found or doesn't belong to user
 					}
 
 					// Delete files from storage (main file and thumbnail if exists)
 					if err := s.storageService.DeleteFile(media.Path); err != nil {
-						log.Printf("[ERROR] handleDeleteMedia - delete main file (%s): %v", media.Path, err)
+						mlog.Info("[ERROR] handleDeleteMedia - delete main file (%s): %v", media.Path, err)
 						// Continue with DB deletion even if file delete fails to avoid orphaned records
 					}
 
@@ -272,7 +272,7 @@ func (s *Server) routes() {
 
 					// Permanently delete from database
 					if err := s.mediaRepo.PermanentlyDeleteMedia(ctx, id, userID); err != nil {
-						log.Printf("[ERROR] handleDeleteMedia - permanent delete (%s): %v", id, err)
+						mlog.Info("[ERROR] handleDeleteMedia - permanent delete (%s): %v", id, err)
 						continue // Skip if DB deletion fails
 					}
 
@@ -356,18 +356,18 @@ func (s *Server) startCleanupGoroutine() {
 		ticker := time.NewTicker(24 * time.Hour)
 		defer ticker.Stop()
 
-		log.Printf("[INFO] UploadSessionManager: Cleanup goroutine started")
+		mlog.Info("[INFO] UploadSessionManager: Cleanup goroutine started")
 
 		for range ticker.C {
 			cleaned := s.sessionManager.CleanupExpiredSessions()
 			if cleaned > 0 {
-				log.Printf("[INFO] UploadSessionManager: Cleaned up %d expired sessions", cleaned)
+				mlog.Info("[INFO] UploadSessionManager: Cleaned up %d expired sessions", cleaned)
 			}
 
 			// Also clean orphaned chunks (sessions lost during crash)
 			removed := s.storageService.CleanupOrphanedChunks()
 			if removed > 0 {
-				log.Printf("[INFO] StorageService: Cleaned up %d orphaned chunk files", removed)
+				mlog.Info("[INFO] StorageService: Cleaned up %d orphaned chunk files", removed)
 			}
 		}
 	}()
@@ -406,7 +406,7 @@ func (s *Server) handleListPhotos(w http.ResponseWriter, r *http.Request) {
 
 	// Use filtered count for pagination (not DB total since we filter by type)
 	if err != nil {
-		log.Printf("[ERROR] handleListPhotos: %v", err)
+		mlog.Info("[ERROR] handleListPhotos: %v", err)
 		http.Error(w, "Failed to list media: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -446,14 +446,14 @@ func (s *Server) handleGetPhoto(w http.ResponseWriter, r *http.Request) {
 
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		log.Printf("[ERROR] handleGetPhoto - parse UUID (%s): %v", idStr, err)
+		mlog.Info("[ERROR] handleGetPhoto - parse UUID (%s): %v", idStr, err)
 		http.Error(w, "Invalid UUID format", http.StatusBadRequest)
 		return
 	}
 
 	media, err := s.mediaRepo.GetByID(ctx, id, &userID)
 	if err != nil {
-		log.Printf("[ERROR] handleGetPhoto - getByID (%s): %v", id, err)
+		mlog.Info("[ERROR] handleGetPhoto - getByID (%s): %v", id, err)
 		http.Error(w, "Media not found", http.StatusNotFound)
 		return
 	}
@@ -480,14 +480,14 @@ func (s *Server) handleGetPhotoFile(w http.ResponseWriter, r *http.Request) {
 
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		log.Printf("[ERROR] handleGetPhotoFile - parse UUID (%s): %v", idStr, err)
+		mlog.Info("[ERROR] handleGetPhotoFile - parse UUID (%s): %v", idStr, err)
 		http.Error(w, "Invalid UUID format", http.StatusBadRequest)
 		return
 	}
 
 	media, err := s.mediaRepo.GetByID(ctx, id, &userID)
 	if err != nil {
-		log.Printf("[ERROR] handleGetPhotoFile - getByID (%s): %v", id, err)
+		mlog.Info("[ERROR] handleGetPhotoFile - getByID (%s): %v", id, err)
 		http.Error(w, "Media not found", http.StatusNotFound)
 		return
 	}
@@ -500,7 +500,7 @@ func (s *Server) handleGetPhotoFile(w http.ResponseWriter, r *http.Request) {
 	// Resolve the absolute path using our Storage Service
 	absPath, err := s.storageService.ResolvePath(media.Path)
 	if err != nil {
-		log.Printf("[ERROR] handleGetPhotoFile - resolvePath (%s): %v", media.Path, err)
+		mlog.Info("[ERROR] handleGetPhotoFile - resolvePath (%s): %v", media.Path, err)
 		http.Error(w, "Could not locate file: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -549,7 +549,7 @@ func (s *Server) handleListMedia(w http.ResponseWriter, r *http.Request) {
 
 	// Use total count from database for pagination
 	if err != nil {
-		log.Printf("[ERROR] handleListMedia: %v", err)
+		mlog.Info("[ERROR] handleListMedia: %v", err)
 		http.Error(w, "Failed to list media: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -580,14 +580,14 @@ func (s *Server) handleGetMedia(w http.ResponseWriter, r *http.Request) {
 
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		log.Printf("[ERROR] handleGetMedia - parse UUID (%s): %v", idStr, err)
+		mlog.Info("[ERROR] handleGetMedia - parse UUID (%s): %v", idStr, err)
 		http.Error(w, "Invalid UUID format", http.StatusBadRequest)
 		return
 	}
 
 	media, err := s.mediaRepo.GetByID(ctx, id, &userID)
 	if err != nil {
-		log.Printf("[ERROR] handleGetMedia - getByID (%s): %v", id, err)
+		mlog.Info("[ERROR] handleGetMedia - getByID (%s): %v", id, err)
 		http.Error(w, "Media not found", http.StatusNotFound)
 		return
 	}
@@ -609,14 +609,14 @@ func (s *Server) handleUpdateMedia(w http.ResponseWriter, r *http.Request) {
 
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		log.Printf("[ERROR] handleUpdateMedia - parse UUID (%s): %v", idStr, err)
+		mlog.Info("[ERROR] handleUpdateMedia - parse UUID (%s): %v", idStr, err)
 		http.Error(w, "Invalid UUID format", http.StatusBadRequest)
 		return
 	}
 
 	var input domain.Media
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		log.Printf("[ERROR] handleUpdateMedia - decode body: %v", err)
+		mlog.Info("[ERROR] handleUpdateMedia - decode body: %v", err)
 		http.Error(w, "Invalid request body: "+err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -631,7 +631,7 @@ func (s *Server) handleUpdateMedia(w http.ResponseWriter, r *http.Request) {
 	// Update in repository
 	err = s.mediaRepo.Update(ctx, &input)
 	if err != nil {
-		log.Printf("[ERROR] handleUpdateMedia - repo update (%s): %v", id, err)
+		mlog.Info("[ERROR] handleUpdateMedia - repo update (%s): %v", id, err)
 		http.Error(w, "Failed to update media: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -653,14 +653,14 @@ func (s *Server) handlePatchMedia(w http.ResponseWriter, r *http.Request) {
 
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		log.Printf("[ERROR] handlePatchMedia - parse UUID (%s): %v", idStr, err)
+		mlog.Info("[ERROR] handlePatchMedia - parse UUID (%s): %v", idStr, err)
 		http.Error(w, "Invalid UUID format", http.StatusBadRequest)
 		return
 	}
 
 	var input map[string]interface{}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		log.Printf("[ERROR] handlePatchMedia - decode body: %v", err)
+		mlog.Info("[ERROR] handlePatchMedia - decode body: %v", err)
 		http.Error(w, "Invalid request body: "+err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -668,7 +668,7 @@ func (s *Server) handlePatchMedia(w http.ResponseWriter, r *http.Request) {
 	// Get existing media first (checking ownership)
 	existingMedia, err := s.mediaRepo.GetByID(ctx, id, &userID)
 	if err != nil {
-		log.Printf("[ERROR] handlePatchMedia - getByID (%s): %v", id, err)
+		mlog.Info("[ERROR] handlePatchMedia - getByID (%s): %v", id, err)
 		http.Error(w, "Media not found", http.StatusNotFound)
 		return
 	}
@@ -681,7 +681,7 @@ func (s *Server) handlePatchMedia(w http.ResponseWriter, r *http.Request) {
 	// Update in repository
 	err = s.mediaRepo.Update(ctx, existingMedia)
 	if err != nil {
-		log.Printf("[ERROR] handlePatchMedia - repo update (%s): %v", id, err)
+		mlog.Info("[ERROR] handlePatchMedia - repo update (%s): %v", id, err)
 		http.Error(w, "Failed to update media: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -703,7 +703,7 @@ func (s *Server) handleUpdateTags(w http.ResponseWriter, r *http.Request) {
 
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		log.Printf("[ERROR] handleUpdateTags - parse UUID (%s): %v", idStr, err)
+		mlog.Info("[ERROR] handleUpdateTags - parse UUID (%s): %v", idStr, err)
 		http.Error(w, "Invalid UUID format", http.StatusBadRequest)
 		return
 	}
@@ -712,7 +712,7 @@ func (s *Server) handleUpdateTags(w http.ResponseWriter, r *http.Request) {
 		Tags string `json:"tags"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		log.Printf("[ERROR] handleUpdateTags - decode body: %v", err)
+		mlog.Info("[ERROR] handleUpdateTags - decode body: %v", err)
 		http.Error(w, "Invalid request body: "+err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -720,7 +720,7 @@ func (s *Server) handleUpdateTags(w http.ResponseWriter, r *http.Request) {
 	// Get existing media first (checking ownership)
 	existingMedia, err := s.mediaRepo.GetByID(ctx, id, &userID)
 	if err != nil {
-		log.Printf("[ERROR] handleUpdateTags - getByID (%s): %v", id, err)
+		mlog.Info("[ERROR] handleUpdateTags - getByID (%s): %v", id, err)
 		http.Error(w, "Media not found", http.StatusNotFound)
 		return
 	}
@@ -731,7 +731,7 @@ func (s *Server) handleUpdateTags(w http.ResponseWriter, r *http.Request) {
 	// Update in repository
 	err = s.mediaRepo.Update(ctx, existingMedia)
 	if err != nil {
-		log.Printf("[ERROR] handleUpdateTags - repo update (%s): %v", id, err)
+		mlog.Info("[ERROR] handleUpdateTags - repo update (%s): %v", id, err)
 		http.Error(w, "Failed to update media: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -753,14 +753,14 @@ func (s *Server) handleDeleteMedia(w http.ResponseWriter, r *http.Request) {
 
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		log.Printf("[ERROR] handleDeleteMedia - parse UUID (%s): %v", idStr, err)
+		mlog.Info("[ERROR] handleDeleteMedia - parse UUID (%s): %v", idStr, err)
 		http.Error(w, "Invalid UUID format", http.StatusBadRequest)
 		return
 	}
 
 	err = s.mediaRepo.Delete(ctx, id, &userID)
 	if err != nil {
-		log.Printf("[ERROR] handleDeleteMedia - delete (%s): %v", id, err)
+		mlog.Info("[ERROR] handleDeleteMedia - delete (%s): %v", id, err)
 		http.Error(w, "Failed to delete media: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -828,14 +828,14 @@ func (s *Server) handleGetOriginal(w http.ResponseWriter, r *http.Request) {
 
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		log.Printf("[ERROR] handleGetOriginal - parse UUID (%s): %v", idStr, err)
+		mlog.Info("[ERROR] handleGetOriginal - parse UUID (%s): %v", idStr, err)
 		http.Error(w, "Invalid UUID format", http.StatusBadRequest)
 		return
 	}
 
 	media, err := s.mediaRepo.GetByID(ctx, id, &userID)
 	if err != nil {
-		log.Printf("[ERROR] handleGetOriginal - getByID (%s): %v", id, err)
+		mlog.Info("[ERROR] handleGetOriginal - getByID (%s): %v", id, err)
 		http.Error(w, "Media not found", http.StatusNotFound)
 		return
 	}
@@ -850,7 +850,7 @@ func (s *Server) handleGetOriginal(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err != nil {
-		log.Printf("[ERROR] handleGetOriginal - resolvePath (%s): %v", targetPath, err)
+		mlog.Info("[ERROR] handleGetOriginal - resolvePath (%s): %v", targetPath, err)
 		http.Error(w, "Could not locate file: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -882,14 +882,14 @@ func (s *Server) handleGetThumbnail(w http.ResponseWriter, r *http.Request) {
 
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		log.Printf("[ERROR] handleGetThumbnail - parse UUID (%s): %v", idStr, err)
+		mlog.Info("[ERROR] handleGetThumbnail - parse UUID (%s): %v", idStr, err)
 		http.Error(w, "Invalid UUID format", http.StatusBadRequest)
 		return
 	}
 
 	media, err := s.mediaRepo.GetByID(ctx, id, &userID)
 	if err != nil {
-		log.Printf("[ERROR] handleGetThumbnail - getByID (%s): %v", id, err)
+		mlog.Info("[ERROR] handleGetThumbnail - getByID (%s): %v", id, err)
 		http.Error(w, "Media not found", http.StatusNotFound)
 		return
 	}
@@ -906,7 +906,7 @@ func (s *Server) handleGetThumbnail(w http.ResponseWriter, r *http.Request) {
 
 	// Check if file exists before serving
 	if _, err := os.Stat(fullThumbPath); os.IsNotExist(err) {
-		log.Printf("[WARN] handleGetThumbnail: Thumbnail NOT FOUND at %s. Attempting fallback to original.", fullThumbPath)
+		mlog.Info("[WARN] handleGetThumbnail: Thumbnail NOT FOUND at %s. Attempting fallback to original.", fullThumbPath)
 		targetPath := media.Path
 		absPath, resolveErr := s.storageService.ResolvePath(targetPath)
 		if resolveErr != nil {
@@ -915,14 +915,14 @@ func (s *Server) handleGetThumbnail(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if resolveErr != nil {
-			log.Printf("[ERROR] handleGetThumbnail - fallback failed for (%s): %v", targetPath, resolveErr)
+			mlog.Info("[ERROR] handleGetThumbnail - fallback failed for (%s): %v", targetPath, resolveErr)
 			http.Error(w, "Thumbnail not found and fallback failed", http.StatusNotFound)
 			return
 		}
 
 		contentType := s.getContentType(media.MediaType, media.Filename)
 		w.Header().Set("Content-Type", contentType)
-		log.Printf("[INFO] handleGetThumbnail: Serving original file as fallback from %s", absPath)
+		mlog.Info("[INFO] handleGetThumbnail: Serving original file as fallback from %s", absPath)
 		http.ServeFile(w, r, absPath)
 		return
 	}
@@ -957,7 +957,7 @@ func (s *Server) handleListTrash(w http.ResponseWriter, r *http.Request) {
 
 	trashedList, totalItems, err := s.mediaRepo.ListTrashed(ctx, limit, offset, userID)
 	if err != nil {
-		log.Printf("[ERROR] handleListTrash: %v", err)
+		mlog.Info("[ERROR] handleListTrash: %v", err)
 		http.Error(w, "Failed to list trashed media: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -987,14 +987,14 @@ func (s *Server) handleRestoreMedia(w http.ResponseWriter, r *http.Request) {
 
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		log.Printf("[ERROR] handleRestoreMedia - parse UUID (%s): %v", idStr, err)
+		mlog.Info("[ERROR] handleRestoreMedia - parse UUID (%s): %v", idStr, err)
 		http.Error(w, "Invalid UUID format", http.StatusBadRequest)
 		return
 	}
 
 	err = s.mediaRepo.RestoreMedia(ctx, id, userID)
 	if err != nil {
-		log.Printf("[ERROR] handleRestoreMedia - restore (%s): %v", id, err)
+		mlog.Info("[ERROR] handleRestoreMedia - restore (%s): %v", id, err)
 		http.Error(w, "Failed to restore media: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -1016,7 +1016,7 @@ func (s *Server) handlePermanentDeleteMedia(w http.ResponseWriter, r *http.Reque
 
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		log.Printf("[ERROR] handlePermanentDeleteMedia - parse UUID (%s): %v", idStr, err)
+		mlog.Info("[ERROR] handlePermanentDeleteMedia - parse UUID (%s): %v", idStr, err)
 		http.Error(w, "Invalid UUID format", http.StatusBadRequest)
 		return
 	}
@@ -1024,14 +1024,14 @@ func (s *Server) handlePermanentDeleteMedia(w http.ResponseWriter, r *http.Reque
 	// First get the trashed media to know which files to delete from storage
 	media, err := s.mediaRepo.GetTrashedMedia(ctx, id, userID)
 	if err != nil {
-		log.Printf("[ERROR] handlePermanentDeleteMedia - GetTrashedMedia (%s): %v", id, err)
+		mlog.Info("[ERROR] handlePermanentDeleteMedia - GetTrashedMedia (%s): %v", id, err)
 		http.Error(w, "Failed to get media: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	// Delete files from storage (main file and thumbnail if exists)
 	if err := s.storageService.DeleteFile(media.Path); err != nil {
-		log.Printf("[ERROR] handlePermanentDeleteMedia - delete main file (%s): %v", media.Path, err)
+		mlog.Info("[ERROR] handlePermanentDeleteMedia - delete main file (%s): %v", media.Path, err)
 		// Continue with DB deletion even if file delete fails to avoid orphaned records
 	}
 
@@ -1043,7 +1043,7 @@ func (s *Server) handlePermanentDeleteMedia(w http.ResponseWriter, r *http.Reque
 	// Permanently delete from database
 	err = s.mediaRepo.PermanentlyDeleteMedia(ctx, id, userID)
 	if err != nil {
-		log.Printf("[ERROR] handlePermanentDeleteMedia - permanent delete (%s): %v", id, err)
+		mlog.Info("[ERROR] handlePermanentDeleteMedia - permanent delete (%s): %v", id, err)
 		http.Error(w, "Failed to permanently delete media: "+err.Error(), http.StatusInternalServerError)
 		return
 	}

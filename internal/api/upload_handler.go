@@ -8,7 +8,7 @@ import (
 	"errors" // Added for errors.Is check
 	"fmt"
 	"io"
-	"log"
+	"github.com/jbrodriguez/mlog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -41,7 +41,7 @@ func initErrorLog() error {
 func logBackendError(prefix string, err error) {
 	if errorLog == nil {
 		// Fallback to stderr if log file isn't initialized
-		log.Printf("[%s] %v", prefix, err)
+		mlog.Info("[%s] %v", prefix, err)
 		return
 	}
 
@@ -52,7 +52,7 @@ func logBackendError(prefix string, err error) {
 	)
 
 	if _, writeErr := errorLog.WriteString(entry); writeErr != nil {
-		log.Printf("[ERROR] Failed to write to backend error log: %v", writeErr)
+		mlog.Info("[ERROR] Failed to write to backend error log: %v", writeErr)
 	}
 }
 
@@ -113,12 +113,12 @@ func (h *MediaUploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("[DEBUG] UploadHandler: Starting upload for user %s...", userID.String())
+	mlog.Info("[DEBUG] UploadHandler: Starting upload for user %s...", userID.String())
 
 	// 1. Parse Multipart Form (32MB memory limit, rest on disk)
 	err := r.ParseMultipartForm(32 << 20)
 	if err != nil {
-		log.Printf("[ERROR] UploadHandler: Failed to parse form: %v", err)
+		mlog.Info("[ERROR] UploadHandler: Failed to parse form: %v", err)
 		logBackendError("[PARSE]", err)
 		http.Error(w, "Invalid form data. Ensure you are sending multipart/form-data.", http.StatusBadRequest)
 		return
@@ -126,7 +126,7 @@ func (h *MediaUploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 
 	files := r.MultipartForm.File["files"]
 	if len(files) == 0 {
-		log.Printf("[WARN] UploadHandler: No files found in 'files' field.")
+		mlog.Info("[WARN] UploadHandler: No files found in 'files' field.")
 		http.Error(w, "No files uploaded. Ensure you use -F \"files=@...\"", http.StatusBadRequest)
 		return
 	}
@@ -136,18 +136,18 @@ func (h *MediaUploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	var skippedDuplicates = make([]interface{}, 0)
 
 	for i, header := range files {
-		log.Printf("[DEBUG] UploadHandler: Processing file %d/%d: '%s' (Size on disk: %d bytes)", i+1, len(files), header.Filename, header.Size)
+		mlog.Info("[DEBUG] UploadHandler: Processing file %d/%d: '%s' (Size on disk: %d bytes)", i+1, len(files), header.Filename, header.Size)
 
 		file, err := header.Open()
 		if err != nil {
-			log.Printf("[ERROR] UploadHandler: Failed to open multipart file %s: %v", header.Filename, err)
+			mlog.Info("[ERROR] UploadHandler: Failed to open multipart file %s: %v", header.Filename, err)
 			continue
 		}
 
 		hasher := sha256.New()
 		tempFile, err := os.CreateTemp("", "upload-*.tmp")
 		if err != nil {
-			log.Printf("[ERROR] UploadHandler: Failed to create temp file for %s: %v", header.Filename, err)
+			mlog.Info("[ERROR] UploadHandler: Failed to create temp file for %s: %v", header.Filename, err)
 			file.Close()
 			continue
 		}
@@ -156,16 +156,16 @@ func (h *MediaUploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		file.Close() // Close original multipart reader immediately
 
 		if err != nil {
-			log.Printf("[ERROR] UploadHandler: Failed to copy stream for %s (size=%d): %v", header.Filename, n, err)
+			mlog.Info("[ERROR] UploadHandler: Failed to copy stream for %s (size=%d): %v", header.Filename, n, err)
 			os.Remove(tempFile.Name())
 			continue
 		}
 
-		log.Printf("[DEBUG] UploadHandler: Hash calculated for '%s': %x...", header.Filename[:min(10, len(header.Filename))], hasher.Sum(nil)[:8]) // Log first 4 bytes of hash
+		mlog.Info("[DEBUG] UploadHandler: Hash calculated for '%s': %x...", header.Filename[:min(10, len(header.Filename))], hasher.Sum(nil)[:8]) // Log first 4 bytes of hash
 
 		// FIX 1: Seek back to start of temp file before reading it again later!
 		if _, err := tempFile.Seek(int64(0), io.SeekStart); err != nil {
-			log.Printf("[ERROR] UploadHandler: Failed to seek in temp file for %s: %v", header.Filename, err)
+			mlog.Info("[ERROR] UploadHandler: Failed to seek in temp file for %s: %v", header.Filename, err)
 			os.Remove(tempFile.Name())
 			continue
 		}
@@ -176,7 +176,7 @@ func (h *MediaUploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		buf := make([]byte, 512)
 		nRead, readErr := tempFile.Read(buf)
 		if readErr != nil && !errors.Is(readErr, io.EOF) {
-			log.Printf("[ERROR] UploadHandler: Failed to read for MIME sniffing %s: %v", header.Filename, readErr)
+			mlog.Info("[ERROR] UploadHandler: Failed to read for MIME sniffing %s: %v", header.Filename, readErr)
 			os.Remove(tempFile.Name())
 			continue
 		}
@@ -184,7 +184,7 @@ func (h *MediaUploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		detectedType := http.DetectContentType(buf[:nRead])
 		extLower := strings.ToLower(ext)
 		if !isValidMediaType(detectedType, extLower) {
-			log.Printf("[ERROR] UploadHandler: MIME type mismatch for '%s' - detected '%s', expected %s",
+			mlog.Info("[ERROR] UploadHandler: MIME type mismatch for '%s' - detected '%s', expected %s",
 				header.Filename, detectedType, extLower)
 			os.Remove(tempFile.Name())
 			continue
@@ -192,14 +192,14 @@ func (h *MediaUploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 
 		// Seek back to start of temp file after reading for MIME sniffing!
 		if _, err := tempFile.Seek(int64(0), io.SeekStart); err != nil {
-			log.Printf("[ERROR] UploadHandler: Failed to seek in temp file for %s: %v", header.Filename, err)
+			mlog.Info("[ERROR] UploadHandler: Failed to seek in temp file for %s: %v", header.Filename, err)
 			os.Remove(tempFile.Name())
 			continue
 		}
 
 		hash := fmt.Sprintf("%x", hasher.Sum(nil))
 
-		log.Printf("[DEBUG] UploadHandler: Checking DB for duplicate hash...")
+		mlog.Info("[DEBUG] UploadHandler: Checking DB for duplicate hash...")
 		existingMedia, dbErr := h.mediaRepo.GetByHash(ctx, hash)
 
 		if dbErr != nil {
@@ -208,20 +208,20 @@ func (h *MediaUploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 			isNewFile := errors.Is(dbErr, sql.ErrNoRows) || strings.Contains(dbErr.Error(), "no rows")
 
 			if isNewFile {
-				log.Printf("[INFO] UploadHandler: No duplicate found for '%s' (Proceeding to save)", header.Filename) // Normal case -> Proceed to upload logic below
+				mlog.Info("[INFO] UploadHandler: No duplicate found for '%s' (Proceeding to save)", header.Filename) // Normal case -> Proceed to upload logic below
 				existingMedia = nil
 			} else {
 				// If it's NOT a "No Rows" error, then something is actually broken with the DB connection or query.
-				log.Printf("[ERROR] UploadHandler: Actual DB failure for '%s' (hash=%s): %v", header.Filename, hash[:8]+"...", dbErr)
+				mlog.Info("[ERROR] UploadHandler: Actual DB failure for '%s' (hash=%s): %v", header.Filename, hash[:8]+"...", dbErr)
 				os.Remove(tempFile.Name())
 				continue // Skip only on real errors like connection loss
 			}
 		} else {
-			log.Printf("[DEBUG] UploadHandler: No error from DB check.")
+			mlog.Info("[DEBUG] UploadHandler: No error from DB check.")
 		}
 
 		if existingMedia != nil && existingMedia.ID != uuid.Nil {
-			log.Printf("[INFO] UploadHandler: Duplicate detected for '%s' (Hash matches ID=%s)", header.Filename, existingMedia.ID.String())
+			mlog.Info("[INFO] UploadHandler: Duplicate detected for '%s' (Hash matches ID=%s)", header.Filename, existingMedia.ID.String())
 			skippedDuplicates = append(skippedDuplicates, map[string]interface{}{
 				"filename": header.Filename,
 				"id":       existingMedia.ID.String(),
@@ -238,11 +238,11 @@ func (h *MediaUploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		relTimePath := filepath.Join(dateDir, newFilename)
 		relPathFromRoot := filepath.Join(userID.String(), relTimePath)
 
-		log.Printf("[DEBUG] UploadHandler: Target path (relative to storage root): '%s'", relPathFromRoot)
+		mlog.Info("[DEBUG] UploadHandler: Target path (relative to storage root): '%s'", relPathFromRoot)
 
 		// 1. Ensure the directory exists for this user/date
 		if err := h.storageService.EnsureDir(userID, relTimePath); err != nil {
-			log.Printf("[ERROR] UploadHandler: Failed to ensure directory %s: %v", dateDir, err)
+			mlog.Info("[ERROR] UploadHandler: Failed to ensure directory %s: %v", dateDir, err)
 			os.Remove(tempFile.Name())
 			continue
 		}
@@ -252,14 +252,14 @@ func (h *MediaUploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 
 		destFile, err := os.Create(absTargetPath)
 		if err != nil {
-			log.Printf("[ERROR] UploadHandler: Failed to create dest file %s: %v", absTargetPath, err)
+			mlog.Info("[ERROR] UploadHandler: Failed to create dest file %s: %v", absTargetPath, err)
 			os.Remove(tempFile.Name())
 			continue
 		}
 
 		n2, err := io.Copy(destFile, tempFile)
 		if err != nil {
-			log.Printf("[ERROR] UploadHandler: Failed to save file %s (copied %d/%d bytes): %v", newFilename, n2, n, err)
+			mlog.Info("[ERROR] UploadHandler: Failed to save file %s (copied %d/%d bytes): %v", newFilename, n2, n, err)
 			destFile.Close()
 			os.Remove(absTargetPath)
 			os.Remove(tempFile.Name())
@@ -267,7 +267,7 @@ func (h *MediaUploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		}
 
 		destFile.Close() // Close file before removing temp.
-		log.Printf("[DEBUG] UploadHandler: File saved to disk '%s'", newFilename)
+		mlog.Info("[DEBUG] UploadHandler: File saved to disk '%s'", newFilename)
 		os.Remove(tempFile.Name())
 
 		extLower = strings.ToLower(ext)
@@ -289,9 +289,9 @@ func (h *MediaUploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		meta.CapturedAt = time.Now() // default fallback
 		if dateTime, err := processor.NewExifReader().ReadDateTimeOriginal(tempFile); err == nil && !dateTime.IsZero() {
 			meta.CapturedAt = dateTime
-			log.Printf("[INFO] UploadHandler: EXIF DateTimeOriginal found for '%s': %s", header.Filename, dateTime.Format(time.RFC3339))
+			mlog.Info("[INFO] UploadHandler: EXIF DateTimeOriginal found for '%s': %s", header.Filename, dateTime.Format(time.RFC3339))
 		} else {
-			log.Printf("[INFO] UploadHandler: No EXIF DateTimeOriginal for '%s', using upload time", header.Filename)
+			mlog.Info("[INFO] UploadHandler: No EXIF DateTimeOriginal for '%s', using upload time", header.Filename)
 		}
 
 		meta.ID = uuid.New()
@@ -303,28 +303,28 @@ func (h *MediaUploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		meta.Hash = hash
 		meta.ClientSource = clientSource
 
-		log.Printf("[INFO] UploadHandler: Detected client source '%s' for '%s'", clientSource, header.Filename)
+		mlog.Info("[INFO] UploadHandler: Detected client source '%s' for '%s'", clientSource, header.Filename)
 		if meta.Metadata != nil && meta.Metadata["gps_latitude"] != "" {
-			log.Printf("[INFO] UploadHandler: GPS found - lat=%s lon=%s", meta.Metadata["gps_latitude"], meta.Metadata["gps_longitude"])
+			mlog.Info("[INFO] UploadHandler: GPS found - lat=%s lon=%s", meta.Metadata["gps_latitude"], meta.Metadata["gps_longitude"])
 		}
 
 		// Extract video metadata if this is a video file
 		if meta.MediaType == domain.MediaTypeVideo && processor.IsVideoFile(header.Filename) {
-			log.Printf("[INFO] UploadHandler: Extracting video metadata for '%s'...", header.Filename)
+			mlog.Info("[INFO] UploadHandler: Extracting video metadata for '%s'...", header.Filename)
 			videoMeta, vErr := processor.ExtractVideoMetadata(ctx, absTargetPath)
 			if vErr != nil {
-				log.Printf("[WARN] UploadHandler: Failed to extract video metadata for '%s': %v", header.Filename, vErr)
+				mlog.Info("[WARN] UploadHandler: Failed to extract video metadata for '%s': %v", header.Filename, vErr)
 				// Non-fatal: continue without video metadata
 			} else if videoMeta != nil {
 				meta.VideoMetadata = *videoMeta
-				log.Printf("[INFO] UploadHandler: Video metadata extracted for '%s' - codec=%s res=%dx%d dur=%.1fs fps=%.2f",
+				mlog.Info("[INFO] UploadHandler: Video metadata extracted for '%s' - codec=%s res=%dx%d dur=%.1fs fps=%.2f",
 					header.Filename, videoMeta.VideoCodec, videoMeta.Width, videoMeta.Height, videoMeta.Duration, videoMeta.FrameRate)
 			}
 		}
-		log.Printf("[DEBUG] UploadHandler: Inserting record into DB for '%s'...", meta.ID)
+		mlog.Info("[DEBUG] UploadHandler: Inserting record into DB for '%s'...", meta.ID)
 
 		if err := h.mediaRepo.Create(ctx, meta); err != nil {
-			log.Printf("[ERROR] UploadHandler: Failed to insert media %s (hash=%s): %v", newFilename, hash[:8]+"...", err)
+			mlog.Info("[ERROR] UploadHandler: Failed to insert media %s (hash=%s): %v", newFilename, hash[:8]+"...", err)
 			continue
 		}
 
@@ -333,7 +333,7 @@ func (h *MediaUploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 			// Check if a video metadata job already exists for this media
 			existingJobs, err := h.jobRepo.GetJobsByMediaID(ctx, meta.ID)
 			if err != nil {
-				log.Printf("[WARN] UploadHandler: Failed to check existing jobs for video metadata: %v", err)
+				mlog.Info("[WARN] UploadHandler: Failed to check existing jobs for video metadata: %v", err)
 			} else {
 				hasVideoMetaJob := false
 				for _, j := range existingJobs {
@@ -353,9 +353,9 @@ func (h *MediaUploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 						UpdatedAt: time.Now(),
 					}
 					if err := h.jobRepo.Create(ctx, videoJob); err != nil {
-						log.Printf("[WARN] UploadHandler: Failed to create video metadata job for '%s': %v", header.Filename, err)
+						mlog.Info("[WARN] UploadHandler: Failed to create video metadata job for '%s': %v", header.Filename, err)
 					} else {
-						log.Printf("[INFO] UploadHandler: Created background video metadata job %s for '%s'", videoJob.ID.String(), header.Filename)
+						mlog.Info("[INFO] UploadHandler: Created background video metadata job %s for '%s'", videoJob.ID.String(), header.Filename)
 					}
 				}
 			}
@@ -371,10 +371,10 @@ func (h *MediaUploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 			"captured_at": meta.CapturedAt.Format(time.RFC3339),
 		})
 
-		log.Printf("[INFO] UploadHandler: Successfully processed '%s' (ID=%s)", header.Filename, meta.ID)
+		mlog.Info("[INFO] UploadHandler: Successfully processed '%s' (ID=%s)", header.Filename, meta.ID)
 	}
 
-	log.Printf("[DEBUG] UploadHandler: Finished. Uploaded count: %d, Skipped duplicates: %d", len(uploaded), len(skippedDuplicates))
+	mlog.Info("[DEBUG] UploadHandler: Finished. Uploaded count: %d, Skipped duplicates: %d", len(uploaded), len(skippedDuplicates))
 
 	response := map[string]interface{}{
 		"uploaded":           uploaded,
@@ -398,7 +398,7 @@ func min(a, b int) int {
 func extractExif(absPath string) domain.Metadata {
 	f, err := os.Open(absPath)
 	if err != nil {
-		log.Printf("[WARN] extractExif: failed to open %s: %v", absPath, err)
+		mlog.Info("[WARN] extractExif: failed to open %s: %v", absPath, err)
 		return domain.Metadata{}
 	}
 	defer f.Close()
@@ -406,7 +406,7 @@ func extractExif(absPath string) domain.Metadata {
 	reader := processor.NewExifReader()
 	info, err := reader.ReadExif(f)
 	if err != nil {
-		log.Printf("[WARN] extractExif: failed to read EXIF from %s: %v", absPath, err)
+		mlog.Info("[WARN] extractExif: failed to read EXIF from %s: %v", absPath, err)
 		return domain.Metadata{}
 	}
 	if info == nil {
@@ -427,7 +427,7 @@ func extractExif(absPath string) domain.Metadata {
 		md["gps_altitude"] = fmt.Sprintf("%f", info.GPSAltitude)
 	}
 
-	log.Printf("[EXIF] Extracted metadata for %s: %v", filepath.Base(absPath), md)
+	mlog.Info("[EXIF] Extracted metadata for %s: %v", filepath.Base(absPath), md)
 	return md
 }
 
@@ -456,7 +456,7 @@ func isValidMediaType(detectedType, extLower string) bool {
 		return true // Valid video format with known extension
 	default:
 		// MIME type doesn't match the expected category (e.g., detected as text/html but .jpg)
-		log.Printf("[WARN] UploadHandler: MIME mismatch for '%s' - detected '%s', allowed extensions include %s",
+		mlog.Info("[WARN] UploadHandler: MIME mismatch for '%s' - detected '%s', allowed extensions include %s",
 			extLower, detectedType, extLower)
 		return false // Reject suspicious files like exe disguised as jpg
 	}

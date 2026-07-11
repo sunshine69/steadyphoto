@@ -3,7 +3,7 @@ package database
 import (
 	"context"
 	"fmt"
-	"log"
+	"github.com/jbrodriguez/mlog"
 	"math"
 	"os"
 	"strings"
@@ -615,10 +615,10 @@ func (r *PostgresMediaRepository) Search(ctx context.Context, query string, scop
 	}
 
 	// Log SQL query for debugging
-	log.Printf("[DEBUG] ===== SEARCH SQL (COUNT) =====")
-	log.Printf("[DEBUG] QUERY: %s", queryStr)
-	log.Printf("[DEBUG] ARGS: %v", args)
-	log.Printf("[DEBUG] SCOPE: %s | QUERY: %s", scope, query)
+	mlog.Info("[DEBUG] ===== SEARCH SQL (COUNT) =====")
+	mlog.Info("[DEBUG] QUERY: %s", queryStr)
+	mlog.Info("[DEBUG] ARGS: %v", args)
+	mlog.Info("[DEBUG] SCOPE: %s | QUERY: %s", scope, query)
 
 	// Execute count query
 	err := r.db.GetContext(ctx, &total, queryStr, args...)
@@ -707,10 +707,10 @@ func (r *PostgresMediaRepository) Search(ctx context.Context, query string, scop
 	listQuery += fmt.Sprintf(" ORDER BY captured_at DESC LIMIT $%d OFFSET $%d", len(listArgs)-1, len(listArgs))
 
 	// Log SQL query for debugging
-	log.Printf("[DEBUG] ===== SEARCH SQL (LIST) =====")
-	log.Printf("[DEBUG] QUERY: %s", listQuery)
-	log.Printf("[DEBUG] ARGS: %v", listArgs)
-	log.Printf("[DEBUG] LIMIT: %d | OFFSET: %d", limit, offset)
+	mlog.Info("[DEBUG] ===== SEARCH SQL (LIST) =====")
+	mlog.Info("[DEBUG] QUERY: %s", listQuery)
+	mlog.Info("[DEBUG] ARGS: %v", listArgs)
+	mlog.Info("[DEBUG] LIMIT: %d | OFFSET: %d", limit, offset)
 
 	// Execute list query
 	err = r.db.SelectContext(ctx, &mediaList, listQuery, listArgs...)

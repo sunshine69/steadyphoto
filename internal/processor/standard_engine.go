@@ -7,7 +7,7 @@ import (
 	_ "image/gif"
 	"image/jpeg"
 	_ "image/png"
-	"log"
+	"github.com/jbrodriguez/mlog"
 	"os"
 
 	"golang.org/x/image/draw"
@@ -151,7 +151,7 @@ func rotate90CCWThenFlipH(img image.Image, w, h int) image.Image {
 // the thumbnail is always displayed upright regardless of device orientation.
 func (e *StandardImageEngine) Resize(ctx context.Context, inputPath string, outputPath string, width int) error {
 	// 1. Open the file
-	log.Printf("  [ENGINE] Opening input file: %s", inputPath)
+	mlog.Info("  [ENGINE] Opening input file: %s", inputPath)
 	file, err := os.Open(inputPath)
 	if err != nil {
 		return fmt.Errorf("failed to open input file %s: %w", inputPath, err)
@@ -161,10 +161,10 @@ func (e *StandardImageEngine) Resize(ctx context.Context, inputPath string, outp
 	// 2. Read EXIF orientation BEFORE decoding (decode consumes EXIF data)
 	orientation, err := NewExifReader().ReadOrientation(file)
 	if err != nil {
-		log.Printf("  [ENGINE] Warning: could not read EXIF orientation: %v", err)
+		mlog.Info("  [ENGINE] Warning: could not read EXIF orientation: %v", err)
 		orientation = OrientationNormal
 	}
-	log.Printf("  [ENGINE] EXIF orientation: %d", orientation)
+	mlog.Info("  [ENGINE] EXIF orientation: %d", orientation)
 
 	// 3. Decode the image
 	_, err = file.Seek(0, 0)
@@ -176,13 +176,13 @@ func (e *StandardImageEngine) Resize(ctx context.Context, inputPath string, outp
 	if err != nil {
 		return fmt.Errorf("failed to decode image %s (%s): %w", inputPath, format, err)
 	}
-	log.Printf("  [ENGINE] Decoded image: format=%s", format)
+	mlog.Info("  [ENGINE] Decoded image: format=%s", format)
 
 	// 4. Apply rotation/flip based on EXIF orientation (already read in step 2)
 	if orientation != OrientationNormal {
 		img, err = applyOrientationFromValue(img, orientation)
 		if err != nil {
-			log.Printf("  [ENGINE] Warning: could not apply orientation: %v", err)
+			mlog.Info("  [ENGINE] Warning: could not apply orientation: %v", err)
 		}
 	}
 
@@ -190,16 +190,16 @@ func (e *StandardImageEngine) Resize(ctx context.Context, inputPath string, outp
 	bounds := img.Bounds()
 	origWidth := bounds.Dx()
 	origHeight := bounds.Dy()
-	log.Printf("  [ENGINE] Original dimensions: %dx%d, target width: %d", origWidth, origHeight, width)
+	mlog.Info("  [ENGINE] Original dimensions: %dx%d, target width: %d", origWidth, origHeight, width)
 
 	if origWidth <= width {
 		width = origWidth
-		log.Printf("  [ENGINE] Image smaller than target, using original width: %d", width)
+		mlog.Info("  [ENGINE] Image smaller than target, using original width: %d", width)
 	}
 
 	ratio := float64(width) / float64(origWidth)
 	height := int(float64(origHeight) * ratio)
-	log.Printf("  [ENGINE] New dimensions: %dx%d (ratio: %.2f)", width, height, ratio)
+	mlog.Info("  [ENGINE] New dimensions: %dx%d (ratio: %.2f)", width, height, ratio)
 
 	// 6. Create destination image
 	dst := image.NewRGBA(image.Rect(0, 0, width, height))
@@ -208,7 +208,7 @@ func (e *StandardImageEngine) Resize(ctx context.Context, inputPath string, outp
 	draw.BiLinear.Scale(dst, dst.Bounds(), img, bounds, draw.Over, nil)
 
 	// 8. Create output file
-	log.Printf("  [ENGINE] Creating output file: %s", outputPath)
+	mlog.Info("  [ENGINE] Creating output file: %s", outputPath)
 	outFile, err := os.Create(outputPath)
 	if err != nil {
 		return fmt.Errorf("failed to create output file %s: %w", outputPath, err)
@@ -216,7 +216,7 @@ func (e *StandardImageEngine) Resize(ctx context.Context, inputPath string, outp
 	defer outFile.Close()
 
 	// 9. Encode the image
-	log.Printf("  [ENGINE] Encoding JPEG with quality: %d", e.Quality)
+	mlog.Info("  [ENGINE] Encoding JPEG with quality: %d", e.Quality)
 	err = jpeg.Encode(outFile, dst, &jpeg.Options{Quality: e.Quality})
 	if err != nil {
 		return fmt.Errorf("failed to encode jpeg for %s: %w", outputPath, err)
@@ -227,7 +227,7 @@ func (e *StandardImageEngine) Resize(ctx context.Context, inputPath string, outp
 	if err != nil {
 		return fmt.Errorf("failed to stat output file %s: %w", outputPath, err)
 	}
-	log.Printf("  [ENGINE] Output file created: %s (%d bytes)", outputPath, info.Size())
+	mlog.Info("  [ENGINE] Output file created: %s (%d bytes)", outputPath, info.Size())
 
 	return nil
 }

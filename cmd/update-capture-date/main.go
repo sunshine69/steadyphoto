@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"log"
+	"github.com/jbrodriguez/mlog"
 	"os"
 	"strings"
 	"time"
@@ -24,7 +24,7 @@ type MediaRecord struct {
 
 func main() {
 	if err := godotenv.Load(); err != nil {
-		log.Printf("Warning: Failed to load .env file: %v", err)
+		mlog.Info("Warning: Failed to load .env file: %v", err)
 	}
 
 	dbURL := os.Getenv("DATABASE_URL")
@@ -36,19 +36,19 @@ func main() {
 	}
 
 	if dbURL == "" {
-		log.Fatal("DATABASE_URL environment variable is not set")
+		mlog.Fatal("DATABASE_URL environment variable is not set")
 	}
 
 	flag.Parse()
 
 	db, err := sqlx.Connect("postgres", dbURL)
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		mlog.Fatalf("Failed to connect to database: %v", err)
 	}
 	defer db.Close()
 
 	if err := db.Ping(); err != nil {
-		log.Fatalf("Failed to ping database: %v", err)
+		mlog.Fatalf("Failed to ping database: %v", err)
 	}
 
 	ctx := context.Background()
@@ -58,10 +58,10 @@ func main() {
 	var records []MediaRecord
 	err = db.SelectContext(ctx, &records, query)
 	if err != nil {
-		log.Fatalf("Failed to query media records: %v", err)
+		mlog.Fatalf("Failed to query media records: %v", err)
 	}
 
-	log.Printf("Found %d media records to process", len(records))
+	mlog.Info("Found %d media records to process", len(records))
 
 	updated := 0
 	errors := 0
@@ -73,7 +73,7 @@ func main() {
 			continue
 		}
 		if err := json.Unmarshal([]byte(record.Metadata.String), &metadata); err != nil {
-			log.Printf("Failed to parse metadata for %s: %v", record.ID, err)
+			mlog.Info("Failed to parse metadata for %s: %v", record.ID, err)
 			errors++
 			continue
 		}
@@ -94,7 +94,7 @@ func main() {
 		// Parse the date string
 		parsedDate, err := parseDate(dateStr)
 		if err != nil {
-			log.Printf("Failed to parse date '%s' for %s: %v", dateStr, record.ID, err)
+			mlog.Info("Failed to parse date '%s' for %s: %v", dateStr, record.ID, err)
 			errors++
 			continue
 		}
@@ -108,16 +108,16 @@ func main() {
 		updateQuery := `UPDATE media SET captured_at = $1 WHERE id = $2`
 		_, err = db.ExecContext(ctx, updateQuery, parsedDate, record.ID)
 		if err != nil {
-			log.Printf("Failed to update captured_at for %s: %v", record.ID, err)
+			mlog.Info("Failed to update captured_at for %s: %v", record.ID, err)
 			errors++
 			continue
 		}
 
 		updated++
-		log.Printf("Updated %s: %s -> %s", record.ID, record.CapturedAt.Format(time.RFC3339), parsedDate.Format(time.RFC3339))
+		mlog.Info("Updated %s: %s -> %s", record.ID, record.CapturedAt.Format(time.RFC3339), parsedDate.Format(time.RFC3339))
 	}
 
-	log.Printf("Done! Updated: %d, Errors: %d", updated, errors)
+	mlog.Info("Done! Updated: %d, Errors: %d", updated, errors)
 }
 
 func parseDate(dateStr string) (time.Time, error) {

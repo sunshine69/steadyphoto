@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"github.com/jbrodriguez/mlog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,23 +25,23 @@ func main() {
 	uploadTempDir := filepath.Join(storageRoot, ".upload-temp")
 
 	if _, err := os.Stat(uploadTempDir); os.IsNotExist(err) {
-		log.Println("Upload temp directory does not exist - nothing to clean up")
+		mlog.Info("Upload temp directory does not exist - nothing to clean up")
 		return
 	}
 
 	// Load active sessions from .sessions.json
 	activeSessions := loadSessions(uploadTempDir)
 	
-	log.Printf("Found %d active sessions", len(activeSessions))
+	mlog.Info("Found %d active sessions", len(activeSessions))
 	
 	if len(activeSessions) == 0 {
-		log.Println("No active sessions found - safe to clean all temp files")
+		mlog.Info("No active sessions found - safe to clean all temp files")
 	}
 	
 	// List all temp files
 	entries, err := os.ReadDir(uploadTempDir)
 	if err != nil {
-		log.Fatalf("Failed to read upload temp directory: %v", err)
+		mlog.Fatalf("Failed to read upload temp directory: %v", err)
 	}
 	
 	var tempFiles []string
@@ -51,7 +51,7 @@ func main() {
 		}
 	}
 	
-	log.Printf("Found %d temp files", len(tempFiles))
+	mlog.Info("Found %d temp files", len(tempFiles))
 	
 	// Separate files by session
 	filesBySession := make(map[string][]string)
@@ -72,20 +72,20 @@ func main() {
 	}
 	
 	// Report status
-	log.Println("\n=== Status Report ===")
+	mlog.Info("\n=== Status Report ===")
 	
 	for sessionID, files := range filesBySession {
 		session := activeSessions[sessionID]
-		log.Printf("Session %s (active): %d/%d chunks uploaded", sessionID, len(session.UploadedChunks), session.TotalChunks)
+		mlog.Info("Session %s (active): %d/%d chunks uploaded", sessionID, len(session.UploadedChunks), session.TotalChunks)
 		for _, f := range files {
-			log.Printf("  - %s", f)
+			mlog.Info("  - %s", f)
 		}
 	}
 	
 	if len(orphans) > 0 {
-		log.Printf("\nOrphaned files (no active session): %d", len(orphans))
+		mlog.Info("\nOrphaned files (no active session): %d", len(orphans))
 		for _, f := range orphans {
-			log.Printf("  - %s", f)
+			mlog.Info("  - %s", f)
 		}
 	}
 	
@@ -99,15 +99,15 @@ func main() {
 			for _, file := range orphans {
 				path := filepath.Join(uploadTempDir, file)
 				if err := os.Remove(path); err != nil {
-					log.Printf("Failed to remove %s: %v", file, err)
+					mlog.Info("Failed to remove %s: %v", file, err)
 				} else {
-					log.Printf("Removed %s", file)
+					mlog.Info("Removed %s", file)
 				}
 			}
 		}
 	}
 	
-	log.Println("\n=== Cleanup Complete ===")
+	mlog.Info("\n=== Cleanup Complete ===")
 }
 
 // loadSessions reads .sessions.json and returns active sessions
@@ -117,15 +117,15 @@ func loadSessions(uploadTempDir string) map[string]*Session {
 	data, err := os.ReadFile(sessionsFile)
 	if err != nil {
 		if os.IsNotExist(err) {
-			log.Println("No sessions file found")
+			mlog.Info("No sessions file found")
 			return make(map[string]*Session)
 		}
-		log.Fatalf("Failed to read sessions file: %v", err)
+		mlog.Fatalf("Failed to read sessions file: %v", err)
 	}
 	
 	var sessions map[string]*Session
 	if err := json.Unmarshal(data, &sessions); err != nil {
-		log.Fatalf("Failed to parse sessions file: %v", err)
+		mlog.Fatalf("Failed to parse sessions file: %v", err)
 	}
 	
 	return sessions

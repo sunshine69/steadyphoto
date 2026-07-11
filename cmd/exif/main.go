@@ -5,10 +5,11 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/jbrodriguez/mlog"
 
 	"steadyphoto/internal/database"
 	"steadyphoto/internal/domain"
@@ -19,6 +20,10 @@ import (
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 )
+
+func init() {
+	mlog.Start(mlog.LevelInfo, "")
+}
 
 const (
 	defaultAPIPort = "8081"
@@ -65,7 +70,7 @@ Examples:
 func main() {
 	// Load environment variables from .env file
 	if err := godotenv.Load(); err != nil {
-		log.Printf("Warning: Failed to load .env file: %v", err)
+		mlog.Info("Warning: Failed to load .env file: %v", err)
 	}
 
 	// CLI flags
@@ -84,13 +89,13 @@ func main() {
 
 	// Validate flags
 	if *mediaID != "" && *userEmail != "" {
-		log.Fatal("Cannot specify both -media-id and -user (mutually exclusive)")
+		mlog.Fatal("Cannot specify both -media-id and -user (mutually exclusive)")
 	}
 
 	// Get database connection
 	dbURL := os.Getenv(dbURLKey)
 	if dbURL == "" {
-		log.Fatal("DATABASE_URL environment variable is not set")
+		mlog.Fatal("DATABASE_URL environment variable is not set")
 	}
 
 	// Get storage root
@@ -99,18 +104,18 @@ func main() {
 		storageRoot = defaultStorage
 	}
 
-	log.Printf("Connecting to database...")
+	mlog.Info("Connecting to database...")
 	db, err := sqlx.Connect("postgres", dbURL)
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		mlog.Fatalf("Failed to connect to database: %v", err)
 	}
 	defer db.Close()
 
 	if err := db.Ping(); err != nil {
-		log.Fatalf("Failed to ping database: %v", err)
+		mlog.Fatalf("Failed to ping database: %v", err)
 	}
 
-	log.Printf("Database connected successfully")
+	mlog.Info("Database connected successfully")
 
 	// Create repositories
 	mediaRepo := database.NewPostgresMediaRepository(db)
@@ -129,44 +134,44 @@ func main() {
 		// Single media item mode
 		uid, parseErr := uuid.Parse(*mediaID)
 		if parseErr != nil {
-			log.Fatalf("Invalid media ID format '%s': %v", *mediaID, parseErr)
+			mlog.Fatalf("Invalid media ID format '%s': %v", *mediaID, parseErr)
 		}
 
 		media, getErr := mediaRepo.GetByID(ctx, uid, nil)
 		if getErr != nil {
-			log.Fatalf("Failed to get media by ID %s: %v", *mediaID, getErr)
+			mlog.Fatalf("Failed to get media by ID %s: %v", *mediaID, getErr)
 		}
 
 		mediaList = []*domain.Media{media}
 		mode = fmt.Sprintf("single media: %s", media.Path)
-		log.Printf("Processing single media item: %s", media.Path)
+		mlog.Info("Processing single media item: %s", media.Path)
 
 	case *userEmail != "":
 		// User mode - find user and get all their media
 		user, userErr := userRepo.GetByEmail(ctx, *userEmail)
 		if userErr != nil {
-			log.Fatalf("Failed to find user with email '%s': %v", *userEmail, userErr)
+			mlog.Fatalf("Failed to find user with email '%s': %v", *userEmail, userErr)
 		}
 
 		userMediaList, total, userListErr := mediaRepo.List(ctx, 1000000, 0, &user.ID)
 		if userListErr != nil {
-			log.Fatalf("Failed to list media for user: %v", userListErr)
+			mlog.Fatalf("Failed to list media for user: %v", userListErr)
 		}
 
 		mediaList = userMediaList
 		mode = fmt.Sprintf("user: %s (%d items)", *userEmail, total)
-		log.Printf("Processing %d media items for user: %s", total, *userEmail)
+		mlog.Info("Processing %d media items for user: %s", total, *userEmail)
 
 	default:
 		// No flags - scan all media in the database
 		allMedia, total, listErr := mediaRepo.ListAll(ctx, 1000000, 0)
 		if listErr != nil {
-			log.Fatalf("Failed to list all media: %v", listErr)
+			mlog.Fatalf("Failed to list all media: %v", listErr)
 		}
 
 		mediaList = allMedia
 		mode = fmt.Sprintf("all media in database (%d items)", total)
-		log.Printf("Processing all %d media items in database", total)
+		mlog.Info("Processing all %d media items in database", total)
 	}
 
 	// Process each media item
@@ -190,7 +195,7 @@ func main() {
 		// Check if file exists
 		if _, statErr := os.Stat(fullPath); os.IsNotExist(statErr) {
 			if *verbose {
-				log.Printf("  File not found, skipping: %s", fullPath)
+				mlog.Info("  File not found, skipping: %s", fullPath)
 			}
 			skipped++
 			continue
@@ -200,7 +205,7 @@ func main() {
 		file, openErr := os.Open(fullPath)
 		if openErr != nil {
 			if *verbose {
-				log.Printf("  Failed to open file: %v", openErr)
+				mlog.Info("  Failed to open file: %v", openErr)
 			}
 			errors++
 			continue
@@ -211,7 +216,7 @@ func main() {
 
 		if readErr != nil {
 			if *verbose {
-				log.Printf("  Failed to read EXIF: %v", readErr)
+				mlog.Info("  Failed to read EXIF: %v", readErr)
 			}
 			errors++
 			continue
@@ -219,7 +224,7 @@ func main() {
 
 		if exifInfo == nil {
 			if *verbose {
-				log.Printf("  No EXIF data found")
+				mlog.Info("  No EXIF data found")
 			}
 			processed++
 			continue
@@ -232,18 +237,18 @@ func main() {
 		var videoMeta *domain.VideoMetadata
 		absPath := fullPath
 		if isVideoFile(fullPath) {
-			log.Printf("  Extracting video metadata from: %s", absPath)
+			mlog.Info("  Extracting video metadata from: %s", absPath)
 			vm, vmErr := processor.ExtractVideoMetadata(ctx, absPath)
 			if vmErr != nil {
 				if *verbose {
-					log.Printf("  Failed to extract video metadata: %v", vmErr)
+					mlog.Info("  Failed to extract video metadata: %v", vmErr)
 				}
 				errors++
 				continue
 			}
 			if vm != nil {
 				videoMeta = vm
-				log.Printf("  Video metadata: duration=%.1fs, codec=%s", vm.Duration, vm.VideoCodec)
+				mlog.Info("  Video metadata: duration=%.1fs, codec=%s", vm.Duration, vm.VideoCodec)
 			}
 		}
 
@@ -259,10 +264,10 @@ func main() {
 
 		// Store for final summary
 		result := ExifUpdateResult{
-			ID:         media.ID.String(),
-			Path:       media.Path,
-			Metadata:   metadata,
-			VideoMeta:  videoMeta,
+			ID:        media.ID.String(),
+			Path:      media.Path,
+			Metadata:  metadata,
+			VideoMeta: videoMeta,
 		}
 		results = append(results, result)
 
@@ -280,7 +285,7 @@ func main() {
 		updateErr := mediaRepo.Update(ctx, media)
 		if updateErr != nil {
 			if *verbose {
-				log.Printf("  Failed to update database: %v", updateErr)
+				mlog.Info("  Failed to update database: %v", updateErr)
 			}
 			errors++
 			continue
@@ -304,20 +309,20 @@ func main() {
 	}
 
 	// Print final stats (always shown)
-	log.Printf("\n=== EXIF Update Complete ===")
-	log.Printf("Mode: %s", mode)
-	log.Printf("Total items: %d", len(mediaList))
-	log.Printf("Processed: %d", processed)
-	log.Printf("Updated: %d", updated)
-	log.Printf("Skipped: %d", skipped)
-	log.Printf("Errors: %d", errors)
+	mlog.Info("\n=== EXIF Update Complete ===")
+	mlog.Info("Mode: %s", mode)
+	mlog.Info("Total items: %d", len(mediaList))
+	mlog.Info("Processed: %d", processed)
+	mlog.Info("Updated: %d", updated)
+	mlog.Info("Skipped: %d", skipped)
+	mlog.Info("Errors: %d", errors)
 }
 
 // ExifUpdateResult represents the result of an EXIF update
 type ExifUpdateResult struct {
-	ID        string          `json:"id"`
-	Path      string          `json:"path"`
-	Metadata  domain.Metadata `json:"metadata"`
+	ID        string                `json:"id"`
+	Path      string                `json:"path"`
+	Metadata  domain.Metadata       `json:"metadata"`
 	VideoMeta *domain.VideoMetadata `json:"videoMetadata,omitempty"`
 }
 
@@ -381,4 +386,3 @@ func buildMetadataFromExif(info *processor.ExifInfo) domain.Metadata {
 
 	return metadata
 }
-

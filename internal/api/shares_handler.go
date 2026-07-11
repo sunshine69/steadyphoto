@@ -3,7 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"github.com/jbrodriguez/mlog"
 	"net/http"
 	"net/url"
 	"os"
@@ -140,7 +140,7 @@ func (h *ShareHandler) handleCreateShare(w http.ResponseWriter, r *http.Request)
 
 	var req CreateShareRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		log.Printf("[ERROR] handleCreateShare - decode body: %v", err)
+		mlog.Info("[ERROR] handleCreateShare - decode body: %v", err)
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
@@ -161,12 +161,12 @@ func (h *ShareHandler) handleCreateShare(w http.ResponseWriter, r *http.Request)
 		}
 		user, err := h.userRepo.GetByID(ctx, shareeID)
 		if err != nil {
-			log.Printf("[ERROR] handleCreateShare - user not found: %v", err)
+			mlog.Info("[ERROR] handleCreateShare - user not found: %v", err)
 			http.Error(w, "User not found", http.StatusBadRequest)
 			return
 		}
 		if user.Status == domain.UserStatusDisabled || user.Status == domain.UserStatusRejected {
-			log.Printf("[WARN] handleCreateShare - cannot share with disabled/rejected user: %s", shareeID)
+			mlog.Info("[WARN] handleCreateShare - cannot share with disabled/rejected user: %s", shareeID)
 			http.Error(w, "Cannot share with a disabled or rejected user", http.StatusBadRequest)
 			return
 		}
@@ -178,14 +178,14 @@ func (h *ShareHandler) handleCreateShare(w http.ResponseWriter, r *http.Request)
 
 	// Validate that media items belong to the sharer
 	for _, mediaID := range req.MediaIDs {
-		log.Printf("[DEBUG] handleCreateShare - validating ownership for mediaID: %s, userID: %s", mediaID, userID)
+		mlog.Info("[DEBUG] handleCreateShare - validating ownership for mediaID: %s, userID: %s", mediaID, userID)
 		media, err := h.mediaRepo.GetByID(ctx, mediaID, &userID)
 		if err != nil || media == nil {
-			log.Printf("[ERROR] handleCreateShare - media not found or access denied for mediaID=%s, userID=%s: %v", mediaID, userID, err)
+			mlog.Info("[ERROR] handleCreateShare - media not found or access denied for mediaID=%s, userID=%s: %v", mediaID, userID, err)
 			http.Error(w, "One or more media items do not belong to you", http.StatusBadRequest)
 			return
 		}
-		log.Printf("[DEBUG] handleCreateShare - ownership validated for mediaID: %s (filename: %s)", media.ID, media.Filename)
+		mlog.Info("[DEBUG] handleCreateShare - ownership validated for mediaID: %s (filename: %s)", media.ID, media.Filename)
 		_ = media // validated
 	}
 
@@ -193,7 +193,7 @@ func (h *ShareHandler) handleCreateShare(w http.ResponseWriter, r *http.Request)
 	for _, albumID := range req.AlbumIDs {
 		_, err := h.albumRepo.GetByID(ctx, albumID, userID)
 		if err != nil {
-			log.Printf("[ERROR] handleCreateShare - album not found or access denied: %v", err)
+			mlog.Info("[ERROR] handleCreateShare - album not found or access denied: %v", err)
 			http.Error(w, "One or more albums do not belong to you", http.StatusBadRequest)
 			return
 		}
@@ -208,7 +208,7 @@ func (h *ShareHandler) handleCreateShare(w http.ResponseWriter, r *http.Request)
 		// Create the share group
 		share, err := h.shareRepo.CreateShare(ctx, userID, shareeID)
 		if err != nil {
-			log.Printf("[ERROR] handleCreateShare - create share: %v", err)
+			mlog.Info("[ERROR] handleCreateShare - create share: %v", err)
 			http.Error(w, "Failed to create share", http.StatusInternalServerError)
 			return
 		}
@@ -216,7 +216,7 @@ func (h *ShareHandler) handleCreateShare(w http.ResponseWriter, r *http.Request)
 		// Share media items (if any)
 		for _, mediaID := range req.MediaIDs {
 			if err := h.mediaShareRepo.CreateMediaShare(ctx, share.ID, mediaID); err != nil {
-				log.Printf("[ERROR] handleCreateShare - create media share: %v", err)
+				mlog.Info("[ERROR] handleCreateShare - create media share: %v", err)
 				http.Error(w, "Failed to create media share", http.StatusInternalServerError)
 				return
 			}
@@ -226,7 +226,7 @@ func (h *ShareHandler) handleCreateShare(w http.ResponseWriter, r *http.Request)
 		// Share albums (if any)
 		for _, albumID := range req.AlbumIDs {
 			if err := h.albumShareRepo.CreateAlbumShare(ctx, share.ID, albumID); err != nil {
-				log.Printf("[ERROR] handleCreateShare - create album share: %v", err)
+				mlog.Info("[ERROR] handleCreateShare - create album share: %v", err)
 				http.Error(w, "Failed to create album share", http.StatusInternalServerError)
 				return
 			}
@@ -285,7 +285,7 @@ func (h *ShareHandler) handleListSharedMedia(w http.ResponseWriter, r *http.Requ
 
 	items, totalItems, err := h.mediaShareRepo.ListSharedMedia(ctx, userID, limit, offset)
 	if err != nil {
-		log.Printf("[ERROR] handleListSharedMedia: %v", err)
+		mlog.Info("[ERROR] handleListSharedMedia: %v", err)
 		http.Error(w, "Failed to list shared media", http.StatusInternalServerError)
 		return
 	}
@@ -345,7 +345,7 @@ func (h *ShareHandler) handleListSharedAlbums(w http.ResponseWriter, r *http.Req
 
 	items, totalItems, err := h.mediaShareRepo.ListSharedAlbums(ctx, userID, limit, offset)
 	if err != nil {
-		log.Printf("[ERROR] handleListSharedAlbums: %v", err)
+		mlog.Info("[ERROR] handleListSharedAlbums: %v", err)
 		http.Error(w, "Failed to list shared albums", http.StatusInternalServerError)
 		return
 	}
@@ -393,7 +393,7 @@ func (h *ShareHandler) handleCreatePublicShare(w http.ResponseWriter, r *http.Re
 
 	var req CreatePublicShareRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		log.Printf("[ERROR] handleCreatePublicShare - decode body: %v", err)
+		mlog.Info("[ERROR] handleCreatePublicShare - decode body: %v", err)
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
@@ -407,14 +407,14 @@ func (h *ShareHandler) handleCreatePublicShare(w http.ResponseWriter, r *http.Re
 	if req.ResourceType == "media" {
 		_, err := h.mediaRepo.GetByID(ctx, req.ResourceID, &userID)
 		if err != nil || req.ResourceID == uuid.Nil {
-			log.Printf("[ERROR] handleCreatePublicShare - media not found or access denied: %v", err)
+			mlog.Info("[ERROR] handleCreatePublicShare - media not found or access denied: %v", err)
 			http.Error(w, "Media item not found or does not belong to you", http.StatusBadRequest)
 			return
 		}
 	} else if req.ResourceType == "album" {
 		_, err := h.albumRepo.GetByID(ctx, req.ResourceID, userID)
 		if err != nil || req.ResourceID == uuid.Nil {
-			log.Printf("[ERROR] handleCreatePublicShare - album not found or access denied: %v", err)
+			mlog.Info("[ERROR] handleCreatePublicShare - album not found or access denied: %v", err)
 			http.Error(w, "Album not found or does not belong to you", http.StatusBadRequest)
 			return
 		}
@@ -425,7 +425,7 @@ func (h *ShareHandler) handleCreatePublicShare(w http.ResponseWriter, r *http.Re
 	if req.Password != nil && *req.Password != "" {
 		hashed, err := security.HashPassword(*req.Password)
 		if err != nil {
-			log.Printf("[ERROR] handleCreatePublicShare - hash password: %v", err)
+			mlog.Info("[ERROR] handleCreatePublicShare - hash password: %v", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
@@ -434,7 +434,7 @@ func (h *ShareHandler) handleCreatePublicShare(w http.ResponseWriter, r *http.Re
 
 	publicShare, err := h.publicShareRepo.CreatePublicShare(ctx, userID, req.ResourceType, req.ResourceID, passwordHash, req.ExpiresAt)
 	if err != nil {
-		log.Printf("[ERROR] handleCreatePublicShare - create public share: %v", err)
+		mlog.Info("[ERROR] handleCreatePublicShare - create public share: %v", err)
 		http.Error(w, "Failed to create public share link", http.StatusInternalServerError)
 		return
 	}
@@ -464,7 +464,7 @@ func (h *ShareHandler) handleDeletePublicShare(w http.ResponseWriter, r *http.Re
 	idStr := chi.URLParam(r, "id")
 	publicShareID, err := uuid.Parse(idStr)
 	if err != nil {
-		log.Printf("[ERROR] handleDeletePublicShare - invalid UUID: %v", err)
+		mlog.Info("[ERROR] handleDeletePublicShare - invalid UUID: %v", err)
 		http.Error(w, "Invalid share link ID", http.StatusBadRequest)
 		return
 	}
@@ -472,7 +472,7 @@ func (h *ShareHandler) handleDeletePublicShare(w http.ResponseWriter, r *http.Re
 	// Get the public share to verify ownership (use ID for lookup)
 	publicShare, err := h.publicShareRepo.GetByID(ctx, publicShareID)
 	if err != nil {
-		log.Printf("[ERROR] handleDeletePublicShare - get public share: %v", err)
+		mlog.Info("[ERROR] handleDeletePublicShare - get public share: %v", err)
 		http.Error(w, "Share link not found", http.StatusNotFound)
 		return
 	}
@@ -485,7 +485,7 @@ func (h *ShareHandler) handleDeletePublicShare(w http.ResponseWriter, r *http.Re
 	// Delete by token (need to get the token from the retrieved share)
 	err = h.publicShareRepo.DeleteByToken(ctx, publicShare.Token)
 	if err != nil {
-		log.Printf("[ERROR] handleDeletePublicShare - delete public share: %v", err)
+		mlog.Info("[ERROR] handleDeletePublicShare - delete public share: %v", err)
 		http.Error(w, "Failed to revoke share link", http.StatusInternalServerError)
 		return
 	}
@@ -506,7 +506,7 @@ func (h *ShareHandler) handleListPublicShares(w http.ResponseWriter, r *http.Req
 
 	list, err := h.publicShareRepo.ListBySharer(ctx, userID)
 	if err != nil {
-		log.Printf("[ERROR] handleListPublicShares: %v", err)
+		mlog.Info("[ERROR] handleListPublicShares: %v", err)
 		http.Error(w, "Failed to list public shares", http.StatusInternalServerError)
 		return
 	}
@@ -548,7 +548,7 @@ func (h *ShareHandler) handleListPublicShares(w http.ResponseWriter, r *http.Req
 
 // handleGetPublicShareMedia handles GET /public/shares/media/{token} — View shared media via public link.
 func (h *ShareHandler) handleGetPublicShareMedia(w http.ResponseWriter, r *http.Request) {
-log.Printf("[DEBUG] handleGetPublicShareMedia called - token: %s", chi.URLParam(r, "token"))
+mlog.Info("[DEBUG] handleGetPublicShareMedia called - token: %s", chi.URLParam(r, "token"))
 	ctx := r.Context()
 
 	tokenStr := chi.URLParam(r, "token")
@@ -556,14 +556,14 @@ log.Printf("[DEBUG] handleGetPublicShareMedia called - token: %s", chi.URLParam(
 	// Get the public share by token
 	publicShare, err := h.publicShareRepo.GetByToken(ctx, tokenStr)
 	if err != nil {
-		log.Printf("[ERROR] handleGetPublicShareMedia - get public share: %v", err)
+		mlog.Info("[ERROR] handleGetPublicShareMedia - get public share: %v", err)
 		http.Error(w, "Share link not found or expired", http.StatusNotFound)
 		return
 	}
 
 	// Check if the share has expired
 	if publicShare.ExpiresAt != nil && time.Now().After(*publicShare.ExpiresAt) {
-		log.Printf("[WARN] handleGetPublicShareMedia - expired public share accessed: %s", tokenStr)
+		mlog.Info("[WARN] handleGetPublicShareMedia - expired public share accessed: %s", tokenStr)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusGone)
 		json.NewEncoder(w).Encode(map[string]string{"error": "This share link has expired"})
@@ -574,7 +574,7 @@ log.Printf("[DEBUG] handleGetPublicShareMedia called - token: %s", chi.URLParam(
 	if publicShare.PasswordHash != nil && *publicShare.PasswordHash != "" {
 		password := r.URL.Query().Get("password")
 		if password == "" || !security.CheckPasswordHash(password, *publicShare.PasswordHash) {
-			log.Printf("[WARN] handleGetPublicShareMedia - wrong/missing password for share: %s", tokenStr)
+			mlog.Info("[WARN] handleGetPublicShareMedia - wrong/missing password for share: %s", tokenStr)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusForbidden)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Incorrect or missing password"})
@@ -585,7 +585,7 @@ log.Printf("[DEBUG] handleGetPublicShareMedia called - token: %s", chi.URLParam(
 	// Get the media item by token (this does its own ownership check internally since it's public)
 	mediaItem, err := h.publicShareRepo.GetSharedMediaByToken(ctx, tokenStr)
 	if err != nil {
-		log.Printf("[ERROR] handleGetPublicShareMedia - get shared media: %v", err)
+		mlog.Info("[ERROR] handleGetPublicShareMedia - get shared media: %v", err)
 		http.Error(w, "Media not found", http.StatusNotFound)
 		return
 	}
@@ -611,14 +611,14 @@ func (h *ShareHandler) handleGetPublicShareAlbum(w http.ResponseWriter, r *http.
 	// Get the public share by token
 	publicShare, err := h.publicShareRepo.GetByToken(ctx, tokenStr)
 	if err != nil {
-		log.Printf("[ERROR] handleGetPublicShareAlbum - get public share: %v", err)
+		mlog.Info("[ERROR] handleGetPublicShareAlbum - get public share: %v", err)
 		http.Error(w, "Share link not found or expired", http.StatusNotFound)
 		return
 	}
 
 	// Check if the share has expired
 	if publicShare.ExpiresAt != nil && time.Now().After(*publicShare.ExpiresAt) {
-		log.Printf("[WARN] handleGetPublicShareAlbum - expired public share accessed: %s", tokenStr)
+		mlog.Info("[WARN] handleGetPublicShareAlbum - expired public share accessed: %s", tokenStr)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusGone)
 		json.NewEncoder(w).Encode(map[string]string{"error": "This share link has expired"})
@@ -629,7 +629,7 @@ func (h *ShareHandler) handleGetPublicShareAlbum(w http.ResponseWriter, r *http.
 	if publicShare.PasswordHash != nil && *publicShare.PasswordHash != "" {
 		password := r.URL.Query().Get("password")
 		if password == "" || !security.CheckPasswordHash(password, *publicShare.PasswordHash) {
-			log.Printf("[WARN] handleGetPublicShareAlbum - wrong/missing password for share: %s", tokenStr)
+			mlog.Info("[WARN] handleGetPublicShareAlbum - wrong/missing password for share: %s", tokenStr)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusForbidden)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Incorrect or missing password"})
@@ -640,7 +640,7 @@ func (h *ShareHandler) handleGetPublicShareAlbum(w http.ResponseWriter, r *http.
 	// Get the album by token (this does its own ownership check internally since it's public)
 	albumItem, err := h.publicShareRepo.GetSharedAlbumByToken(ctx, tokenStr)
 	if err != nil {
-		log.Printf("[ERROR] handleGetPublicShareAlbum - get shared album: %v", err)
+		mlog.Info("[ERROR] handleGetPublicShareAlbum - get shared album: %v", err)
 		http.Error(w, "Album not found", http.StatusNotFound)
 		return
 	}
@@ -690,14 +690,14 @@ func (h *ShareHandler) handleGetPublicShareAlbumMedia(w http.ResponseWriter, r *
 	// Get the public share by token
 	publicShare, err := h.publicShareRepo.GetByToken(ctx, tokenStr)
 	if err != nil {
-		log.Printf("[ERROR] handleGetPublicShareAlbumMedia - get public share: %v", err)
+		mlog.Info("[ERROR] handleGetPublicShareAlbumMedia - get public share: %v", err)
 		http.Error(w, "Share link not found or expired", http.StatusNotFound)
 		return
 	}
 
 	// Check if the share has expired
 	if publicShare.ExpiresAt != nil && time.Now().After(*publicShare.ExpiresAt) {
-		log.Printf("[WARN] handleGetPublicShareAlbumMedia - expired public share accessed: %s", tokenStr)
+		mlog.Info("[WARN] handleGetPublicShareAlbumMedia - expired public share accessed: %s", tokenStr)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusGone)
 		json.NewEncoder(w).Encode(map[string]string{"error": "This share link has expired"})
@@ -708,7 +708,7 @@ func (h *ShareHandler) handleGetPublicShareAlbumMedia(w http.ResponseWriter, r *
 	if publicShare.PasswordHash != nil && *publicShare.PasswordHash != "" {
 		password := r.URL.Query().Get("password")
 		if password == "" || !security.CheckPasswordHash(password, *publicShare.PasswordHash) {
-			log.Printf("[WARN] handleGetPublicShareAlbumMedia - wrong/missing password for share: %s", tokenStr)
+			mlog.Info("[WARN] handleGetPublicShareAlbumMedia - wrong/missing password for share: %s", tokenStr)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusForbidden)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Incorrect or missing password"})
@@ -719,7 +719,7 @@ func (h *ShareHandler) handleGetPublicShareAlbumMedia(w http.ResponseWriter, r *
 	// Get the album by token (this does its own ownership check internally since it's public)
 	albumItem, err := h.publicShareRepo.GetSharedAlbumByToken(ctx, tokenStr)
 	if err != nil {
-		log.Printf("[ERROR] handleGetPublicShareAlbumMedia - get shared album: %v", err)
+		mlog.Info("[ERROR] handleGetPublicShareAlbumMedia - get shared album: %v", err)
 		http.Error(w, "Album not found", http.StatusNotFound)
 		return
 	}
@@ -806,7 +806,7 @@ func (s *Server) handleGetPublicShareMediaOriginal(w http.ResponseWriter, r *htt
 	// Original file by token for individual media share
 	media, err := s.publicShareRepo.GetOriginalFileByToken(ctx, tokenStr)
 	if err != nil {
-		log.Printf("[ERROR] handleGetPublicShareMediaOriginal - get shared media: %v", err)
+		mlog.Info("[ERROR] handleGetPublicShareMediaOriginal - get shared media: %v", err)
 		http.Error(w, "Media not found", http.StatusNotFound)
 		return
 	}
@@ -820,7 +820,7 @@ func (s *Server) handleGetPublicShareMediaOriginal(w http.ResponseWriter, r *htt
 	}
 
 	if resolveErr != nil {
-		log.Printf("[ERROR] handleGetPublicShareMediaOriginal - resolvePath (%s): %v", targetPath, resolveErr)
+		mlog.Info("[ERROR] handleGetPublicShareMediaOriginal - resolvePath (%s): %v", targetPath, resolveErr)
 		http.Error(w, "Could not locate file: "+resolveErr.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -848,7 +848,7 @@ func (s *Server) handleGetPublicShareMediaThumb(w http.ResponseWriter, r *http.R
 	// Thumbnail by token for individual media share
 	media, err := s.publicShareRepo.GetThumbnailFileByToken(ctx, tokenStr)
 	if err != nil {
-		log.Printf("[ERROR] handleGetPublicShareMediaThumb - get shared media: %v", err)
+		mlog.Info("[ERROR] handleGetPublicShareMediaThumb - get shared media: %v", err)
 		http.Error(w, "Media not found", http.StatusNotFound)
 		return
 	}
@@ -870,7 +870,7 @@ func (s *Server) handleGetPublicShareMediaThumb(w http.ResponseWriter, r *http.R
 	fullThumbPath := filepath.Join(s.thumbRoot, thumbRelPath)
 
 	if _, err := os.Stat(fullThumbPath); os.IsNotExist(err) {
-		log.Printf("[WARN] handleGetPublicShareMediaThumb: Thumbnail NOT FOUND at %s. Attempting fallback to original.", fullThumbPath)
+		mlog.Info("[WARN] handleGetPublicShareMediaThumb: Thumbnail NOT FOUND at %s. Attempting fallback to original.", fullThumbPath)
 		targetPath := media.Path
 		absPath, resolveErr := s.storageService.ResolvePath(targetPath)
 		if resolveErr != nil {
@@ -879,14 +879,14 @@ func (s *Server) handleGetPublicShareMediaThumb(w http.ResponseWriter, r *http.R
 		}
 
 		if resolveErr != nil {
-			log.Printf("[ERROR] handleGetPublicShareMediaThumb - fallback failed for (%s): %v", targetPath, resolveErr)
+			mlog.Info("[ERROR] handleGetPublicShareMediaThumb - fallback failed for (%s): %v", targetPath, resolveErr)
 			http.Error(w, "Thumbnail not found and fallback failed", http.StatusNotFound)
 			return
 		}
 
 		contentType := s.getContentType(media.MediaType, media.Filename)
 		w.Header().Set("Content-Type", contentType)
-		log.Printf("[INFO] handleGetPublicShareMediaThumb: Serving original file as fallback from %s", absPath)
+		mlog.Info("[INFO] handleGetPublicShareMediaThumb: Serving original file as fallback from %s", absPath)
 		http.ServeFile(w, r, absPath)
 		return
 	}
@@ -903,14 +903,14 @@ func (s *Server) serveAlbumMediaOriginal(w http.ResponseWriter, r *http.Request,
 	// Get the media item by token for public serving
 	publicShare, err := s.publicShareRepo.GetByToken(ctx, tokenStr)
 	if err != nil {
-		log.Printf("[ERROR] serveAlbumMediaOriginal - get public share: %v", err)
+		mlog.Info("[ERROR] serveAlbumMediaOriginal - get public share: %v", err)
 		http.Error(w, "Share link not found or expired", http.StatusNotFound)
 		return
 	}
 
 	// Check if the share has expired
 	if publicShare.ExpiresAt != nil && time.Now().After(*publicShare.ExpiresAt) {
-		log.Printf("[WARN] serveAlbumMediaOriginal - expired public share accessed: %s", tokenStr)
+		mlog.Info("[WARN] serveAlbumMediaOriginal - expired public share accessed: %s", tokenStr)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusGone)
 		json.NewEncoder(w).Encode(map[string]string{"error": "This share link has expired"})
@@ -921,7 +921,7 @@ func (s *Server) serveAlbumMediaOriginal(w http.ResponseWriter, r *http.Request,
 	if publicShare.PasswordHash != nil && *publicShare.PasswordHash != "" {
 		password := r.URL.Query().Get("password")
 		if password == "" || !security.CheckPasswordHash(password, *publicShare.PasswordHash) {
-			log.Printf("[WARN] serveAlbumMediaOriginal - wrong/missing password for share: %s", tokenStr)
+			mlog.Info("[WARN] serveAlbumMediaOriginal - wrong/missing password for share: %s", tokenStr)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusForbidden)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Incorrect or missing password"})
@@ -932,7 +932,7 @@ func (s *Server) serveAlbumMediaOriginal(w http.ResponseWriter, r *http.Request,
 	// Get the album with media items by token
 	albumItem, err := s.publicShareRepo.GetSharedAlbumByToken(ctx, tokenStr)
 	if err != nil {
-		log.Printf("[ERROR] serveAlbumMediaOriginal - get shared album: %v", err)
+		mlog.Info("[ERROR] serveAlbumMediaOriginal - get shared album: %v", err)
 		http.Error(w, "Album not found", http.StatusNotFound)
 		return
 	}
@@ -947,7 +947,7 @@ func (s *Server) serveAlbumMediaOriginal(w http.ResponseWriter, r *http.Request,
 	}
 
 	if media == nil {
-		log.Printf("[ERROR] serveAlbumMediaOriginal - media not found for path: %s", mediaPath)
+		mlog.Info("[ERROR] serveAlbumMediaOriginal - media not found for path: %s", mediaPath)
 		http.Error(w, "Media not found in album", http.StatusNotFound)
 		return
 	}
@@ -961,7 +961,7 @@ func (s *Server) serveAlbumMediaOriginal(w http.ResponseWriter, r *http.Request,
 	}
 
 	if resolveErr != nil {
-		log.Printf("[ERROR] serveAlbumMediaOriginal - resolvePath (%s): %v", targetPath, resolveErr)
+		mlog.Info("[ERROR] serveAlbumMediaOriginal - resolvePath (%s): %v", targetPath, resolveErr)
 		http.Error(w, "Could not locate file: "+resolveErr.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -981,14 +981,14 @@ func (s *Server) serveAlbumMediaThumb(w http.ResponseWriter, r *http.Request, to
 	// Get the media item by token for public serving
 	publicShare, err := s.publicShareRepo.GetByToken(ctx, tokenStr)
 	if err != nil {
-		log.Printf("[ERROR] serveAlbumMediaThumb - get public share: %v", err)
+		mlog.Info("[ERROR] serveAlbumMediaThumb - get public share: %v", err)
 		http.Error(w, "Share link not found or expired", http.StatusNotFound)
 		return
 	}
 
 	// Check if the share has expired
 	if publicShare.ExpiresAt != nil && time.Now().After(*publicShare.ExpiresAt) {
-		log.Printf("[WARN] serveAlbumMediaThumb - expired public share accessed: %s", tokenStr)
+		mlog.Info("[WARN] serveAlbumMediaThumb - expired public share accessed: %s", tokenStr)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusGone)
 		json.NewEncoder(w).Encode(map[string]string{"error": "This share link has expired"})
@@ -999,7 +999,7 @@ func (s *Server) serveAlbumMediaThumb(w http.ResponseWriter, r *http.Request, to
 	if publicShare.PasswordHash != nil && *publicShare.PasswordHash != "" {
 		password := r.URL.Query().Get("password")
 		if password == "" || !security.CheckPasswordHash(password, *publicShare.PasswordHash) {
-			log.Printf("[WARN] serveAlbumMediaThumb - wrong/missing password for share: %s", tokenStr)
+			mlog.Info("[WARN] serveAlbumMediaThumb - wrong/missing password for share: %s", tokenStr)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusForbidden)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Incorrect or missing password"})
@@ -1010,7 +1010,7 @@ func (s *Server) serveAlbumMediaThumb(w http.ResponseWriter, r *http.Request, to
 	// Get the album with media items by token
 	albumItem, err := s.publicShareRepo.GetSharedAlbumByToken(ctx, tokenStr)
 	if err != nil {
-		log.Printf("[ERROR] serveAlbumMediaThumb - get shared album: %v", err)
+		mlog.Info("[ERROR] serveAlbumMediaThumb - get shared album: %v", err)
 		http.Error(w, "Album not found", http.StatusNotFound)
 		return
 	}
@@ -1025,7 +1025,7 @@ func (s *Server) serveAlbumMediaThumb(w http.ResponseWriter, r *http.Request, to
 	}
 
 	if media == nil {
-		log.Printf("[ERROR] serveAlbumMediaThumb - media not found for path: %s", mediaPath)
+		mlog.Info("[ERROR] serveAlbumMediaThumb - media not found for path: %s", mediaPath)
 		http.Error(w, "Media not found in album", http.StatusNotFound)
 		return
 	}
@@ -1047,7 +1047,7 @@ func (s *Server) serveAlbumMediaThumb(w http.ResponseWriter, r *http.Request, to
 	fullThumbPath := filepath.Join(s.thumbRoot, thumbRelPath)
 
 	if _, err := os.Stat(fullThumbPath); os.IsNotExist(err) {
-		log.Printf("[WARN] serveAlbumMediaThumb: Thumbnail NOT FOUND at %s. Attempting fallback to original.", fullThumbPath)
+		mlog.Info("[WARN] serveAlbumMediaThumb: Thumbnail NOT FOUND at %s. Attempting fallback to original.", fullThumbPath)
 		targetPath := media.Path
 		absPath, resolveErr := s.storageService.ResolvePath(targetPath)
 		if resolveErr != nil {
@@ -1056,14 +1056,14 @@ func (s *Server) serveAlbumMediaThumb(w http.ResponseWriter, r *http.Request, to
 		}
 
 		if resolveErr != nil {
-			log.Printf("[ERROR] serveAlbumMediaThumb - fallback failed for (%s): %v", targetPath, resolveErr)
+			mlog.Info("[ERROR] serveAlbumMediaThumb - fallback failed for (%s): %v", targetPath, resolveErr)
 			http.Error(w, "Thumbnail not found and fallback failed", http.StatusNotFound)
 			return
 		}
 
 		contentType := s.getContentType(media.MediaType, media.Filename)
 		w.Header().Set("Content-Type", contentType)
-		log.Printf("[INFO] serveAlbumMediaThumb: Serving original file as fallback from %s", absPath)
+		mlog.Info("[INFO] serveAlbumMediaThumb: Serving original file as fallback from %s", absPath)
 		http.ServeFile(w, r, absPath)
 		return
 	}
@@ -1097,7 +1097,7 @@ func (h *ShareHandler) handleListOutgoingShareGroups(w http.ResponseWriter, r *h
 
 	groups, err := h.shareRepo.ListOutgoingShareGroups(ctx, userID)
 	if err != nil {
-		log.Printf("[ERROR] handleListOutgoingShareGroups: %v", err)
+		mlog.Info("[ERROR] handleListOutgoingShareGroups: %v", err)
 		http.Error(w, "Failed to list outgoing shares", http.StatusInternalServerError)
 		return
 	}
@@ -1148,7 +1148,7 @@ func (h *ShareHandler) handleRevokeOutgoingShare(w http.ResponseWriter, r *http.
 	idStr := chi.URLParam(r, "id")
 	shareGroupID, err := uuid.Parse(idStr)
 	if err != nil {
-		log.Printf("[ERROR] handleRevokeOutgoingShare - invalid UUID: %v", err)
+		mlog.Info("[ERROR] handleRevokeOutgoingShare - invalid UUID: %v", err)
 		http.Error(w, "Invalid share group ID", http.StatusBadRequest)
 		return
 	}
@@ -1156,7 +1156,7 @@ func (h *ShareHandler) handleRevokeOutgoingShare(w http.ResponseWriter, r *http.
 	// Verify ownership by checking if this share is in the user's outgoing shares
 	details, err := h.shareRepo.ListOutgoingShares(ctx, userID)
 	if err != nil {
-		log.Printf("[ERROR] handleRevokeOutgoingShare - list outgoing shares: %v", err)
+		mlog.Info("[ERROR] handleRevokeOutgoingShare - list outgoing shares: %v", err)
 		http.Error(w, "Failed to verify ownership", http.StatusInternalServerError)
 		return
 	}
@@ -1170,14 +1170,14 @@ func (h *ShareHandler) handleRevokeOutgoingShare(w http.ResponseWriter, r *http.
 	}
 
 	if !found {
-		log.Printf("[WARN] handleRevokeOutgoingShare - user %s tried to revoke non-owned share: %s", userID, shareGroupID)
+		mlog.Info("[WARN] handleRevokeOutgoingShare - user %s tried to revoke non-owned share: %s", userID, shareGroupID)
 		http.Error(w, "Forbidden: You do not own this share group", http.StatusForbidden)
 		return
 	}
 
 	err = h.shareRepo.DeleteShareGroup(ctx, shareGroupID)
 	if err != nil {
-		log.Printf("[ERROR] handleRevokeOutgoingShare - delete share: %v", err)
+		mlog.Info("[ERROR] handleRevokeOutgoingShare - delete share: %v", err)
 		http.Error(w, "Failed to revoke share", http.StatusInternalServerError)
 		return
 	}

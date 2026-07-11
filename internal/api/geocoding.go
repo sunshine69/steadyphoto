@@ -3,7 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"github.com/jbrodriguez/mlog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -111,7 +111,7 @@ func ForwardGeocode(placeName string) (*GeocodeResult, error) {
 
 	// Parse bounding box if available
 	if len(result.BoundingBox) >= 4 {
-		log.Printf("[INFO] Geocoded '%s' to bounding box: [%s, %s, %s, %s]",
+		mlog.Info("[INFO] Geocoded '%s' to bounding box: [%s, %s, %s, %s]",
 			placeName, result.BoundingBox[0], result.BoundingBox[1],
 			result.BoundingBox[2], result.BoundingBox[3])
 	}
