@@ -11,14 +11,18 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/joho/godotenv"
 	"github.com/jmoiron/sqlx"
+	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 	"steadyphoto/internal/ai"
 	"steadyphoto/internal/database"
 	"steadyphoto/internal/domain"
 	"steadyphoto/internal/processor"
 )
+
+func init() {
+	mlog.Start(mlog.LevelError, "")
+}
 
 // VideoMetadataProcessor handles video metadata extraction jobs.
 type VideoMetadataProcessor struct {

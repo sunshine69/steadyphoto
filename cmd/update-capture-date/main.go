@@ -12,14 +12,18 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
-	_ "github.com/lib/pq"
 	"github.com/joho/godotenv"
+	_ "github.com/lib/pq"
 )
 
+func init() {
+	mlog.Start(mlog.LevelInfo, "")
+}
+
 type MediaRecord struct {
-	ID        string       `db:"id"`
-	Metadata  sql.NullString `db:"metadata"`
-	CapturedAt time.Time    `db:"captured_at"`
+	ID         string         `db:"id"`
+	Metadata   sql.NullString `db:"metadata"`
+	CapturedAt time.Time      `db:"captured_at"`
 }
 
 func main() {

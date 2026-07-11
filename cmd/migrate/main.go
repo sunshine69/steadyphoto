@@ -15,6 +15,10 @@ import (
 	_ "github.com/lib/pq"
 )
 
+func init() {
+	mlog.Start(mlog.LevelInfo, "")
+}
+
 const (
 	migrationsDirEnv = "MIGRATIONS_DIR"
 	defaultMigDir    = "./migrations"
@@ -184,10 +188,10 @@ func getCurrentVersion(db *sql.DB) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("query failed: %w", err)
 	}
-	
+
 	if version == nil {
 		return 0, nil
 	}
-	
+
 	return *version, nil
 }

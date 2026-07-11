@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
 	"github.com/jbrodriguez/mlog"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"os"
@@ -21,11 +21,15 @@ import (
 	u "github.com/sunshine69/golang-tools/utils"
 )
 
+func init() {
+	mlog.Start(mlog.LevelInfo, "")
+}
+
 var (
-	baseURL      = u.Getenv("IMMICH_BASE_URL", "https://media.kaykraft.org/api")
-	apiKey       = os.Getenv("IMMICH_API_KEY")
-	outDir       = "/tmp/immich-migrate" // temp dir for download/upload/delete
-	uploadTags   string                     // Tags to attach to uploaded media (colon-separated, e.g., "vacation:sunset")
+	baseURL    = u.Getenv("IMMICH_BASE_URL", "https://media.kaykraft.org/api")
+	apiKey     = os.Getenv("IMMICH_API_KEY")
+	outDir     = "/tmp/immich-migrate" // temp dir for download/upload/delete
+	uploadTags string                  // Tags to attach to uploaded media (colon-separated, e.g., "vacation:sunset")
 
 	// Default rate limit: SteadyPhoto allows 100 requests/min by IP on protected routes.
 	// With a 6-second sleep between uploads, we stay well under the limit (10 req/min).
@@ -172,7 +176,7 @@ type steadyPhotoClient struct {
 	authToken     string // Bearer token from login
 	client        *http.Client
 	sleepInterval time.Duration // Sleep between uploads to stay under rate limit
-	userAgent     string      // User-Agent header for client identification
+	userAgent     string        // User-Agent header for client identification
 }
 
 func newSteadyPhotoClient(baseURL string, sleepInterval time.Duration) *steadyPhotoClient {
