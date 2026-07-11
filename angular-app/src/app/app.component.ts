@@ -670,6 +670,9 @@ export class AppComponent implements OnInit, OnDestroy {
   private authService = inject(AuthService);
   private authSubscription?: Subscription;
 
+  // Track whether the last Enter press triggered a search
+  private lastEnteredTerm = '';
+
   constructor(
     public presentationService: PresentationService,
     private searchService: SearchService,
@@ -681,10 +684,10 @@ export class AppComponent implements OnInit, OnDestroy {
 
   onKeyUp(event: KeyboardEvent): void {
     if (event.key === 'Enter') {
-      // On Enter: trigger search immediately
+      // Always trigger search on Enter, even if term hasn't changed
+      this.lastEnteredTerm = this.searchTerm;
       this.searchInput$.next(this.searchTerm);
     }
-    // For regular typing: do NOT emit — wait for Enter key only
   }
 
   onDateSearch(): void {
@@ -698,10 +701,10 @@ export class AppComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     // Set up the RxJS search pipeline — debounce 500ms so typing doesn't fire search
+    // Note: removed distinctUntilChanged to allow Enter to always trigger search, even with the same term
     this.searchSubscription = this.searchInput$
       .pipe(
-        debounceTime(500),
-        distinctUntilChanged((prev, curr) => prev === curr && prev !== '')
+        debounceTime(500)
       )
       .subscribe({
         next: (term: string) => {
