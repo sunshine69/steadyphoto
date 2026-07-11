@@ -1,9 +1,6 @@
 package utils
 
 import (
-	"errors"
-	"fmt"
-
 	"github.com/jbrodriguez/mlog"
 )
 
