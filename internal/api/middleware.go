@@ -12,6 +12,7 @@ import (
 	"steadyphoto/internal/domain"
 
 	"github.com/google/uuid"
+	"github.com/jbrodriguez/mlog"
 )
 
 // contextKey is a private type to avoid collisions with other packages in the context
@@ -37,7 +38,7 @@ func init() {
 			MaxUploadSizeBytes = mb
 			fmt.Printf("[CONFIG] Max upload size set to %d bytes\n", mb)
 		} else {
-			fmt.Printf("[WARN] Invalid MAX_UPLOAD_SIZE value '%s', using default (10MB)\n", val)
+			mlog.Warning("Invalid MAX_UPLOAD_SIZE value '%s', using default (10MB)\n", val)
 		}
 	}
 
@@ -87,7 +88,7 @@ func (s *Server) AuthMiddleware(next http.Handler) http.Handler {
 			parts := strings.SplitN(authHeader, " ", 2)
 			if len(parts) == 2 && strings.EqualFold(parts[0], "Bearer") {
 				tokenStr = parts[1]
-				fmt.Fprintf(os.Stderr, "[DEBUG] Middleware: Found token in Authorization header\n")
+				mlog.Info("[DEBUG] Middleware: Found token in Authorization header\n")
 			}
 		}
 
@@ -95,10 +96,10 @@ func (s *Server) AuthMiddleware(next http.Handler) http.Handler {
 		if tokenStr == "" {
 			cookie, err := r.Cookie("access_token")
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "[DEBUG] Middleware: No Authorization header AND no access_token cookie found (%v)\n", err)
+				mlog.Info("[DEBUG] Middleware: No Authorization header AND no access_token cookie found (%v)\n", err)
 			} else if cookie != nil {
 				tokenStr = cookie.Value
-				fmt.Fprintf(os.Stderr, "[DEBUG] Middleware: Found token in Cookie\n")
+				mlog.Info("[DEBUG] Middleware: Found token in Cookie\n")
 			}
 		}
 
@@ -110,7 +111,7 @@ func (s *Server) AuthMiddleware(next http.Handler) http.Handler {
 
 		sessionID, err := uuid.Parse(tokenStr)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "[DEBUG] Middleware: Token parsing error for %s: %v\n", tokenStr, err)
+			mlog.Info("[DEBUG] Middleware: Token parsing error for %s: %v\n", tokenStr, err)
 			http.Error(w, "Unauthorized: Invalid token format", http.StatusUnauthorized)
 			return
 		}
@@ -118,26 +119,26 @@ func (s *Server) AuthMiddleware(next http.Handler) http.Handler {
 		// Look up the session in our repository
 		session, err := s.sessionRepo.GetByID(r.Context(), sessionID)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "[DEBUG] Middleware: Session lookup error for %s: %v\n", sessionID, err)
+			mlog.Info("[DEBUG] Middleware: Session lookup error for %s: %v\n", sessionID, err)
 			http.Error(w, "Unauthorized: Invalid or expired session", http.StatusUnauthorized)
 			return
 		}
 
 		if session == nil {
-			fmt.Fprintf(os.Stderr, "[DEBUG] Middleware: Session not found in DB for %s\n", sessionID)
+			mlog.Info("[DEBUG] Middleware: Session not found in DB for %s\n", sessionID)
 			http.Error(w, "Unauthorized: Invalid or expired session", http.StatusUnauthorized)
 			return
 		}
 
 		// Check if the session has been revoked or expired
 		if session.IsRevoked || time.Now().After(session.ExpiresAt) {
-			fmt.Fprintf(os.Stderr, "[DEBUG] Middleware: Session %s is invalid (Revoked=%v, ExpiresAt=%v, Now=%v)\n",
+			mlog.Info("[DEBUG] Middleware: Session %s is invalid (Revoked=%v, ExpiresAt=%v, Now=%v)\n",
 				sessionID, session.IsRevoked, session.ExpiresAt, time.Now())
 			http.Error(w, "Unauthorized: Session is invalid or expired", http.StatusUnauthorized)
 			return
 		}
 
-		fmt.Fprintf(os.Stderr, "[DEBUG] Middleware: Authentication successful for User %s\n", session.UserID)
+		mlog.Info("[DEBUG] Middleware: Authentication successful for User %s\n", session.UserID)
 
 		// Inject UserID into the request context
 		ctx := context.WithValue(r.Context(), UserIDContextKey, session.UserID)

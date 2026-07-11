@@ -3,11 +3,11 @@ package database
 import (
 	"context"
 	"fmt"
-	"github.com/jbrodriguez/mlog"
 	"math"
-	"os"
 	"strings"
 	"time"
+
+	"github.com/jbrodriguez/mlog"
 
 	"steadyphoto/internal/domain"
 
@@ -193,7 +193,7 @@ func (r *PostgresMediaRepository) SearchNearPoint(ctx context.Context, lat, lon,
 	// This is a rough filter; we'll do exact Haversine in Go after fetching results
 	gpsFilter := `AND metadata->>'gps_latitude' IS NOT NULL 
 	               AND metadata->>'gps_longitude' IS NOT NULL`
-	
+
 	countQuery += gpsFilter
 	listQuery += gpsFilter
 
@@ -231,7 +231,7 @@ func (r *PostgresMediaRepository) SearchNearPoint(ctx context.Context, lat, lon,
 	for _, media := range mediaList {
 		gpsLatStr := media.Metadata["gps_latitude"]
 		gpsLonStr := media.Metadata["gps_longitude"]
-		
+
 		if gpsLatStr == "" || gpsLonStr == "" {
 			continue
 		}
@@ -262,52 +262,52 @@ func (r *PostgresMediaRepository) SearchWithinBoundingBox(ctx context.Context, s
 
 	// Use parameterized query with proper indexing
 	args := []interface{}{}
-	
+
 	// Build the WHERE clause with proper parameter positions
 	whereClauses := []string{"deleted_at IS NULL"}
-	
+
 	if userID != nil {
 		args = append(args, *userID)
 		whereClauses = append(whereClauses, fmt.Sprintf("user_id = $%d", len(args)))
 	}
-	
+
 	// GPS filters (no parameters)
 	whereClauses = append(whereClauses,
 		"metadata->>'gps_latitude' IS NOT NULL",
 		"metadata->>'gps_longitude' IS NOT NULL")
-	
+
 	// Bounding box parameters
 	args = append(args, south, north, west, east)
 	whereClauses = append(whereClauses, fmt.Sprintf("CAST(metadata->>'gps_latitude' AS FLOAT) BETWEEN $%d AND $%d", len(args)-3, len(args)-2))
 	whereClauses = append(whereClauses, fmt.Sprintf("CAST(metadata->>'gps_longitude' AS FLOAT) BETWEEN $%d AND $%d", len(args)-1, len(args)))
-	
+
 	whereSQL := strings.Join(whereClauses, " AND ")
-	
+
 	// Count query
 	countSQL := fmt.Sprintf("SELECT COUNT(*) FROM media WHERE %s", whereSQL)
 	err := r.db.GetContext(ctx, &total, countSQL, args...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to count media in bounding box: %w", err)
 	}
-	
+
 	// List query
 	listArgs := make([]interface{}, len(args)+2)
 	copy(listArgs, args)
 	listArgs[len(args)] = int64(limit)
 	listArgs[len(args)+1] = int64(offset)
-	
+
 	listSQL := fmt.Sprintf(`
 		SELECT id, user_id, path, filename, hash, size_bytes, width, height, 
 		       captured_at, media_type, metadata, video_metadata, created_at, updated_at, tags
 		FROM media 
 		WHERE %s
 		ORDER BY captured_at DESC LIMIT $%d OFFSET $%d`, whereSQL, len(listArgs)-1, len(listArgs))
-	
+
 	err = r.db.SelectContext(ctx, &mediaList, listSQL, listArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to list media in bounding box: %w", err)
 	}
-	
+
 	return mediaList, total, nil
 }
 
@@ -339,7 +339,7 @@ func (r *PostgresMediaRepository) GetByID(ctx context.Context, id uuid.UUID, use
 	if err != nil {
 		return nil, err
 	}
-	fmt.Fprintf(os.Stderr, "[DEBUG] GetById %v\n", media)
+	mlog.Info("[DEBUG] GetById %v\n", media)
 	return &media, nil
 }
 
@@ -789,7 +789,7 @@ func (r *PostgresMediaRepository) GetTrashedMedia(ctx context.Context, id uuid.U
 	if err != nil {
 		return nil, err
 	}
-	fmt.Fprintf(os.Stderr, "[DEBUG] GetTrashedMedia %v\n", media)
+	mlog.Info("[DEBUG] GetTrashedMedia %v\n", media)
 	return &media, nil
 }
 

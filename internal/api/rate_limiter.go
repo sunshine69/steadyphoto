@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-chi/httprate"
+	"github.com/jbrodriguez/mlog"
 )
 
 // RateLimitAuth is a rate limiter for authentication endpoints to prevent brute-force attacks.
@@ -25,7 +26,7 @@ func init() {
 		if n, err := strconv.Atoi(val); err == nil && n > 0 {
 			authRequests = n
 		} else {
-			fmt.Printf("[WARN] Invalid RATE_LIMIT_AUTH_REQUESTS value: %q — using default of 5\n", val)
+			mlog.Warning("Invalid RATE_LIMIT_AUTH_REQUESTS value: %q — using default of 5\n", val)
 		}
 	}
 
@@ -47,7 +48,7 @@ func init() {
 		if n, err := strconv.Atoi(val); err == nil && n > 0 {
 			generalRequests = n
 		} else {
-			fmt.Printf("[WARN] Invalid RATE_LIMIT_GENERAL_REQUESTS value: %q — using default of 100\n", val)
+			mlog.Warning("Invalid RATE_LIMIT_GENERAL_REQUESTS value: %q — using default of 100\n", val)
 		}
 	}
 

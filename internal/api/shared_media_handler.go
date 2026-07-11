@@ -3,13 +3,14 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/jbrodriguez/mlog"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/jbrodriguez/mlog"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -28,13 +29,13 @@ type SharedMediaFullResponse struct {
 }
 
 type SharedAlbumFullResponse struct {
-	ID           uuid.UUID  `json:"id"`
-	Name         string     `json:"name"`
-	Description  *string    `json:"description,omitempty"`
-	UserID       uuid.UUID  `json:"userId"`
-	CreatedAt    time.Time  `json:"createdAt"`
-	ThumbnailURL *string    `json:"thumbnailUrl,omitempty"`
-	SharerUserID uuid.UUID  `json:"sharerUserId"`
+	ID           uuid.UUID `json:"id"`
+	Name         string    `json:"name"`
+	Description  *string   `json:"description,omitempty"`
+	UserID       uuid.UUID `json:"userId"`
+	CreatedAt    time.Time `json:"createdAt"`
+	ThumbnailURL *string   `json:"thumbnailUrl,omitempty"`
+	SharerUserID uuid.UUID `json:"sharerUserId"`
 }
 
 type SharedAlbumMediaResponse struct {
@@ -71,7 +72,7 @@ func logRequest(r *http.Request, label string) time.Time {
 // logResponse logs the response status and duration.
 func logResponse(label string, startTime time.Time) {
 	duration := time.Since(startTime).String()
-	fmt.Printf("[INFO] [%s] Response sent in %s\n", label, duration)
+	mlog.Info("[%s] Response sent in %s\n", label, duration)
 }
 
 // logUnauthorized logs an unauthorized access attempt with IP address.

@@ -2,7 +2,6 @@ package api
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/jbrodriguez/mlog"
 )
 
 type Handler struct {
@@ -225,7 +225,7 @@ func (h *Handler) ServeThumbnailFile(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "media not found", http.StatusNotFound)
 		return
 	}
-	fmt.Printf("[DEBUG] h.mediaRepo.GetByID Output - %v\n", media)
+	mlog.Info("[DEBUG] h.mediaRepo.GetByID Output - %v\n", media)
 	// Calculate thumbnail path - thumbnails are stored alongside media under '.thumbnails/',
 	// preserving the full path structure including user_id.
 	// e.g. media.Path = "storage/9a362745-.../2024/05/13/photo.jpg"
