@@ -20,7 +20,7 @@ RUN npm run build -- --configuration=production
 # ============================================
 # Stage 2: Build Go Binaries (Server + Migrate)
 # ============================================
-FROM golang:1.26.3-alpine3.23 AS go-builder
+FROM golang:1.26.5-alpine3.23 AS go-builder
 
 WORKDIR /app/steadyphoto
 
@@ -40,6 +40,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-X main.version=v1.0.0-$(git rev
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-X main.version=v1.0.0-$(git rev-parse --short HEAD) -X main.buildTime=$(date '+%Y%m%d_%H%M%S') -extldflags=-static -w -s" --tags "osusergo netgo" -o /app/steadyphoto/worker cmd/worker/main.go
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-X main.version=v1.0.0-$(git rev-parse --short HEAD) -X main.buildTime=$(date '+%Y%m%d_%H%M%S') -extldflags=-static -w -s" --tags "osusergo netgo" -o /app/steadyphoto/exif-update cmd/exif/main.go
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-X main.version=v1.0.0-$(git rev-parse --short HEAD) -X main.buildTime=$(date '+%Y%m%d_%H%M%S') -extldflags=-static -w -s" --tags "osusergo netgo" -o /app/steadyphoto/update-capture-date cmd/update-capture-date/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-X main.version=v1.0.0-$(git rev-parse --short HEAD) -X main.buildTime=$(date '+%Y%m%d_%H%M%S') -extldflags=-static -w -s" --tags "osusergo netgo" -o /app/steadyphoto/clean-session cmd/cleanup/main.go
 
 # Build the migrate binary
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app/steadyphoto/migrate cmd/migrate/main.go
@@ -61,6 +62,7 @@ COPY --from=go-builder /app/steadyphoto/worker ./worker
 COPY --from=go-builder //app/steadyphoto/migrations ./migrations
 COPY --from=go-builder //app/steadyphoto/exif-update ./exif-update 
 COPY --from=go-builder //app/steadyphoto/update-capture-date ./update-capture-date
+COPY --from=go-builder //app/steadyphoto/clean-session ./clean-session 
 
 # Copy the built Angular application to /ui directory
 COPY --from=angular-builder /app/angular-app/dist /app/ui
