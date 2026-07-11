@@ -447,7 +447,14 @@ func (h *MediaUploadHandlerSingle) HandleSingleFileUpload(w http.ResponseWriter,
 		CapturedAt: time.Now(),
 	}
 
-	meta.Metadata = extractExif(absTargetPath)
+	var capturedAt time.Time
+	var exifErr error
+	var exifMeta domain.Metadata
+	exifMeta, capturedAt, exifErr = extractExif(absTargetPath)
+	meta.Metadata = exifMeta
+	if exifErr != nil {
+		mlog.Info("[WARN] UploadHandlerSingle: extractExif failed for '%s': %v", fileName, exifErr)
+	}
 
 	// Extract video metadata if this is a video file
 	if meta.MediaType == domain.MediaTypeVideo && processor.IsVideoFile(fileName) {
@@ -462,6 +469,15 @@ func (h *MediaUploadHandlerSingle) HandleSingleFileUpload(w http.ResponseWriter,
 		}
 	}
 
+	// Determine CapturedAt: prefer VideoMetadata.CreatedAt (for videos), then EXIF DateTimeOriginal (for images), fall back to upload time
+	if !capturedAt.IsZero() {
+		meta.CapturedAt = capturedAt
+		mlog.Info("[INFO] UploadHandlerSingle: EXIF DateTimeOriginal found for '%s': %s", fileName, capturedAt.Format(time.RFC3339))
+	} else if meta.VideoMetadata.CreatedAt != (time.Time{}) {
+		meta.CapturedAt = meta.VideoMetadata.CreatedAt
+		mlog.Info("[INFO] UploadHandlerSingle: VideoMetadata.CreatedAt found for '%s': %s", fileName, meta.VideoMetadata.CreatedAt.Format(time.RFC3339))
+	}
+
 	if err := h.mediaRepo.Create(dbCtx, meta); err != nil {
 		mlog.Info("[ERROR] UploadHandlerSingle: Failed to insert media %s (hash=%s): %v", newFilename, hash[:8]+"...", err)
 		http.Error(w, "Failed to save media record.", http.StatusInternalServerError)
@@ -474,7 +490,7 @@ func (h *MediaUploadHandlerSingle) HandleSingleFileUpload(w http.ResponseWriter,
 		"mediaType":   string(meta.MediaType),
 		"path":        relPathFromRoot,
 		"size":        n,
-		"captured_at": time.Now().Format(time.RFC3339),
+		"captured_at": meta.CapturedAt.Format(time.RFC3339),
 	}
 
 	response := map[string]interface{}{
@@ -902,7 +918,16 @@ func (h *MediaUploadHandlerSingle) HandleComplete(w http.ResponseWriter, r *http
 		CapturedAt: time.Now(),
 	}
 
-	meta.Metadata = extractExif(absTargetPath)
+	var capturedAt time.Time
+	var exifErr error
+	meta.Metadata, capturedAt, exifErr = extractExif(absTargetPath)
+	if exifErr != nil {
+		mlog.Info("[WARN] UploadHandlerComplete: extractExif failed for '%s': %v", session.Filename, exifErr)
+	}
+	if !capturedAt.IsZero() {
+		meta.CapturedAt = capturedAt
+		mlog.Info("[INFO] UploadHandlerComplete: EXIF DateTimeOriginal found for '%s': %s", session.Filename, capturedAt.Format(time.RFC3339))
+	}
 
 	// Extract video metadata if this is a video file
 	if meta.MediaType == domain.MediaTypeVideo && processor.IsVideoFile(session.Filename) {

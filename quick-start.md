@@ -42,6 +42,7 @@ Quick reference for AI assistants to understand the codebase and start working o
 | Database | PostgreSQL (sqlx) |
 | API | net/http (custom routing) |
 | EXIF | bep/imagemeta |
+| Video Metadata | ffprobe + QuickTime atom parser |
 | Scheduling | robfig/cron |
 | Auth | bcrypt + sessions |
 | Storage | Local filesystem |
@@ -169,6 +170,8 @@ type VideoMetadata struct {
     VideoCodec string
     AudioCodec string
     FrameRate  float64
+    CreatedAt  time.Time // ffprobe creation_time (may also be populated from QuickTime atoms)
+    ModifiedAt time.Time // ffprobe modification_time
 }
 ```
 
@@ -244,10 +247,16 @@ type ExifReader struct{}
 func NewExifReader() *ExifReader
 func (r *ExifReader) ReadOrientation(file *os.File) (Orientation, error)
 func (r *ExifReader) ReadExif(file *os.File) (*ExifInfo, error)
+func (r *ExifReader) ReadDateTimeOriginal(file *os.File) (time.Time, error)
+func (r *ExifReader) ReadGPS(file *os.File) (*GPSMetadata, error)
 
 type ExifInfo struct {
-    Orientation Orientation
-    Tags        []ExifTag
+    Orientation   Orientation
+    Tags          []ExifTag
+    GPSLatitude   float64
+    GPSLongitude  float64
+    GPSAltitude   float64
+    CapturedAt    time.Time // DateTimeOriginal from EXIF
 }
 
 type ExifTag struct {
@@ -256,6 +265,49 @@ type ExifTag struct {
     Namespace string
     Value     string
 }
+```
+
+### FFProbe Video Metadata Extractor (`internal/processor/video_metadata.go`)
+
+```go
+// ExtractVideoMetadata uses ffprobe to extract video properties
+func ExtractVideoMetadata(ctx context.Context, filePath string) (*domain.VideoMetadata, error)
+
+type VideoMetadata struct {
+    Duration   float64 // in seconds
+    Width      int
+    Height     int
+    Bitrate    int64
+    VideoCodec string
+    AudioCodec string
+    FrameRate  float64
+    CreatedAt  time.Time // from ffprobe creation_time tag
+    ModifiedAt time.Time // from ffprobe modification_time tag
+}
+```
+
+### QuickTime Atom Parser (`internal/processor/qt_parser.go`)
+
+```go
+// ExtractPhoneMetadata reads iPhone-specific metadata from MP4/MOV containers
+func ExtractPhoneMetadata(filePath string) (*PhoneMetadata, error)
+
+type PhoneMetadata struct {
+    DeviceMake       string
+    DeviceModel      string
+    DeviceSoftware   string
+    CreationDate     string // Unix timestamp (from QuickTime 1904 epoch)
+    GPSLatitude      float64
+    GPSLongitude     float64
+    HasGPS           bool
+    Stabilization    bool
+    VideoEncoder     string
+    AudioCodec       string
+    IsHDR            bool
+    Caption          string
+    Title            string
+}
+```
 ```
 
 ---
@@ -508,11 +560,17 @@ for _, job := range pendingJobs {
    - Code exists but not functional
    - **Fix needed**: Implement actual face detection
 
-3. **EXIF processing incomplete**
-   - Only reads orientation, doesn't apply corrections
-   - **Fix needed**: Add orientation correction + video metadata
 
 ### 🟡 Medium Priority
+
+4. **CapturedAt not synced from VideoMetadata post-upload**
+   - When `ExtractVideoMetadata` runs via the worker backfill, `VideoMetadata.CreatedAt` is populated from ffprobe `creation_time`, but the `Media.CapturedAt` field is **never updated** to reflect this value.
+   - **Fix needed**: After video metadata extraction succeeds, set `media.CapturedAt = vm.CreatedAt` and persist the change.
+
+5. **QuickTime atom parser is dead code**
+   - `internal/processor/qt_parser.go` has a complete `ExtractPhoneMetadata` function that can parse iPhone-specific creation timestamps from QuickTime containers (1904 epoch → Unix), but **it is never called anywhere**.
+   - The `parseMdtoBox` function is incomplete — it creates an empty `Items` map and `parseDataAtom` always returns an empty slice, so Apple metadata key-value pairs are never actually populated.
+   - **Fix needed**: Wire `ExtractPhoneMetadata` into the video metadata pipeline (either before or after ffprobe). Complete `parseMdtoBox` / `parseDataAtom` to actually read the key-value data.
 
 ### 🟢 Low Priority
 
@@ -529,7 +587,9 @@ for _, job := range pendingJobs {
 | Add API endpoint | `internal/api/*_handler.go` + `internal/api/server.go` |
 | Add DB operation | `internal/database/*_repository.go` |
 | Update domain model | `internal/domain/*.go` |
-| Process images | `internal/processor/*.go` |
+| Process images (EXIF, orientation) | `internal/processor/exif_reader.go` |
+| Process videos (ffprobe) | `internal/processor/video_metadata.go` |
+| Process videos (QuickTime atoms) | `internal/processor/qt_parser.go` |
 | Storage logic | `internal/storage/service.go` |
 | Scanner logic | `internal/scanner/media_scanner.go` |
 | Server config | `cmd/server/main.go` |

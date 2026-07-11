@@ -282,16 +282,28 @@ func (h *MediaUploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		// Declare meta early so we can populate CapturedAt and Metadata before building the rest
 		meta := &domain.Media{}
 
-		// Extract EXIF data (GPS, orientation) and DateTimeOriginal for captured_at
-		meta.Metadata = extractExif(absTargetPath)
+		// Extract EXIF data (GPS, orientation, all tags + DateTimeOriginal) for captured_at
+		var capturedAt time.Time
+		var exifErr error
+		var exifMeta domain.Metadata
+		exifMeta, capturedAt, exifErr = extractExif(absTargetPath)
+		meta.Metadata = exifMeta
+		if exifErr != nil {
+			mlog.Info("[WARN] UploadHandler: extractExif failed for '%s': %v", header.Filename, exifErr)
+		}
 
-		// Determine CapturedAt: prefer EXIF DateTimeOriginal, fall back to upload time
-		meta.CapturedAt = time.Now() // default fallback
-		if dateTime, err := processor.NewExifReader().ReadDateTimeOriginal(tempFile); err == nil && !dateTime.IsZero() {
-			meta.CapturedAt = dateTime
-			mlog.Info("[INFO] UploadHandler: EXIF DateTimeOriginal found for '%s': %s", header.Filename, dateTime.Format(time.RFC3339))
-		} else {
-			mlog.Info("[INFO] UploadHandler: No EXIF DateTimeOriginal for '%s', using upload time", header.Filename)
+		meta.ID = uuid.New()
+		meta.UserID = userID
+		meta.Filename = header.Filename
+		meta.MediaType = mediaType
+		meta.Path = relPathFromRoot
+		meta.SizeBytes = n
+		meta.Hash = hash
+		meta.ClientSource = clientSource
+
+		mlog.Info("[INFO] UploadHandler: Detected client source '%s' for '%s'", clientSource, header.Filename)
+		if meta.Metadata != nil && meta.Metadata["gps_latitude"] != "" {
+			mlog.Info("[INFO] UploadHandler: GPS found - lat=%s lon=%s", meta.Metadata["gps_latitude"], meta.Metadata["gps_longitude"])
 		}
 
 		meta.ID = uuid.New()
@@ -320,6 +332,16 @@ func (h *MediaUploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 				mlog.Info("[INFO] UploadHandler: Video metadata extracted for '%s' - codec=%s res=%dx%d dur=%.1fs fps=%.2f",
 					header.Filename, videoMeta.VideoCodec, videoMeta.Width, videoMeta.Height, videoMeta.Duration, videoMeta.FrameRate)
 			}
+		}
+
+		// Determine CapturedAt: prefer VideoMetadata.CreatedAt (for videos), then EXIF DateTimeOriginal (for images), fall back to upload time
+		meta.CapturedAt = time.Now() // default fallback
+		if !capturedAt.IsZero() {
+			meta.CapturedAt = capturedAt
+			mlog.Info("[INFO] UploadHandler: EXIF DateTimeOriginal found for '%s': %s", header.Filename, capturedAt.Format(time.RFC3339))
+		} else if meta.VideoMetadata.CreatedAt != (time.Time{}) {
+			meta.CapturedAt = meta.VideoMetadata.CreatedAt
+			mlog.Info("[INFO] UploadHandler: VideoMetadata.CreatedAt found for '%s': %s", header.Filename, meta.VideoMetadata.CreatedAt.Format(time.RFC3339))
 		}
 		mlog.Info("[DEBUG] UploadHandler: Inserting record into DB for '%s'...", meta.ID)
 
@@ -393,13 +415,14 @@ func min(a, b int) int {
 	return b
 }
 
-// extractExif opens the file at absPath, reads full EXIF data (orientation + GPS + tags), and returns a domain.Metadata map.
-// Returns an empty metadata map if the file cannot be read or no EXIF data is found.
-func extractExif(absPath string) domain.Metadata {
+// extractExif opens the file at absPath, reads full EXIF data (orientation + GPS + all tags + DateTimeOriginal), 
+// and returns a domain.Metadata map with normalized fields.
+// Returns (domain.Metadata, time.Time, error) where the time is the parsed DateTimeOriginal (zero if not found).
+func extractExif(absPath string) (domain.Metadata, time.Time, error) {
 	f, err := os.Open(absPath)
 	if err != nil {
 		mlog.Info("[WARN] extractExif: failed to open %s: %v", absPath, err)
-		return domain.Metadata{}
+		return domain.Metadata{}, time.Time{}, err
 	}
 	defer f.Close()
 
@@ -407,28 +430,84 @@ func extractExif(absPath string) domain.Metadata {
 	info, err := reader.ReadExif(f)
 	if err != nil {
 		mlog.Info("[WARN] extractExif: failed to read EXIF from %s: %v", absPath, err)
-		return domain.Metadata{}
+		return domain.Metadata{}, time.Time{}, err
 	}
 	if info == nil {
-		return domain.Metadata{}
+		return domain.Metadata{}, time.Time{}, nil
 	}
 
 	md := domain.Metadata{}
-	if info.Orientation > 0 && info.Orientation != processor.OrientationNormal {
-		md["exif_orientation"] = fmt.Sprintf("%d", info.Orientation)
+
+	// Add orientation if not normal
+	if info.Orientation != processor.OrientationNormal {
+		md["exif_orientation"] = fmt.Sprintf("%d", int(info.Orientation))
 	}
-	if info.GPSLatitude != 0 {
-		md["gps_latitude"] = fmt.Sprintf("%f", info.GPSLatitude)
+
+	// Add DateTimeOriginal (parsed) if found
+	var dateTimeOriginal string
+	if !info.CapturedAt.IsZero() {
+		dateTimeOriginal = info.CapturedAt.Format("2006:01:02 15:04:05")
+		md["DateTimeOriginal"] = dateTimeOriginal
 	}
-	if info.GPSLongitude != 0 {
-		md["gps_longitude"] = fmt.Sprintf("%f", info.GPSLongitude)
+
+	// Add all other EXIF tags (skip Orientation, DateTimeOriginal - already handled)
+	for _, tag := range info.Tags {
+		if strings.EqualFold(tag.Tag, "Orientation") {
+			continue
+		}
+		if strings.EqualFold(tag.Tag, "DateTimeOriginal") {
+			continue // already handled via info.CapturedAt
+		}
+		if strings.EqualFold(tag.Tag, "DateTimeDigitized") {
+			continue // will be added below as DateTimeOriginal fallback
+		}
+		if strings.EqualFold(tag.Tag, "DateTime") {
+			continue // will be added below as DateTimeOriginal fallback
+		}
+		// Add tag to metadata (use tag name as key)
+		if _, exists := md[tag.Tag]; !exists {
+			md[tag.Tag] = tag.Value
+		}
 	}
-	if info.GPSAltitude != 0 {
-		md["gps_altitude"] = fmt.Sprintf("%f", info.GPSAltitude)
+
+	// Fallback: if DateTimeOriginal was not in EXIF, check DateTimeDigitized or DateTime
+	if dateTimeOriginal == "" {
+		for _, tag := range info.Tags {
+			if strings.EqualFold(tag.Tag, "DateTimeDigitized") && dateTimeOriginal == "" {
+				dateTimeOriginal = tag.Value
+				md["DateTimeOriginal"] = dateTimeOriginal
+				break
+			}
+		}
+	}
+	if dateTimeOriginal == "" {
+		for _, tag := range info.Tags {
+			if strings.EqualFold(tag.Tag, "DateTime") && dateTimeOriginal == "" {
+				dateTimeOriginal = tag.Value
+				md["DateTimeOriginal"] = dateTimeOriginal
+				break
+			}
+		}
+	}
+	// Also check if ModifyDate is available (used as last fallback by CLI tool)
+	if dateTimeOriginal == "" {
+		if modifyDate, ok := md["ModifyDate"]; ok {
+			md["DateTimeOriginal"] = modifyDate
+			dateTimeOriginal = modifyDate
+		}
+	}
+
+	// Normalize GPS fields so location search works.
+	// NOTE: info.GPSLatitude/GPSLongitude are already signed by parseGPSCoordinate
+	// (which applies S/W ref), so we just use them directly without re-applying signs.
+	if info.GPSLatitude != 0 && info.GPSLongitude != 0 {
+		md["gps_latitude"] = fmt.Sprintf("%.6f", info.GPSLatitude)
+		md["gps_longitude"] = fmt.Sprintf("%.6f", info.GPSLongitude)
+		md["gps_altitude"] = fmt.Sprintf("%.1f", info.GPSAltitude)
 	}
 
 	mlog.Info("[EXIF] Extracted metadata for %s: %v", filepath.Base(absPath), md)
-	return md
+	return md, info.CapturedAt, nil
 }
 
 // isValidMediaType checks if the detected MIME type matches the file extension.
