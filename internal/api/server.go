@@ -340,23 +340,41 @@ func (s *Server) routes() {
 		})
 	})
 
-	// 1. Initialize your file server targeting the Angular folder
 	fileServer := http.FileServer(http.Dir("./ui/browser"))
 
-	// 2. Catch everything else that didn't match the /api routes
 	s.router.HandleFunc("/*", func(w http.ResponseWriter, r *http.Request) {
-		// Chi stores the wildcard matched path in the request context
 		path := chi.URLParam(r, "*")
 
-		// If the path is empty, root, or does not contain a file extension (dot),
-		// it is an Angular SPA route (e.g., /dashboard, /settings). Serve index.html.
+		// 1. Angular SPA Route Check (Fallback to index.html if no file extension)
 		if path == "" || path == "/" || !strings.Contains(filepath.Base(path), ".") {
 			http.ServeFile(w, r, "./ui/browser/index.html")
 			return
 		}
 
-		// Otherwise, it's a static asset (e.g., main.js, styles.css).
-		// We update the request URL path so the FileServer can find it at the root of "./ui/browser"
+		// 2. MADNESS FIX: Strip any accidental "ui/" or "/ui/" prefixes from the asset path
+		path = strings.TrimPrefix(path, "ui/")
+		path = strings.TrimPrefix(path, "/")
+
+		// 3. Dynamic MIME Type Overrides for Alpine Docker environment
+		ext := filepath.Ext(path)
+		switch ext {
+		case ".css":
+			w.Header().Set("Content-Type", "text/css; charset=utf-8")
+		case ".js", ".mjs":
+			w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+		case ".wasm":
+			w.Header().Set("Content-Type", "application/wasm")
+		case ".svg":
+			w.Header().Set("Content-Type", "image/svg+xml")
+		case ".png":
+			w.Header().Set("Content-Type", "image/png")
+		case ".jpg", ".jpeg":
+			w.Header().Set("Content-Type", "image/jpeg")
+		case ".ico":
+			w.Header().Set("Content-Type", "image/x-icon")
+		}
+
+		// 4. Safely map it straight into the root of "./ui/browser"
 		r.URL.Path = "/" + path
 		fileServer.ServeHTTP(w, r)
 	})

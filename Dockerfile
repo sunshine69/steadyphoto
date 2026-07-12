@@ -50,7 +50,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app/steadyphoto/migra
 FROM alpine:3.19
 
 # Install ca-certificates, postgresql-client for health checks, and su-exec to drop privileges
-RUN apk add --no-cache ca-certificates su-exec postgresql-client ffmpeg && \
+RUN apk add --no-cache ca-certificates su-exec postgresql-client ffmpeg mailcap && \
     mkdir -p /app/storage
 
 WORKDIR /app
