@@ -584,9 +584,21 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
           }
         });
       });
-    } else if (searchParam && !isSharedMedia) {
-      // Came from search context (owner gallery) - use search results
-      this.searchService.searchMedia(searchParam, searchScopeParam as SearchScope, 200, 0).subscribe({
+    } else if ((searchParam || this.route.snapshot.queryParams['tag'] || this.route.snapshot.queryParams['dateRange']) && !isSharedMedia) {
+      // Came from search context (owner gallery, tag filter, or date range) - use search results
+      const term = searchParam || '';
+      let scope = searchScopeParam as SearchScope;
+
+      if (this.route.snapshot.queryParams['tag']) {
+        scope = 'tags';
+      } else if (this.route.snapshot.queryParams['dateRange'] && (searchScopeParam === 'all' || !term)) {
+         // If there is a date range, ensure scope is set to 'date' even if it was passed as 'all' or empty term
+         scope = 'date';
+      }
+
+      const dateRange = this.route.snapshot.queryParams['dateRange'];
+
+      this.searchService.searchMedia(term, scope, 200, 0, dateRange).subscribe({
         next: (response: any) => {
           mediaItems = response.results.map((p: any) => ({
             id: p.id,

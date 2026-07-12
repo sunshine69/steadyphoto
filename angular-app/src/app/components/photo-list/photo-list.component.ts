@@ -328,6 +328,9 @@ export class PhotoListComponent implements OnInit, OnDestroy {
       queryParams.searchTerm = this.currentSearchTerm;
       queryParams.searchScope = this.searchScope;
     }
+    if (this.currentDateRange) {
+      queryParams.dateRange = this.currentDateRange;
+    }
     this.router.navigate(['/photos', id], { queryParams });
   }
 
