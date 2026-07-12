@@ -144,6 +144,31 @@ fun SettingsScreen(
                 }
             }
 
+            // Auto-start at boot toggle - persisted to DataStore
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Boot", style = MaterialTheme.typography.titleMedium)
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    var autoStartAtBoot by remember { mutableStateOf(false) }
+
+                    LaunchedEffect(Unit) {
+                        viewModel.autoStartAtBootFlow.collect { enabled ->
+                            autoStartAtBoot = enabled
+                        }
+                    }
+
+                    SwitchPreferenceRow(
+                        title = "Auto-start at boot",
+                        description = "Automatically start the app when the phone restarts",
+                        checked = autoStartAtBoot,
+                        onCheckedChange = { enabled ->
+                            viewModel.setAutoStartAtBoot(enabled)
+                        }
+                    )
+                }
+            }
+
             // Storage info - placeholder, can be enhanced with real database counts later
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {

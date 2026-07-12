@@ -25,6 +25,9 @@ class SettingsRepository(private val context: Context) {
         private val AUTO_SYNC_ENABLED_KEY = booleanPreferencesKey("auto_sync_enabled")
         private val FALLBACK_SYNC_INTERVAL_KEY = intPreferencesKey("fallback_sync_interval_minutes")
         private val LAST_SYNC_TIMESTAMP_KEY = longPreferencesKey("last_sync_timestamp")
+
+        // Boot settings key
+        private val AUTO_START_AT_BOOT_KEY = booleanPreferencesKey("auto_start_at_boot")
     }
 
     /**
@@ -62,6 +65,21 @@ class SettingsRepository(private val context: Context) {
                 autoSyncEnabled = preferences[AUTO_SYNC_ENABLED_KEY] ?: true,
                 fallbackSyncIntervalMinutes = preferences[FALLBACK_SYNC_INTERVAL_KEY] ?: 30
             )
+        }
+
+    /**
+     * Flow of the auto-start at boot setting.
+     */
+    val autoStartAtBootFlow: Flow<Boolean> = context.settingsDataStore.data
+        .catch { exception ->
+             if (exception is IOException) {
+                androidx.datastore.preferences.core.emptyPreferences()
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences ->
+            preferences[AUTO_START_AT_BOOT_KEY] ?: false
         }
 
     /**
@@ -115,6 +133,15 @@ class SettingsRepository(private val context: Context) {
     suspend fun setFallbackSyncInterval(minutes: Int) {
         context.settingsDataStore.edit { preferences ->
             preferences[FALLBACK_SYNC_INTERVAL_KEY] = minutes
+        }
+    }
+
+    /**
+     * Set whether auto-start at boot is enabled.
+     */
+    suspend fun setAutoStartAtBoot(enabled: Boolean) {
+        context.settingsDataStore.edit { preferences ->
+            preferences[AUTO_START_AT_BOOT_KEY] = enabled
         }
     }
 

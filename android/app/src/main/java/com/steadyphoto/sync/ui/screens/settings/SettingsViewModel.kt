@@ -30,6 +30,13 @@ class SettingsViewModel(
             1
         )
 
+    val autoStartAtBootFlow: SharedFlow<Boolean> = 
+        settingsRepository.autoStartAtBootFlow.shareIn(
+            viewModelScope,
+            SharingStarted.Lazily,
+            1
+        )
+
     fun updateApiUrl(url: String) {
         ApiClient.updateBaseUrl(url.trim())
     }
@@ -57,6 +64,12 @@ class SettingsViewModel(
         viewModelScope.launch {
             settingsRepository.setAutoSyncEnabled(enabled)
             syncManager.rescheduleWithCurrentSettings()
+        }
+    }
+
+    fun setAutoStartAtBoot(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.setAutoStartAtBoot(enabled)
         }
     }
 }

@@ -15,6 +15,7 @@ class SteadyPhotoApplication : Application() {
 
     // Use lazy injection to ensure Koin is started before we access it
     private val syncManager: SyncManager by inject()
+    private val settingsRepository: com.steadyphoto.sync.data.settings.SettingsRepository by inject()
 
     override fun onCreate() {
         super.onCreate()
@@ -29,17 +30,28 @@ class SteadyPhotoApplication : Application() {
             modules(appModule)
         }
 
-        // 3. Start the foreground SyncService for real-time monitoring.
-        try {
-            val intent = Intent(this, SyncService::class.java).apply {
-                action = SyncService.ACTION_START_SYNC
-            }
-            startForegroundService(intent)
-        } catch (e: Exception) {
-            android.util.Log.e("SteadyPhoto", "Failed to start SyncService in onCreate", e)
-        }
+        // Use runBlocking only once here to check boot setting if we are being triggered by a broadcast or startup
+        // Note: In a real production app, you might want to avoid blocking the main thread in onCreate. 
+        // However, for this initialization sequence it's acceptable.
+        kotlinx.coroutines.runBlocking {
+            val autoStartAtBoot = settingsRepository.autoStartAtBootFlow.first()
 
-        // 4. Use SyncManager to orchestrate fallback background work via WorkManager.
-        syncManager.schedulePeriodicSync()
+            if (autoStartAtBoot) {
+                // 3. Start the foreground SyncService for real-time monitoring.
+                try {
+                    val intent = Intent(this@SteadyPhotoApplication, SyncService::class.java).apply {
+                        action = SyncService.ACTION_START_SYNC
+                    }
+                    startForegroundService(intent)
+                } catch (e: Exception) {
+                    android.util.Log.e("SteadyPhoto", "Failed to start SyncService in onCreate", e)
+                }
+
+                // 4. Use SyncManager to orchestrate fallback background work via WorkManager.
+                syncManager.schedulePeriodicSync()
+            } else {
+                android.util.Log.d("SteadyPhoto", "Auto-start at boot is disabled - skipping auto-start.")
+            }
+        }
     }
 }
