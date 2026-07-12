@@ -3,13 +3,14 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/jbrodriguez/mlog"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/jbrodriguez/mlog"
 
 	"steadyphoto/internal/database"
 	"steadyphoto/internal/domain"
@@ -289,23 +290,23 @@ func (s *Server) routes() {
 
 			// SHARING ROUTES — user-to-user + public share link management (auth required)
 			protected.Route("/shares", func(r chi.Router) {
-				r.Post("/", sharesHandler.handleCreateShare)                       // Create a share with specific users + media/albums to share
-				r.Get("/", sharesHandler.handleListOutgoingShareGroups)           // List outgoing share groups for current user
-				r.Delete("/{id}", sharesHandler.handleRevokeOutgoingShare)        // Revoke an outgoing share group by ID
+				r.Post("/", sharesHandler.handleCreateShare)               // Create a share with specific users + media/albums to share
+				r.Get("/", sharesHandler.handleListOutgoingShareGroups)    // List outgoing share groups for current user
+				r.Delete("/{id}", sharesHandler.handleRevokeOutgoingShare) // Revoke an outgoing share group by ID
 			})
 			protected.Get("/media/shared", sharesHandler.handleListSharedMedia)   // List media shared with current user
 			protected.Get("/albums/shared", sharesHandler.handleListSharedAlbums) // List albums shared with current user
 			// Serve shared media items (metadata + files) - checks sharee access instead of ownership
 			protected.Route("/media/shared/{id}", func(r chi.Router) {
-				r.Get("/", s.handleGetSharedMedia)                  // Get metadata for a single shared media item
-				r.Get("/thumb", s.handleGetSharedMediaThumb)        // Serve thumbnail for a shared media item
-				r.Get("/original", s.handleGetSharedMediaOriginal)  // Stream original file for a shared media item
+				r.Get("/", s.handleGetSharedMedia)                 // Get metadata for a single shared media item
+				r.Get("/thumb", s.handleGetSharedMediaThumb)       // Serve thumbnail for a shared media item
+				r.Get("/original", s.handleGetSharedMediaOriginal) // Stream original file for a shared media item
 			})
 
 			// Shared album detail and media endpoints - checks sharee access instead of ownership
 			protected.Route("/albums/shared/{id}", func(r chi.Router) {
-				r.Get("/", s.handleGetSharedAlbum)        // Get metadata for a single shared album
-				r.Get("/media", s.handleListSharedAlbumMedia)  // List media items in a shared album
+				r.Get("/", s.handleGetSharedAlbum)            // Get metadata for a single shared album
+				r.Get("/media", s.handleListSharedAlbumMedia) // List media items in a shared album
 			})
 
 			protected.Route("/public-shares", func(r chi.Router) {
@@ -313,7 +314,6 @@ func (s *Server) routes() {
 				r.Delete("/{id}", sharesHandler.handleDeletePublicShare) // Revoke public share link by ID
 				r.Get("/", sharesHandler.handleListPublicShares)         // List all public shares for current user
 
-	
 			})
 
 		})
@@ -341,12 +341,27 @@ func (s *Server) routes() {
 	})
 
 	// Serve static frontend files from /ui path
-	s.router.Handle("/ui/*", http.StripPrefix("/ui/", http.FileServer(http.Dir("./ui"))))
+	s.router.Handle("/ui/browser/*", http.StripPrefix("/ui/browser/", http.FileServer(http.Dir("./ui/browser"))))
 
-	// SPA fallback: serve index.html for any other non-API routes
+	// SPA fallback: serve index.html safely
 	s.router.HandleFunc("/*", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html")
-		http.ServeFile(w, r, "./ui/index.html")
+		// 1. Clean the path to prevent directory traversal vulnerabilities
+		path := filepath.Clean(r.URL.Path)
+
+		// 2. Target the physical location of the file in your ui folder
+		fullPath := filepath.Join("./ui/browser", path)
+
+		// 3. Check if the file physically exists on the server disk
+		info, err := os.Stat(fullPath)
+
+		// 4. If the file exists and is not a folder, serve it directly!
+		if err == nil && !info.IsDir() {
+			http.ServeFile(w, r, fullPath)
+			return
+		}
+
+		// 5. If it doesn't exist, it's an Angular route. Fallback to index.html.
+		http.ServeFile(w, r, "./ui/browser/index.html")
 	})
 }
 
@@ -372,7 +387,6 @@ func (s *Server) startCleanupGoroutine() {
 		}
 	}()
 }
-
 
 // handleListPhotos returns a paginated list of photos only (now user-scoped)
 func (s *Server) handleListPhotos(w http.ResponseWriter, r *http.Request) {
@@ -515,7 +529,6 @@ func (s *Server) handleGetPhotoFile(w http.ResponseWriter, r *http.Request) {
 	// http.ServeFile handles Range requests automatically (crucial for video/seeking)
 	http.ServeFile(w, r, absPath)
 }
-
 
 // handleListMedia returns a paginated list of media items (photos + videos) (now user-scoped)
 func (s *Server) handleListMedia(w http.ResponseWriter, r *http.Request) {
