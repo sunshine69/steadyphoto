@@ -229,9 +229,8 @@ export class PhotoListComponent implements OnInit, OnDestroy {
       }
     });
 
-    // Initial load — push empty search term to trigger the stream
+    // Initial load — trigger the stream with existing service state
     this.loading = true;
-    this.searchService.setSearchTerm('');
   }
 
   /**
