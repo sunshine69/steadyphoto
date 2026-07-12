@@ -63,14 +63,14 @@
         "serve": {
           "builder": "@angular-devkit/build-angular:dev-server",
           "options": {
-            "browserTarget": "steadyphoto-angular:build",
             "port": 4200,
             "host": "0.0.0.0",
-            "disableHostCheck": true
+            "disableHostCheck": true,
+            "buildTarget": "steadyphoto-angular:build"
           },
           "configurations": {
             "production": {
-              "browserTarget": "steadyphoto-angular:build:production"
+              "buildTarget": "steadyphoto-angular:build:production"
             }
           }
         },

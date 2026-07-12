@@ -9,10 +9,9 @@ import { environment } from '../../../environments/environment';
 import { PhotoCardComponent } from '../photo-card/photo-card.component';
 
 @Component({
-  selector: 'app-public-share-album',
-  standalone: true,
-  imports: [CommonModule, RouterModule, FormsModule, PhotoCardComponent],
-  template: `
+    selector: 'app-public-share-album',
+    imports: [CommonModule, RouterModule, FormsModule, PhotoCardComponent],
+    template: `
     <div class="container mt-4">
       <!-- Password Protection Modal -->
       <div class="modal-overlay" *ngIf="showPasswordModal && !albumData">
@@ -118,7 +117,7 @@ import { PhotoCardComponent } from '../photo-card/photo-card.component';
       </div>
     </div>
   `,
-  styles: [`
+    styles: [`
     .grid-container {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));

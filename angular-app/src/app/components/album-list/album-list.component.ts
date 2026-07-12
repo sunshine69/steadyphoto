@@ -8,10 +8,9 @@ import { SharedAlbumItem } from '../../models/share.model';
 import { Subscription } from 'rxjs';
 
 @Component({
-  selector: 'app-album-list',
-  standalone: true,
-  imports: [CommonModule, RouterModule],
-  template: `
+    selector: 'app-album-list',
+    imports: [CommonModule, RouterModule],
+    template: `
     <div class="container mt-4">
       <!-- Tab navigation -->
       <ul class="nav nav-tabs mb-4">
@@ -183,7 +182,7 @@ import { Subscription } from 'rxjs';
     </div>
 
   `,
-  styles: [`
+    styles: [`
     .album-card { 
       cursor: pointer; 
       transition: transform 0.2s ease, box-shadow 0.2s ease; 

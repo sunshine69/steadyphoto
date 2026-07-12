@@ -16,10 +16,9 @@ interface SelectableFile {
 }
 
 @Component({
-  selector: 'app-upload-modal',
-  standalone: true,
-  imports: [CommonModule],
-  template: `
+    selector: 'app-upload-modal',
+    imports: [CommonModule],
+    template: `
     <!-- Backdrop -->
     <div class="modal-backdrop" *ngIf="isVisible" (click)="closeModal()"></div>
 
@@ -121,7 +120,7 @@ interface SelectableFile {
       </div>
     </div>
   `,
-  styles: [`
+    styles: [`
     /* Backdrop */
     .modal-backdrop {
       position: fixed; inset: 0; background-color: rgba(0,0,0,0.6); z-index: 998; backdrop-filter: blur(2px);

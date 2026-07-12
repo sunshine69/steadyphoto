@@ -16,10 +16,9 @@ interface ExifData {
 }
 
 @Component({
-  selector: 'app-exif-data-popup',
-  standalone: true,
-  imports: [CommonModule],
-  template: `
+    selector: 'app-exif-data-popup',
+    imports: [CommonModule],
+    template: `
     <div class="exif-popup-overlay" (click)="onOverlayClick($event)">
       <div class="exif-popup-panel" (click)="$event.stopPropagation()">
         <div class="exif-popup-header">
@@ -53,7 +52,7 @@ interface ExifData {
       </div>
     </div>
   `,
-  styles: [`
+    styles: [`
     .exif-popup-overlay {
       position: fixed;
       top: 0;

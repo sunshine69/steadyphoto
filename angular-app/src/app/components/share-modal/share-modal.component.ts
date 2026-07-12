@@ -6,10 +6,9 @@ import { ShareTriggerService } from '../../services/share-trigger.service';
 import { Subscription } from 'rxjs';
 
 @Component({
-  selector: 'app-share-modal',
-  standalone: true,
-  imports: [CommonModule, FormsModule],
-  template: `
+    selector: 'app-share-modal',
+    imports: [CommonModule, FormsModule],
+    template: `
     <!-- Backdrop -->
     <div class="modal-backdrop" *ngIf="isVisible" (click)="closeModal()"></div>
 
@@ -181,7 +180,7 @@ import { Subscription } from 'rxjs';
       </div>
     </div>
   `,
-  styles: [`
+    styles: [`
     /* Backdrop */
     .modal-backdrop {
       position: fixed; inset: 0; background-color: rgba(0,0,0,0.6); z-index: 998; backdrop-filter: blur(2px);

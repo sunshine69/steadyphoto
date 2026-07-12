@@ -2,16 +2,15 @@ import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 @Component({
-  selector: 'app-favorites',
-  standalone: true,
-  imports: [CommonModule],
-  template: `
+    selector: 'app-favorites',
+    imports: [CommonModule],
+    template: `
     <div class="favorites-container">
       <h1>Favorites</h1>
       <p class="placeholder-text">Favorites view coming soon...</p>
     </div>
   `,
-  styles: [`
+    styles: [`
     .favorites-container {
       padding: 20px;
     }

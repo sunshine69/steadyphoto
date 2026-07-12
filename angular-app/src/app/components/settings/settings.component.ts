@@ -5,11 +5,10 @@ import { Router } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
 
 @Component({
-  selector: 'app-settings',
-  standalone: true,
-  imports: [CommonModule, FormsModule],
-  templateUrl: './settings.component.html',
-  styles: [`
+    selector: 'app-settings',
+    imports: [CommonModule, FormsModule],
+    templateUrl: './settings.component.html',
+    styles: [`
     .settings-wrapper {
       min-height: calc(100vh - 64px); /* Subtract sidebar height */
       padding: 2rem;

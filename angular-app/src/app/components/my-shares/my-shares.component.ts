@@ -3,10 +3,9 @@ import { CommonModule } from '@angular/common';
 import { ShareService, PublicShareListItem } from '../../services/share.service';
 
 @Component({
-  selector: 'app-my-shares',
-  standalone: true,
-  imports: [CommonModule],
-  template: `
+    selector: 'app-my-shares',
+    imports: [CommonModule],
+    template: `
     <div class="my-shares-container">
       <!-- Header -->
       <div class="header-section">
@@ -82,7 +81,7 @@ import { ShareService, PublicShareListItem } from '../../services/share.service'
       </ng-container>
     </div>
   `,
-  styles: [`
+    styles: [`
     .my-shares-container {
       padding: 24px;
       max-width: 800px;

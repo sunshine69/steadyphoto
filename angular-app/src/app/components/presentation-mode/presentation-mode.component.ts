@@ -5,10 +5,9 @@ import { PresentationService, MediaItem } from '../../services/presentation.serv
 import { PhotoService } from '../../services/photo.service';
 
 @Component({
-  selector: 'app-presentation-mode',
-  standalone: true,
-  imports: [CommonModule],
-  template: `
+    selector: 'app-presentation-mode',
+    imports: [CommonModule],
+    template: `
     <div class="presentation-overlay" *ngIf="presentationService.isOpen$ | async; else closeBtn">
       <!-- Close Button -->
       <button 
@@ -100,7 +99,7 @@ import { PhotoService } from '../../services/photo.service';
     <!-- Close button when presentation is closed (for testing) -->
     <ng-template #closeBtn></ng-template>
   `,
-  styles: [`
+    styles: [`
     .presentation-overlay {
       position: fixed;
       top: 0;

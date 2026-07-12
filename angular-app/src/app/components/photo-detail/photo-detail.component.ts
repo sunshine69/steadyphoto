@@ -14,10 +14,9 @@ import { ExifDataPopupComponent } from '../exif-data-popup/exif-data-popup.compo
 import { Photo } from '../../models/photo.model';
 
 @Component({
-  selector: 'app-photo-detail',
-  standalone: true,
-  imports: [CommonModule, RouterModule, FormsModule, ExifDataPopupComponent],
-  template: `
+    selector: 'app-photo-detail',
+    imports: [CommonModule, RouterModule, FormsModule, ExifDataPopupComponent],
+    template: `
     <div class="container mt-4">
       <div class="row">
         <div class="col-md-8">
@@ -166,7 +165,7 @@ import { Photo } from '../../models/photo.model';
       (close)="showExifPopup = false"
     ></app-exif-data-popup>
   `,
-  styles: [`
+    styles: [`
     .image-viewer-wrapper {
       width: 100%;
       display: flex;

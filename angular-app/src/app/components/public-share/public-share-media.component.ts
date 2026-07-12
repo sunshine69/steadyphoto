@@ -9,10 +9,9 @@ import { ShareService } from '../../services/share.service';
 import { environment } from '../../../environments/environment';
 
 @Component({
-  selector: 'app-public-share-media',
-  standalone: true,
-  imports: [CommonModule, RouterModule, FormsModule],
-  template: `
+    selector: 'app-public-share-media',
+    imports: [CommonModule, RouterModule, FormsModule],
+    template: `
     <div class="container mt-4">
       <!-- Password Protection Modal -->
       <div class="modal-overlay" *ngIf="showPasswordModal">
@@ -131,7 +130,7 @@ import { environment } from '../../../environments/environment';
       </div>
     </div>
   `,
-  styles: [`
+    styles: [`
     .image-viewer-wrapper {
       width: 100%;
       display: flex;

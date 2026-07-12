@@ -4,11 +4,10 @@ import { Photo } from '../../models/photo.model';
 import { ShareTriggerService } from '../../services/share-trigger.service';
 
 @Component({
-  selector: 'app-photo-card',
-  standalone: true,
-  imports: [CommonModule],
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  template: `
+    selector: 'app-photo-card',
+    imports: [CommonModule],
+    changeDetection: ChangeDetectionStrategy.OnPush,
+    template: `
     <div class="photo-card" (click)="onCardClick()">
       <div class="photo-wrapper">
         <!-- Show thumbnail for both photos and videos -->
@@ -65,7 +64,7 @@ import { ShareTriggerService } from '../../services/share-trigger.service';
       </button>
     </div >
   `,
-  styles: [`
+    styles: [`
     :host {
       display: block;
       width: 100%;

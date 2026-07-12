@@ -5,10 +5,9 @@ import { TrashService } from '../../services/trash.service';
 import { Photo, ListPhotosResponse } from '../../models/photo.model';
 
 @Component({
-  selector: 'app-trash',
-  standalone: true,
-  imports: [CommonModule, FormsModule],
-  template: `
+    selector: 'app-trash',
+    imports: [CommonModule, FormsModule],
+    template: `
     <div class="trash-container">
       <!-- Header -->
       <div class="header-section" *ngIf="!isLoading && photos.length > 0; else trashEmptyState">
@@ -129,7 +128,7 @@ import { Photo, ListPhotosResponse } from '../../models/photo.model';
       </div>
     </div>
   `,
-  styles: [`
+    styles: [`
     .trash-container {
       padding: 24px;
       max-width: 100%;

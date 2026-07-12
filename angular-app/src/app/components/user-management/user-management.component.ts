@@ -6,10 +6,9 @@ import { AuthService } from '../../services/auth.service';
 import { UserManagementService, User } from '../../services/user-management.service';
 
 @Component({
-  selector: 'app-user-management',
-  standalone: true,
-  imports: [CommonModule, FormsModule],
-  template: `
+    selector: 'app-user-management',
+    imports: [CommonModule, FormsModule],
+    template: `
     <div class="user-management-overlay" *ngIf="isOpen" (click)="onOverlayClick($event)">
       <div class="user-management-modal" (click)="$event.stopPropagation()">
         <!-- Header -->
@@ -161,7 +160,7 @@ import { UserManagementService, User } from '../../services/user-management.serv
       </div>
     </div>
   `,
-  styles: [`
+    styles: [`
     .user-management-overlay {
       position: fixed;
       top: 0;

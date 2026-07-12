@@ -11,10 +11,9 @@ import { PhotoCardComponent } from '../photo-card/photo-card.component';
 import { SelectionService } from '../../services/selection.service';
 
 @Component({
-  selector: 'app-photo-list',
-  standalone: true,
-  imports: [CommonModule, RouterModule, PhotoCardComponent, FormsModule],
-  template: `
+    selector: 'app-photo-list',
+    imports: [CommonModule, RouterModule, PhotoCardComponent, FormsModule],
+    template: `
     <div class="photo-list-container">
       <!-- Active Tag Filter Display -->
       <div *ngIf="activeTagFilter && selectedPhotoIds.size === 0" class="alert alert-info d-flex align-items-center justify-content-between mb-3">
@@ -64,7 +63,7 @@ import { SelectionService } from '../../services/selection.service';
       </div>
     </div>
   `,
-  styles: [`
+    styles: [`
     .photo-list-container { padding-top: 5rem; padding-bottom: 2rem; width: 100%; position: relative; }
     .grid-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 1.5rem; width: 100%; }
     .grid-item { position: relative; height: 100%; }

@@ -9,10 +9,9 @@ import { environment } from '../../../environments/environment';
 const DEBUG_PREFIX = '[Sharing Debug]';
 
 @Component({
-  selector: 'app-sharing-dashboard',
-  standalone: true,
-  imports: [CommonModule, RouterModule],
-  template: `
+    selector: 'app-sharing-dashboard',
+    imports: [CommonModule, RouterModule],
+    template: `
     <div class="sharing-page">
       <!-- Header -->
       <div class="page-header">
@@ -264,7 +263,7 @@ const DEBUG_PREFIX = '[Sharing Debug]';
 
     </div>
   `,
-  styles: [`
+    styles: [`
     .sharing-page { max-width: 1200px; margin: 0 auto; padding: 32px 24px; }
     .page-header { margin-bottom: 32px; }
     .page-header h1 { font-size: 28px; color: #f3f4f6; margin: 0 0 8px 0; font-weight: 700; }

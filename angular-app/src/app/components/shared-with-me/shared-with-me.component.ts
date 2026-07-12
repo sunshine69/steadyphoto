@@ -5,10 +5,9 @@ import { ShareService, SharedMediaItem, SharedAlbumItem } from '../../services/s
 import { Photo } from '../../models/photo.model';
 
 @Component({
-  selector: 'app-shared-with-me',
-  standalone: true,
-  imports: [CommonModule, RouterModule],
-  template: `
+    selector: 'app-shared-with-me',
+    imports: [CommonModule, RouterModule],
+    template: `
     <div class="shared-with-me-container">
       <!-- Header -->
       <div class="header-section">
@@ -110,7 +109,7 @@ import { Photo } from '../../models/photo.model';
       </ng-container>
     </div>
   `,
-  styles: [`
+    styles: [`
     .shared-with-me-container {
       padding: 24px;
       max-width: 1200px;

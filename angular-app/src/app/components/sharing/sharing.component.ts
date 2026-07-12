@@ -2,16 +2,15 @@ import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 @Component({
-  selector: 'app-sharing',
-  standalone: true,
-  imports: [CommonModule],
-  template: `
+    selector: 'app-sharing',
+    imports: [CommonModule],
+    template: `
     <div class="sharing-container">
       <h1>Sharing</h1>
       <p class="placeholder-text">Sharing view coming soon...</p>
     </div>
   `,
-  styles: [`
+    styles: [`
     .sharing-container {
       padding: 20px;
     }

@@ -21,10 +21,9 @@ import { Album } from './models/album.model';
 import { ExifTriggerService } from './services/exif-trigger.service';
 
 @Component({
-  selector: 'app-root',
-  standalone: true,
-  imports: [CommonModule, RouterModule, PresentationModeComponent, SidebarComponent, FormsModule, UploadModalComponent, UserManagementComponent, ShareModalComponent],
-  template: `
+    selector: 'app-root',
+    imports: [CommonModule, RouterModule, PresentationModeComponent, SidebarComponent, FormsModule, UploadModalComponent, UserManagementComponent, ShareModalComponent],
+    template: `
     <!-- Main Layout Container -->
     <div class="app-layout">
       <!-- Fixed Sidebar Navigation -->
@@ -304,7 +303,7 @@ import { ExifTriggerService } from './services/exif-trigger.service';
       </div>
     </footer>
   `,
-  styles: [`
+    styles: [`
     .app-layout {
       display: flex;
       min-height: 100vh;

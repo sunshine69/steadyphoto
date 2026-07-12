@@ -5,11 +5,10 @@ import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
 
 @Component({
-  selector: 'app-register',
-  standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
-  templateUrl: './register.component.html',
-  styles: [`
+    selector: 'app-register',
+    imports: [CommonModule, FormsModule, RouterLink],
+    templateUrl: './register.component.html',
+    styles: [`
     .register-wrapper {
       min-height: 100vh;
       display: flex;

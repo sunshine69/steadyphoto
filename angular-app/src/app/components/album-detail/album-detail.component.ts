@@ -12,10 +12,9 @@ import { PhotoCardComponent } from '../photo-card/photo-card.component';
 import { FormsModule } from '@angular/forms';
 
 @Component({
-  selector: 'app-album-detail',
-  standalone: true,
-  imports: [CommonModule, RouterModule, PhotoCardComponent, FormsModule],
-  template: `
+    selector: 'app-album-detail',
+    imports: [CommonModule, RouterModule, PhotoCardComponent, FormsModule],
+    template: `
     <div class="container mt-4">
       <!-- Remove Media Mode Banner -->
       <div class="alert alert-danger d-flex align-items-center justify-content-between mb-3" *ngIf="selectedRemovePhotoIds.size > 0 && !loading">
@@ -163,7 +162,7 @@ import { FormsModule } from '@angular/forms';
       </div>
     </div>
   `,
-  styles: [`
+    styles: [`
     .grid-container {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));

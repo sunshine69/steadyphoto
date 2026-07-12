@@ -2,16 +2,15 @@ import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 @Component({
-  selector: 'app-explore',
-  standalone: true,
-  imports: [CommonModule],
-  template: `
+    selector: 'app-explore',
+    imports: [CommonModule],
+    template: `
     <div class="explore-container">
       <h1>Explore</h1>
       <p class="placeholder-text">Explore view coming soon...</p>
     </div>
   `,
-  styles: [`
+    styles: [`
     .explore-container {
       padding: 20px;
     }

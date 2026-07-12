@@ -2,16 +2,15 @@ import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 @Component({
-  selector: 'app-map',
-  standalone: true,
-  imports: [CommonModule],
-  template: `
+    selector: 'app-map',
+    imports: [CommonModule],
+    template: `
     <div class="map-container">
       <h1>Map</h1>
       <p class="placeholder-text">Interactive map view coming soon...</p>
     </div>
   `,
-  styles: [`
+    styles: [`
     .map-container {
       padding: 20px;
     }

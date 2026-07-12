@@ -6,10 +6,9 @@ import { AuthService } from '../../services/auth.service';
 import { Subscription } from 'rxjs';
 
 @Component({
-  selector: 'app-sidebar',
-  standalone: true,
-  imports: [CommonModule, RouterModule],
-  template: `
+    selector: 'app-sidebar',
+    imports: [CommonModule, RouterModule],
+    template: `
     <div class="sidebar">
       <!-- Logo Section -->
       <div class="sidebar-header">
@@ -149,7 +148,7 @@ import { Subscription } from 'rxjs';
       </div>
     </div>
   `,
-  styles: [`
+    styles: [`
     .sidebar {
       position: fixed;
       left: 0;
