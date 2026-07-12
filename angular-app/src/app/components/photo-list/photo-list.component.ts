@@ -119,6 +119,7 @@ export class PhotoListComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     const savedPage = this.galleryState.getCurrentPage();
     this.currentPage = savedPage;
+    this.jumpPageInput = this.currentPage; // Sync jump input with current page on init
     // Prevent switchMap from resetting page on initial load
     this.restorePage = true;
     this.offset = (savedPage - 1) * this.limit;
@@ -304,6 +305,7 @@ export class PhotoListComponent implements OnInit, OnDestroy {
   changePage(dir: number): void { 
     this.offset += (dir * this.limit); 
     this.currentPage += dir; 
+    this.jumpPageInput = this.currentPage; // Sync jump input with current page
     this.galleryState.saveCurrentPage(this.currentPage); 
     this.loadPhotosDirect();
     window.scrollTo(0, 0); 
