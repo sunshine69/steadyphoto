@@ -1,9 +1,9 @@
 import { Component } from '@angular/core';
-import { CommonModule } from '@angular/common';
+
 
 @Component({
     selector: 'app-explore',
-    imports: [CommonModule],
+    imports: [],
     template: `
     <div class="explore-container">
       <h1>Explore</h1>

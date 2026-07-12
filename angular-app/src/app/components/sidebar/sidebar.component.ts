@@ -1,13 +1,13 @@
 import { Component, OnInit, OnDestroy, inject } from '@angular/core';
 import { Router } from '@angular/router';
-import { CommonModule } from '@angular/common';
+
 import { RouterModule, RouterLinkActive } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
 import { Subscription } from 'rxjs';
 
 @Component({
     selector: 'app-sidebar',
-    imports: [CommonModule, RouterModule],
+    imports: [RouterModule],
     template: `
     <div class="sidebar">
       <!-- Logo Section -->
@@ -21,7 +21,7 @@ import { Subscription } from 'rxjs';
           <span class="logo-text">SteadyPhoto</span>
         </div>
       </div>
-
+    
       <!-- Main Navigation -->
       <nav class="sidebar-nav">
         <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{exact: true}" class="nav-item">
@@ -32,7 +32,7 @@ import { Subscription } from 'rxjs';
           </svg>
           <span>Photos</span>
         </a>
-
+    
         <a routerLink="/explore" routerLinkActive="active" class="nav-item">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="11" cy="11" r="8"/>
@@ -40,7 +40,7 @@ import { Subscription } from 'rxjs';
           </svg>
           <span>Explore</span>
         </a>
-
+    
         <a routerLink="/map" routerLinkActive="active" class="nav-item">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/>
@@ -49,7 +49,7 @@ import { Subscription } from 'rxjs';
           </svg>
           <span>Map</span>
         </a>
-
+    
         <a routerLink="/sharing" routerLinkActive="active" class="nav-item">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
@@ -59,18 +59,18 @@ import { Subscription } from 'rxjs';
           </svg>
           <span>Sharing</span>
         </a>
-
+    
         <!-- Library Section -->
         <div class="nav-section">
           <h3 class="section-title">LIBRARY</h3>
-          
+    
           <a routerLink="/favorites" routerLinkActive="active" class="nav-item">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
             </svg>
             <span>Favorites</span>
           </a>
-
+    
           <!-- Albums link - navigates to /albums page -->
           <a routerLink="/albums" routerLinkActive="active" class="nav-item">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -79,7 +79,7 @@ import { Subscription } from 'rxjs';
             </svg>
             <span>Albums</span>
           </a>
-
+    
           <a routerLink="/utilities" routerLinkActive="active" class="nav-item">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="3"/>
@@ -87,7 +87,7 @@ import { Subscription } from 'rxjs';
             </svg>
             <span>Utilities</span>
           </a>
-
+    
           <a routerLink="/archive" routerLinkActive="active" class="nav-item">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="21 8 21 21 3 21 3 8"/>
@@ -96,7 +96,7 @@ import { Subscription } from 'rxjs';
             </svg>
             <span>Archive</span>
           </a>
-
+    
           <a routerLink="/locked" routerLinkActive="active" class="nav-item">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
@@ -104,7 +104,7 @@ import { Subscription } from 'rxjs';
             </svg>
             <span>Locked Folder</span>
           </a>
-
+    
           <a routerLink="/trash" routerLinkActive="active" class="nav-item">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="3 6 5 6 21 6"/>
@@ -114,7 +114,7 @@ import { Subscription } from 'rxjs';
           </a>
         </div>
       </nav>
-
+    
       <!-- User Profile Section -->
       <div class="sidebar-footer">
         <div class="user-profile" (click)="toggleMenu()" [class.open]="isMenuOpen">
@@ -124,30 +124,32 @@ import { Subscription } from 'rxjs';
             <span class="storage-info">2.3 GB used</span>
           </div>
         </div>
-
+    
         <!-- Dropdown Menu - Settings and Logout -->
-        <div class="dropdown-menu" *ngIf="isMenuOpen" (click)="$event.stopPropagation()">
-          <ul class="menu-list">
-            <li class="menu-item" (click)="onSettings()">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="3"/>
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-              </svg>
-              <span>Settings</span>
-            </li>
-            <li class="menu-item" (click)="onLogout()">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-                <polyline points="16 17 21 12 16 7"/>
-                <line x1="21" y1="12" x2="9" y2="12"/>
-              </svg>
-              <span>Logout</span>
-            </li>
-          </ul>
-        </div>
+        @if (isMenuOpen) {
+          <div class="dropdown-menu" (click)="$event.stopPropagation()">
+            <ul class="menu-list">
+              <li class="menu-item" (click)="onSettings()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="3"/>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                </svg>
+                <span>Settings</span>
+              </li>
+              <li class="menu-item" (click)="onLogout()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                  <polyline points="16 17 21 12 16 7"/>
+                  <line x1="21" y1="12" x2="9" y2="12"/>
+                </svg>
+                <span>Logout</span>
+              </li>
+            </ul>
+          </div>
+        }
       </div>
     </div>
-  `,
+    `,
     styles: [`
     .sidebar {
       position: fixed;

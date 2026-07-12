@@ -1,5 +1,5 @@
 import { Component, Input, Output, EventEmitter, ChangeDetectionStrategy } from '@angular/core';
-import { CommonModule } from '@angular/common';
+
 
 interface ExifData {
   make?: string;
@@ -17,7 +17,7 @@ interface ExifData {
 
 @Component({
     selector: 'app-exif-data-popup',
-    imports: [CommonModule],
+    imports: [],
     template: `
     <div class="exif-popup-overlay" (click)="onOverlayClick($event)">
       <div class="exif-popup-panel" (click)="$event.stopPropagation()">
@@ -36,22 +36,28 @@ interface ExifData {
             </svg>
           </button>
         </div>
-        
+    
         <div class="exif-popup-content">
-          <div *ngIf="!hasExifData" class="exif-empty-state">
-            <p class="text-muted">No EXIF data available for this photo.</p>
-          </div>
-          
-          <div *ngIf="hasExifData" class="exif-data-list">
-            <div class="exif-data-item" *ngFor="let item of formattedExifData">
-              <span class="exif-data-label">{{ item.label }}</span>
-              <span class="exif-data-value">{{ item.value }}</span>
+          @if (!hasExifData) {
+            <div class="exif-empty-state">
+              <p class="text-muted">No EXIF data available for this photo.</p>
             </div>
-          </div>
+          }
+    
+          @if (hasExifData) {
+            <div class="exif-data-list">
+              @for (item of formattedExifData; track item) {
+                <div class="exif-data-item">
+                  <span class="exif-data-label">{{ item.label }}</span>
+                  <span class="exif-data-value">{{ item.value }}</span>
+                </div>
+              }
+            </div>
+          }
         </div>
       </div>
     </div>
-  `,
+    `,
     styles: [`
     .exif-popup-overlay {
       position: fixed;

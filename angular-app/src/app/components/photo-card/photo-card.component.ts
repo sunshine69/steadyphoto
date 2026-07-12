@@ -1,58 +1,73 @@
 import { Component, Input, Output, EventEmitter, ChangeDetectionStrategy, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
+
 import { Photo } from '../../models/photo.model';
 import { ShareTriggerService } from '../../services/share-trigger.service';
 
 @Component({
     selector: 'app-photo-card',
-    imports: [CommonModule],
+    imports: [],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
     <div class="photo-card" (click)="onCardClick()">
       <div class="photo-wrapper">
         <!-- Show thumbnail for both photos and videos -->
-        <div *ngIf="photo.thumbnailUrl; else fallback" class="thumb-container">
-          <img 
-            [src]="photo.thumbnailUrl" 
-            [alt]="photo.filename"
-            class="photo-thumb"
-            loading="lazy"
-            crossorigin="use-credentials"
-          >
-          <!-- Video icon overlay for videos -->
-          <div *ngIf="isVideo()" class="video-overlay">
-            <span class="play-icon">▶</span>
+        @if (photo.thumbnailUrl) {
+          <div class="thumb-container">
+            <img
+              [src]="photo.thumbnailUrl"
+              [alt]="photo.filename"
+              class="photo-thumb"
+              loading="lazy"
+              crossorigin="use-credentials"
+              >
+            <!-- Video icon overlay for videos -->
+            @if (isVideo()) {
+              <div class="video-overlay">
+                <span class="play-icon">▶</span>
+              </div>
+            }
           </div>
-        </div>
-        <!-- Fallback when no thumbnail available -->
-        <ng-template #fallback>
+        } @else {
           <div [class]="getFallbackClass()">
-            <span *ngIf="isVideo()" class="video-icon">▶</span>
-            <span *ngIf="!isVideo()" class="photo-icon">📷</span>
+            @if (isVideo()) {
+              <span class="video-icon">▶</span>
+            }
+            @if (!isVideo()) {
+              <span class="photo-icon">📷</span>
+            }
             <span class="filename-overlay">{{ photo.filename }}</span>
           </div>
-        </ng-template>
+        }
+        <!-- Fallback when no thumbnail available -->
       </div >
       <div class="photo-info">
         <p class="photo-filename" [title]="photo.filename">{{ photo.filename }}</p>
         <p class="photo-date">{{ isVideo() ? formatDuration(photo.videoMetadata?.duration) : formatDisplayDate(getPhotoDate(photo)) }}</p>
         <!-- EXIF Data Display -->
-        <div class="exif-info" *ngIf="photo.metadata && !isVideo()">
-          <span class="exif-item" *ngIf="photo.metadata.make">
-            <span class="exif-icon">📷</span> {{ photo.metadata.make }}
-          </span>
-          <span class="exif-item" *ngIf="photo.metadata.f_number">
-            <span class="exif-icon">🔍</span> f/{{ photo.metadata.f_number }}
-          </span>
-          <span class="exif-item" *ngIf="photo.metadata.focal_length">
-            <span class="exif-icon">📐</span> {{ photo.metadata.focal_length }}mm
-          </span>
-        </div>
+        @if (photo.metadata && !isVideo()) {
+          <div class="exif-info">
+            @if (photo.metadata.make) {
+              <span class="exif-item">
+                <span class="exif-icon">📷</span> {{ photo.metadata.make }}
+              </span>
+            }
+            @if (photo.metadata.f_number) {
+              <span class="exif-item">
+                <span class="exif-icon">🔍</span> f/{{ photo.metadata.f_number }}
+              </span>
+            }
+            @if (photo.metadata.focal_length) {
+              <span class="exif-item">
+                <span class="exif-icon">📐</span> {{ photo.metadata.focal_length }}mm
+              </span>
+            }
+          </div>
+        }
       </div >
-
+    
       <!-- Share button overlay on hover -->
-      <button 
-        class="share-btn-overlay" 
+      <button
+        class="share-btn-overlay"
         title="Share this photo"
         (click)="onShareClick($event)">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -63,7 +78,7 @@ import { ShareTriggerService } from '../../services/share-trigger.service';
         </svg>
       </button>
     </div >
-  `,
+    `,
     styles: [`
     :host {
       display: block;

@@ -13,16 +13,16 @@
 
     <!-- Login Form -->
     <form (ngSubmit)="onSubmit()" #loginForm="ngForm" class="login-form">
-      
+
       <!-- Email Field -->
       <div class="form-group">
         <label for="email" class="form-label">Email Address</label>
-        <input 
-          type="email" 
-          id="email" 
-          name="email" 
+        <input
+          type="email"
+          id="email"
+          name="email"
           class="form-control"
-          [(ngModel)]="email" 
+          [(ngModel)]="email"
           placeholder="you@example.com"
           #emailModel="ngModel"/>
       </div>
@@ -30,28 +30,32 @@
       <!-- Password Field -->
       <div class="form-group">
         <label for="password" class="form-label">Password</label>
-        <input 
-          type="password" 
-          id="password" 
-          name="password" 
+        <input
+          type="password"
+          id="password"
+          name="password"
           class="form-control"
-          [(ngModel)]="password" 
+          [(ngModel)]="password"
           placeholder="••••••••"
           #passwordModel="ngModel"/>
       </div>
 
       <!-- Error Message -->
-      <div *ngIf="errorMessage" class="error-message">
-        {{ errorMessage }}
-      </div>
+      @if (errorMessage) {
+        <div class="error-message">
+          {{ errorMessage }}
+        </div>
+      }
 
       <!-- Action Buttons -->
       <div class="form-actions">
         <button type="submit" [disabled]="isLoading" class="btn btn-login w-100">
-          <span *ngIf="isLoading" class="spinner-border spinner-border-sm me-2"></span>
+          @if (isLoading) {
+            <span class="spinner-border spinner-border-sm me-2"></span>
+          }
           {{ isLoading ? 'Signing in...' : 'Login' }}
         </button>
-        
+
         <button type="button" (click)="onReset()" [disabled]="isLoading" class="btn btn-reset">
           Reset
         </button>
@@ -60,7 +64,7 @@
 
     <!-- Register Link -->
     <div class="register-link">
-      Don't have an account? 
+      Don't have an account?
       <a routerLink="/register" class="text-primary text-decoration-none">Register here</a>
     </div>
   </div>

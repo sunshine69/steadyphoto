@@ -1,9 +1,9 @@
 import { Component } from '@angular/core';
-import { CommonModule } from '@angular/common';
+
 
 @Component({
     selector: 'app-archive',
-    imports: [CommonModule],
+    imports: [],
     template: `
     <div class="placeholder-container">
       <h1>Archive</h1>

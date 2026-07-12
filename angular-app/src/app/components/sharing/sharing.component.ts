@@ -1,9 +1,9 @@
 import { Component } from '@angular/core';
-import { CommonModule } from '@angular/common';
+
 
 @Component({
     selector: 'app-sharing',
-    imports: [CommonModule],
+    imports: [],
     template: `
     <div class="sharing-container">
       <h1>Sharing</h1>

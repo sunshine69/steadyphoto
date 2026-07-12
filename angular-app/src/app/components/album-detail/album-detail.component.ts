@@ -1,5 +1,5 @@
 import { Component, inject, OnInit, OnDestroy, ChangeDetectorRef, NgZone } from '@angular/core';
-import { CommonModule } from '@angular/common';
+
 import { ActivatedRoute, RouterModule, Router } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { AlbumService } from '../../services/album.service';
@@ -13,155 +13,183 @@ import { FormsModule } from '@angular/forms';
 
 @Component({
     selector: 'app-album-detail',
-    imports: [CommonModule, RouterModule, PhotoCardComponent, FormsModule],
+    imports: [RouterModule, PhotoCardComponent, FormsModule],
     template: `
     <div class="container mt-4">
       <!-- Remove Media Mode Banner -->
-      <div class="alert alert-danger d-flex align-items-center justify-content-between mb-3" *ngIf="selectedRemovePhotoIds.size > 0 && !loading">
-        <span>{{ selectedRemovePhotoIds.size }} items selected for removal from "{{ albumName }}"</span>
-        <div class="d-flex gap-2">
-          <button class="btn btn-sm btn-light" (click)="executeRemoveSelected()">Remove Selected</button>
-          <button class="btn btn-sm btn-outline-light" (click)="clearSelection()">Cancel Selection</button>
+      @if (selectedRemovePhotoIds.size > 0 && !loading) {
+        <div class="alert alert-danger d-flex align-items-center justify-content-between mb-3">
+          <span>{{ selectedRemovePhotoIds.size }} items selected for removal from "{{ albumName }}"</span>
+          <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-light" (click)="executeRemoveSelected()">Remove Selected</button>
+            <button class="btn btn-sm btn-outline-light" (click)="clearSelection()">Cancel Selection</button>
+          </div>
         </div>
-      </div>
-
+      }
+    
       <div class="d-flex justify-content-between align-items-center mb-4">
         <h2>{{ albumName }}</h2>
         <div class="d-flex align-items-center gap-2">
-           <button class="btn btn-outline-secondary" style="margin-right: 20px !important;" (click)="goBack()">Back to Albums</button>
-           <button 
-             *ngIf="totalAlbumPhotos > 0 && !loading"
-             class="btn btn-success" 
-             (click)="openAddMediaModal()">
-             ➕ Add Media
-           </button>
-           <button 
-             *ngIf="photos.length > 0 && !loading"
-             class="btn btn-warning" 
-             (click)="startPresentationFromAlbum()"
-             [disabled]="photos.length === 0">
-             🎬 Presentation Mode
-           </button>
-           <button 
-             *ngIf="photos.length > 0 && !loading"
-             class="btn btn-info" 
-             (click)="shareAlbum()">
-             📤 Share
-           </button>
+          <button class="btn btn-outline-secondary" style="margin-right: 20px !important;" (click)="goBack()">Back to Albums</button>
+          @if (totalAlbumPhotos > 0 && !loading) {
+            <button
+              class="btn btn-success"
+              (click)="openAddMediaModal()">
+              ➕ Add Media
+            </button>
+          }
+          @if (photos.length > 0 && !loading) {
+            <button
+              class="btn btn-warning"
+              (click)="startPresentationFromAlbum()"
+              [disabled]="photos.length === 0">
+              🎬 Presentation Mode
+            </button>
+          }
+          @if (photos.length > 0 && !loading) {
+            <button
+              class="btn btn-info"
+              (click)="shareAlbum()">
+              📤 Share
+            </button>
+          }
         </div>
       </div>
-
+    
       <!-- Add Media Modal -->
-      <div class="modal-overlay" *ngIf="showAddMediaModal">
-        <!-- New wrapper for flex layout -->
-        <div class="add-media-modal-wrapper bg-dark border rounded p-4">
-          <div class="d-flex justify-content-between align-items-center mb-3 modal-header-section">
-            <h5 class="text-white m-0">Add Media to Album</h5>
-            <button type="button" class="btn-close btn-close-white" (click)="closeAddMediaModal()"></button>
-          </div>
-          
-          <!-- Add Media Toolbar -->
-          <div class="d-flex justify-content-between align-items-center mb-3 p-2 rounded modal-toolbar">
-            <span class="text-white">Select items to add ({{ selectedAddMediaIds.size }} selected)</span>
-            <button 
-              class="btn btn-success btn-sm" 
-              (click)="executeAddMedia()">
-              Done ({{ selectedAddMediaIds.size }})
-            </button>
-          </div>
-
-          <!-- Media Grid Container -->
-          <div class="media-grid-container">
-            <div *ngIf="allPhotos.length === 0 && !loadingAllPhotos" class="text-center text-muted py-4">
-              No media items available to add.
+      @if (showAddMediaModal) {
+        <div class="modal-overlay">
+          <!-- New wrapper for flex layout -->
+          <div class="add-media-modal-wrapper bg-dark border rounded p-4">
+            <div class="d-flex justify-content-between align-items-center mb-3 modal-header-section">
+              <h5 class="text-white m-0">Add Media to Album</h5>
+              <button type="button" class="btn-close btn-close-white" (click)="closeAddMediaModal()"></button>
             </div>
-            <div class="grid-container" *ngIf="allPhotos.length > 0">
-              <div class="grid-item position-relative" *ngFor="let photo of allPhotos">
-                <!-- Selection Checkbox -->
-                <button type="button" 
-                        class="selection-checkbox-btn-add" 
+            <!-- Add Media Toolbar -->
+            <div class="d-flex justify-content-between align-items-center mb-3 p-2 rounded modal-toolbar">
+              <span class="text-white">Select items to add ({{ selectedAddMediaIds.size }} selected)</span>
+              <button
+                class="btn btn-success btn-sm"
+                (click)="executeAddMedia()">
+                Done ({{ selectedAddMediaIds.size }})
+              </button>
+            </div>
+            <!-- Media Grid Container -->
+            <div class="media-grid-container">
+              @if (allPhotos.length === 0 && !loadingAllPhotos) {
+                <div class="text-center text-muted py-4">
+                  No media items available to add.
+                </div>
+              }
+              @if (allPhotos.length > 0) {
+                <div class="grid-container">
+                  @for (photo of allPhotos; track photo) {
+                    <div class="grid-item position-relative">
+                      <!-- Selection Checkbox -->
+                      <button type="button"
+                        class="selection-checkbox-btn-add"
                         [class.selected]="isAddMediaSelected(photo.id)"
                         (click)="toggleAddMediaSelection(photo.id); $event.stopPropagation()">
-                  <svg *ngIf="isAddMediaSelected(photo.id)" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="white" viewBox="0 0 16 16">
-                    <path d="M12.736 3.97a.733.733 0 0 1 1.047 0c.286.289.29.756.01 1.05L7.88 12.01a.733.733 0 0 1-1.065.02L3.217 8.384a.757.757 0 0 1 0-1.06.733.733 0 0 1 1.047 0l3.052 3.093 5.777-6.817z"/>
-                  </svg>
-                </button>
-
-                <app-photo-card [photo]="photo" (cardClick)="onPhotoClick(photo.id)"></app-photo-card>
+                        @if (isAddMediaSelected(photo.id)) {
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="white" viewBox="0 0 16 16">
+                            <path d="M12.736 3.97a.733.733 0 0 1 1.047 0c.286.289.29.756.01 1.05L7.88 12.01a.733.733 0 0 1-1.065.02L3.217 8.384a.757.757 0 0 1 0-1.06.733.733 0 0 1 1.047 0l3.052 3.093 5.777-6.817z"/>
+                          </svg>
+                        }
+                      </button>
+                      <app-photo-card [photo]="photo" (cardClick)="onPhotoClick(photo.id)"></app-photo-card>
+                    </div>
+                  }
+                </div>
+              }
+            </div>
+            <!-- Pagination for Add Media Modal -->
+            @if (!loadingAllPhotos && totalLibraryItems > addMediaLimit) {
+              <div class="pagination-controls mt-3">
+                <button class="btn btn-outline-primary me-2" [disabled]="addMediaOffset === 0" (click)="changeAddMediaPage(-1)">Previous</button>
+                <div class="pagination-jump d-flex align-items-center mx-3">
+                  <span class="me-2 text-nowrap">Page</span>
+                  <input type="number" class="form-control form-control-sm jump-input me-2" [(ngModel)]="addMediaJumpInput" (keyup.enter)="onAddMediaJumpToPage()" min="1" [max]="totalLibraryPages">
+                  <button class="btn btn-primary btn-sm jump-btn" type="button" (click)="onAddMediaJumpToPage()">Go</button>
+                  <span class="ms-2 text-nowrap">of {{ totalLibraryPages }}</span>
+                </div>
+                <button class="btn btn-outline-primary ms-2" [disabled]="addMediaOffset + addMediaLimit >= totalLibraryItems" (click)="changeAddMediaPage(1)">Next</button>
               </div>
-            </div>
+            }
+            <!-- Loading Spinner for Add Media -->
+            @if (loadingAllPhotos) {
+              <div class="loading-spinner d-flex justify-content-center my-3">
+                <div class="spinner-border text-primary" role="status">
+                  <span class="visually-hidden">Loading...</span>
+                </div>
+              </div>
+            }
+          </div> <!-- End add-media-modal-wrapper -->
+        </div>
+        } <!-- End modal-overlay -->
+    
+        <!-- Media Grid -->
+        @if (!loading && totalAlbumPhotos > 0) {
+          <div>
+            @if (photos.length > 0) {
+              <div class="grid-container">
+                @for (photo of photos; track photo; let i = $index) {
+                  <div class="grid-item position-relative">
+                    <!-- Selection Checkbox - ALWAYS VISIBLE, placed BEFORE photo-card -->
+                    <button type="button"
+                      class="selection-checkbox-btn-remove-mode"
+                      [class.selected]="isPhotoSelected(photo.id)"
+                      (click)="toggleSelection(photo.id); $event.stopPropagation()">
+                      <!-- Empty circle when not selected, checkmark when selected -->
+                      @if (!isPhotoSelected(photo.id)) {
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="#fff" stroke-width="2" viewBox="0 0 16 16">
+                          <circle cx="8" cy="8" r="7"/>
+                        </svg>
+                      }
+                      @if (isPhotoSelected(photo.id)) {
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="#dc3545" stroke="#fff" stroke-width="2" viewBox="0 0 16 16">
+                          <circle cx="8" cy="8" r="7"/>
+                          <path d="M12.736 3.97a.733.733 0 0 1 1.047 0c.286.289.29.756.01 1.05L7.88 12.01a.733.733 0 0 1-1.065.02L3.217 8.384a.757.757 0 0 1 0-1.06.733.733 0 0 1 1.047 0l3.052 3.093 5.777-6.817z"/>
+                        </svg>
+                      }
+                    </button>
+                    <app-photo-card [photo]="photo" (cardClick)="onPhotoClick(photo.id)"></app-photo-card>
+                  </div>
+                }
+              </div>
+            }
+            <!-- Pagination for Album Grid -->
+            @if (totalAlbumPhotos > albumLimit) {
+              <div class="pagination-controls mt-4">
+                <button class="btn btn-outline-primary me-2" [disabled]="albumOffset === 0" (click)="changeAlbumPage(-1)">Previous</button>
+                <div class="pagination-jump d-flex align-items-center mx-3">
+                  <span class="me-2 text-nowrap">Page</span>
+                  <input type="number" class="form-control form-control-sm jump-input me-2" [(ngModel)]="albumJumpInput" (keyup.enter)="onAlbumJumpToPage()" min="1" [max]="totalAlbumPages">
+                  <button class="btn btn-primary btn-sm jump-btn" type="button" (click)="onAlbumJumpToPage()">Go</button>
+                  <span class="ms-2 text-nowrap">of {{ totalAlbumPages }}</span>
+                </div>
+                <button class="btn btn-outline-primary ms-2" [disabled]="albumOffset + albumLimit >= totalAlbumPhotos" (click)="changeAlbumPage(1)">Next</button>
+              </div>
+            }
           </div>
-
-          <!-- Pagination for Add Media Modal -->
-          <div class="pagination-controls mt-3" *ngIf="!loadingAllPhotos && totalLibraryItems > addMediaLimit">
-            <button class="btn btn-outline-primary me-2" [disabled]="addMediaOffset === 0" (click)="changeAddMediaPage(-1)">Previous</button>
-            <div class="pagination-jump d-flex align-items-center mx-3">
-              <span class="me-2 text-nowrap">Page</span>
-              <input type="number" class="form-control form-control-sm jump-input me-2" [(ngModel)]="addMediaJumpInput" (keyup.enter)="onAddMediaJumpToPage()" min="1" [max]="totalLibraryPages">
-              <button class="btn btn-primary btn-sm jump-btn" type="button" (click)="onAddMediaJumpToPage()">Go</button>
-              <span class="ms-2 text-nowrap">of {{ totalLibraryPages }}</span>
-            </div>
-            <button class="btn btn-outline-primary ms-2" [disabled]="addMediaOffset + addMediaLimit >= totalLibraryItems" (click)="changeAddMediaPage(1)">Next</button>
+        }
+    
+        <!-- Empty State -->
+        @if (!loading && photos.length === 0) {
+          <div class="empty-state py-5 text-center border rounded bg-light">
+            <p class="lead text-muted">This album is empty.</p>
           </div>
-
-          <!-- Loading Spinner for Add Media -->
-          <div class="loading-spinner d-flex justify-content-center my-3" *ngIf="loadingAllPhotos">
+        }
+    
+        <!-- Loading Spinner -->
+        @if (loading) {
+          <div class="loading-spinner d-flex justify-content-center my-5">
             <div class="spinner-border text-primary" role="status">
               <span class="visually-hidden">Loading...</span>
             </div>
           </div>
-        </div> <!-- End add-media-modal-wrapper -->
-      </div> <!-- End modal-overlay -->
-
-      <!-- Media Grid -->
-      <div *ngIf="!loading && totalAlbumPhotos > 0">
-        <div class="grid-container" *ngIf="photos.length > 0">
-          <div class="grid-item position-relative" *ngFor="let photo of photos; let i = index">
-            <!-- Selection Checkbox - ALWAYS VISIBLE, placed BEFORE photo-card -->
-            <button type="button" 
-                    class="selection-checkbox-btn-remove-mode" 
-                    [class.selected]="isPhotoSelected(photo.id)"
-                    (click)="toggleSelection(photo.id); $event.stopPropagation()">
-              <!-- Empty circle when not selected, checkmark when selected -->
-              <svg *ngIf="!isPhotoSelected(photo.id)" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="#fff" stroke-width="2" viewBox="0 0 16 16">
-                <circle cx="8" cy="8" r="7"/>
-              </svg>
-              <svg *ngIf="isPhotoSelected(photo.id)" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="#dc3545" stroke="#fff" stroke-width="2" viewBox="0 0 16 16">
-                <circle cx="8" cy="8" r="7"/>
-                <path d="M12.736 3.97a.733.733 0 0 1 1.047 0c.286.289.29.756.01 1.05L7.88 12.01a.733.733 0 0 1-1.065.02L3.217 8.384a.757.757 0 0 1 0-1.06.733.733 0 0 1 1.047 0l3.052 3.093 5.777-6.817z"/>
-              </svg>
-            </button>
-
-            <app-photo-card [photo]="photo" (cardClick)="onPhotoClick(photo.id)"></app-photo-card>
-          </div>
-        </div>
-
-        <!-- Pagination for Album Grid -->
-        <div class="pagination-controls mt-4" *ngIf="totalAlbumPhotos > albumLimit">
-          <button class="btn btn-outline-primary me-2" [disabled]="albumOffset === 0" (click)="changeAlbumPage(-1)">Previous</button>
-          <div class="pagination-jump d-flex align-items-center mx-3">
-            <span class="me-2 text-nowrap">Page</span>
-            <input type="number" class="form-control form-control-sm jump-input me-2" [(ngModel)]="albumJumpInput" (keyup.enter)="onAlbumJumpToPage()" min="1" [max]="totalAlbumPages">
-            <button class="btn btn-primary btn-sm jump-btn" type="button" (click)="onAlbumJumpToPage()">Go</button>
-            <span class="ms-2 text-nowrap">of {{ totalAlbumPages }}</span>
-          </div>
-          <button class="btn btn-outline-primary ms-2" [disabled]="albumOffset + albumLimit >= totalAlbumPhotos" (click)="changeAlbumPage(1)">Next</button>
-        </div>
+        }
       </div>
-
-      <!-- Empty State -->
-      <div class="empty-state py-5 text-center border rounded bg-light" *ngIf="!loading && photos.length === 0">
-        <p class="lead text-muted">This album is empty.</p>
-      </div>
-
-      <!-- Loading Spinner -->
-      <div class="loading-spinner d-flex justify-content-center my-5" *ngIf="loading">
-        <div class="spinner-border text-primary" role="status">
-          <span class="visually-hidden">Loading...</span>
-        </div>
-      </div>
-    </div>
-  `,
+    `,
     styles: [`
     .grid-container {
       display: grid;

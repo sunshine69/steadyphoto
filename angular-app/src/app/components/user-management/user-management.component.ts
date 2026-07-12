@@ -9,157 +9,163 @@ import { UserManagementService, User } from '../../services/user-management.serv
     selector: 'app-user-management',
     imports: [CommonModule, FormsModule],
     template: `
-    <div class="user-management-overlay" *ngIf="isOpen" (click)="onOverlayClick($event)">
-      <div class="user-management-modal" (click)="$event.stopPropagation()">
-        <!-- Header -->
-        <div class="modal-header">
-          <h2>User Management</h2>
-          <button class="close-btn" (click)="close()" title="Close">×</button>
-        </div>
-
-        <!-- Filter Section -->
-        <div class="filter-section">
-          <label>Filter by Status:</label>
-          <select [(ngModel)]="selectedStatus" (change)="loadUsers()">
-            <option value="">All Users</option>
-            <option value="pending">Pending Approval</option>
-            <option value="active">Active</option>
-            <option value="disabled">Disabled</option>
-            <option value="rejected">Rejected</option>
-          </select>
-        </div>
-
-        <!-- Bulk Actions Bar -->
-        <div class="bulk-actions-bar" *ngIf="isAdmin && users.length > 0 && !isLoading">
-          <label class="select-all-label">
-            <input type="checkbox" (change)="toggleSelectAll($event)" [checked]="isAllSelected()" />
-            Select All
-          </label>
-          <span class="selected-count">{{ getSelectedCount() }} selected</span>
-          
-          <div class="bulk-buttons">
-            <button 
-              (click)="bulkApproveSelected()"
-              [disabled]="getSelectedCount() === 0 || isBulkUpdating"
-              class="btn btn-sm btn-success bulk-btn"
-              title="Approve all selected users">
-              ✓ Approve Selected
-            </button>
-            
-            <button 
-              (click)="bulkDisableSelected()"
-              [disabled]="getSelectedCount() === 0 || isBulkUpdating"
-              class="btn btn-sm btn-warning bulk-btn"
-              title="Disable all selected users">
-              ⏸ Disable Selected
-            </button>
-            
-            <button 
-              (click)="bulkDeleteSelected()"
-              [disabled]="getSelectedCount() === 0 || isBulkUpdating"
-              class="btn btn-sm btn-danger bulk-btn"
-              title="Permanently delete all selected users">
-              🗑 Delete Selected
-            </button>
+    @if (isOpen) {
+      <div class="user-management-overlay" (click)="onOverlayClick($event)">
+        <div class="user-management-modal" (click)="$event.stopPropagation()">
+          <!-- Header -->
+          <div class="modal-header">
+            <h2>User Management</h2>
+            <button class="close-btn" (click)="close()" title="Close">×</button>
           </div>
-        </div>
-
-        <!-- Loading State -->
-        <div class="loading-state" *ngIf="isLoading">
-          <div class="spinner-border text-primary" role="status">
-            <span class="visually-hidden">Loading...</span>
+          <!-- Filter Section -->
+          <div class="filter-section">
+            <label>Filter by Status:</label>
+            <select [(ngModel)]="selectedStatus" (change)="loadUsers()">
+              <option value="">All Users</option>
+              <option value="pending">Pending Approval</option>
+              <option value="active">Active</option>
+              <option value="disabled">Disabled</option>
+              <option value="rejected">Rejected</option>
+            </select>
           </div>
-          <p>Loading users...</p>
-        </div>
-
-        <!-- Error State -->
-        <div class="error-state" *ngIf="errorMessage">
-          <p class="text-danger">{{ errorMessage }}</p>
-          <button (click)="loadUsers()" class="btn btn-sm btn-outline-primary mt-2">Retry</button>
-        </div>
-
-        <!-- User List -->
-        <div class="user-list" *ngIf="!isLoading && !errorMessage">
-          <div class="user-count">
-            Showing {{ users.length }} user(s)
-          </div>
-
-          <div class="users-container">
-            <div *ngFor="let user of users; let i = index" class="user-card" [class.selected]="selectedUsers[user.id]">
-              <!-- Selection Checkbox -->
-              <div class="selection-checkbox">
-                <input 
-                  type="checkbox" 
-                  [checked]="selectedUsers[user.id]"
-                  (change)="toggleUserSelection(user)"
-                  *ngIf="isAdmin" />
-              </div>
-
-              <div class="user-info">
-                <div class="user-avatar">{{ user.email[0].toUpperCase() }}</div>
-                <div class="user-details">
-                  <div class="user-email">{{ user.email }}</div>
-                  <div class="user-meta">
-                    <span class="badge" [ngClass]="getStatusBadgeClass(user.status)">
-                      {{ formatStatus(user.status) }}
-                    </span>
-                    <span class="badge" [ngClass]="getRoleBadgeClass(user.role)">
-                      {{ user.role || 'User' }}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Actions -->
-              <div class="user-actions">
-                <select 
-                  *ngIf="isAdmin" 
-                  [(ngModel)]="pendingStatus[user.id]" 
-                  (change)="onStatusChange(user)"
-                  class="form-select form-select-sm status-dropdown"
-                  [disabled]="isUpdating[user.id] || isBulkUpdating">
-                  <option value="">Update Status</option>
-                  <option value="active">Activate</option>
-                  <option value="disabled">Disable</option>
-                  <option value="pending">Pending</option>
-                  <option value="rejected">Reject</option>
-                </select>
-
-                <select 
-                  *ngIf="isAdmin" 
-                  [(ngModel)]="pendingRole[user.id]" 
-                  (change)="onRoleChange(user)"
-                  class="form-select form-select-sm role-dropdown"
-                  [disabled]="isUpdating[user.id] || isBulkUpdating">
-                  <option value="">Update Role</option>
-                  <option value="admin">Make Admin</option>
-                  <option value="user">Make User</option>
-                </select>
-
-                <button 
-                  *ngIf="isAdmin && user.status !== 'disabled'" 
-                  (click)="deleteUser(user)"
-                  class="btn btn-sm btn-danger"
-                  [disabled]="isUpdating[user.id] || isBulkUpdating">
-                  Delete
+          <!-- Bulk Actions Bar -->
+          @if (isAdmin && users.length > 0 && !isLoading) {
+            <div class="bulk-actions-bar">
+              <label class="select-all-label">
+                <input type="checkbox" (change)="toggleSelectAll($event)" [checked]="isAllSelected()" />
+                Select All
+              </label>
+              <span class="selected-count">{{ getSelectedCount() }} selected</span>
+              <div class="bulk-buttons">
+                <button
+                  (click)="bulkApproveSelected()"
+                  [disabled]="getSelectedCount() === 0 || isBulkUpdating"
+                  class="btn btn-sm btn-success bulk-btn"
+                  title="Approve all selected users">
+                  ✓ Approve Selected
                 </button>
-
-                <!-- Update in Progress -->
-                <span *ngIf="isUpdating[user.id]" class="updating-indicator">
-                  <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
-                </span>
+                <button
+                  (click)="bulkDisableSelected()"
+                  [disabled]="getSelectedCount() === 0 || isBulkUpdating"
+                  class="btn btn-sm btn-warning bulk-btn"
+                  title="Disable all selected users">
+                  ⏸ Disable Selected
+                </button>
+                <button
+                  (click)="bulkDeleteSelected()"
+                  [disabled]="getSelectedCount() === 0 || isBulkUpdating"
+                  class="btn btn-sm btn-danger bulk-btn"
+                  title="Permanently delete all selected users">
+                  🗑 Delete Selected
+                </button>
               </div>
             </div>
-          </div>
-
-          <!-- Empty State -->
-          <div *ngIf="users.length === 0" class="empty-state">
-            <p>No users found matching the selected filter.</p>
-          </div>
+          }
+          <!-- Loading State -->
+          @if (isLoading) {
+            <div class="loading-state">
+              <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+              </div>
+              <p>Loading users...</p>
+            </div>
+          }
+          <!-- Error State -->
+          @if (errorMessage) {
+            <div class="error-state">
+              <p class="text-danger">{{ errorMessage }}</p>
+              <button (click)="loadUsers()" class="btn btn-sm btn-outline-primary mt-2">Retry</button>
+            </div>
+          }
+          <!-- User List -->
+          @if (!isLoading && !errorMessage) {
+            <div class="user-list">
+              <div class="user-count">
+                Showing {{ users.length }} user(s)
+              </div>
+              <div class="users-container">
+                @for (user of users; track user; let i = $index) {
+                  <div class="user-card" [class.selected]="selectedUsers[user.id]">
+                    <!-- Selection Checkbox -->
+                    <div class="selection-checkbox">
+                      @if (isAdmin) {
+                        <input
+                          type="checkbox"
+                          [checked]="selectedUsers[user.id]"
+                          (change)="toggleUserSelection(user)"
+                          />
+                      }
+                    </div>
+                    <div class="user-info">
+                      <div class="user-avatar">{{ user.email[0].toUpperCase() }}</div>
+                      <div class="user-details">
+                        <div class="user-email">{{ user.email }}</div>
+                        <div class="user-meta">
+                          <span class="badge" [ngClass]="getStatusBadgeClass(user.status)">
+                            {{ formatStatus(user.status) }}
+                          </span>
+                          <span class="badge" [ngClass]="getRoleBadgeClass(user.role)">
+                            {{ user.role || 'User' }}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <!-- Actions -->
+                    <div class="user-actions">
+                      @if (isAdmin) {
+                        <select
+                          [(ngModel)]="pendingStatus[user.id]"
+                          (change)="onStatusChange(user)"
+                          class="form-select form-select-sm status-dropdown"
+                          [disabled]="isUpdating[user.id] || isBulkUpdating">
+                          <option value="">Update Status</option>
+                          <option value="active">Activate</option>
+                          <option value="disabled">Disable</option>
+                          <option value="pending">Pending</option>
+                          <option value="rejected">Reject</option>
+                        </select>
+                      }
+                      @if (isAdmin) {
+                        <select
+                          [(ngModel)]="pendingRole[user.id]"
+                          (change)="onRoleChange(user)"
+                          class="form-select form-select-sm role-dropdown"
+                          [disabled]="isUpdating[user.id] || isBulkUpdating">
+                          <option value="">Update Role</option>
+                          <option value="admin">Make Admin</option>
+                          <option value="user">Make User</option>
+                        </select>
+                      }
+                      @if (isAdmin && user.status !== 'disabled') {
+                        <button
+                          (click)="deleteUser(user)"
+                          class="btn btn-sm btn-danger"
+                          [disabled]="isUpdating[user.id] || isBulkUpdating">
+                          Delete
+                        </button>
+                      }
+                      <!-- Update in Progress -->
+                      @if (isUpdating[user.id]) {
+                        <span class="updating-indicator">
+                          <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                        </span>
+                      }
+                    </div>
+                  </div>
+                }
+              </div>
+              <!-- Empty State -->
+              @if (users.length === 0) {
+                <div class="empty-state">
+                  <p>No users found matching the selected filter.</p>
+                </div>
+              }
+            </div>
+          }
         </div>
       </div>
-    </div>
-  `,
+    }
+    `,
     styles: [`
     .user-management-overlay {
       position: fixed;

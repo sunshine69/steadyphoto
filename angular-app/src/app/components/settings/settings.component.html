@@ -2,23 +2,23 @@
   <div class="settings-container">
     <!-- Page Header -->
     <h1 class="page-title">Settings</h1>
-    
+
     <!-- Tab Navigation -->
     <nav class="tab-nav">
-      <button 
+      <button
         class="tab-button"
-        type="button" 
+        type="button"
         [class.active]="activeTab === 'profile'"
         (click)="selectTab('profile')"
-      >
+        >
         Profile & Email
       </button>
-      <button 
+      <button
         class="tab-button"
-        type="button" 
+        type="button"
         [class.active]="activeTab === 'security'"
         (click)="selectTab('security')"
-      >
+        >
         Password Change
       </button>
     </nav>
@@ -30,44 +30,50 @@
         <p class="section-description">Update your email address. You'll receive a confirmation to the new email.</p>
 
         <!-- Loading State -->
-        <div *ngIf="profileLoading && !profileMessage" class="info-badge">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 12a9 9 0 11-6.219-8.53"/>
-          </svg>
-          Loading...
-        </div>
+        @if (profileLoading && !profileMessage) {
+          <div class="info-badge">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 12a9 9 0 11-6.219-8.53"/>
+            </svg>
+            Loading...
+          </div>
+        }
 
         <!-- Form -->
-        <form *ngIf="!profileLoading" #emailForm="ngForm">
-          <div class="form-group">
-            <label for="email" class="form-label">Current Email Address</label>
-            <input 
-              id="email"
-              type="email" 
-              class="form-control"
-              [(ngModel)]="profileEmail"
-              name="email"
-              placeholder="Enter your new email address"
-              required
-            >
-          </div>
-
-          <!-- Messages -->
-          <ng-container *ngIf="profileMessage">
-            <p class="error-message" *ngIf="profileMessageType === 'error'">{{ profileMessage }}</p>
-            <p class="success-message" *ngIf="profileMessageType === 'success'">{{ profileMessage }}</p>
-          </ng-container>
-
-          <!-- Action Buttons -->
-          <div class="form-actions">
-            <button type="submit" 
-                    [disabled]="profileLoading || !profileEmail.includes('@')"
-                    (click)="updateEmail()"
-                    class="btn-save">
-              {{ profileLoading ? 'Updating...' : 'Update Email' }}
-            </button>
-          </div>
-        </form>
+        @if (!profileLoading) {
+          <form #emailForm="ngForm">
+            <div class="form-group">
+              <label for="email" class="form-label">Current Email Address</label>
+              <input
+                id="email"
+                type="email"
+                class="form-control"
+                [(ngModel)]="profileEmail"
+                name="email"
+                placeholder="Enter your new email address"
+                required
+                >
+            </div>
+            <!-- Messages -->
+            @if (profileMessage) {
+              @if (profileMessageType === 'error') {
+                <p class="error-message">{{ profileMessage }}</p>
+              }
+              @if (profileMessageType === 'success') {
+                <p class="success-message">{{ profileMessage }}</p>
+              }
+            }
+            <!-- Action Buttons -->
+            <div class="form-actions">
+              <button type="submit"
+                [disabled]="profileLoading || !profileEmail.includes('@')"
+                (click)="updateEmail()"
+                class="btn-save">
+                {{ profileLoading ? 'Updating...' : 'Update Email' }}
+              </button>
+            </div>
+          </form>
+        }
       </section>
 
       <!-- Danger Zone -->
@@ -85,126 +91,134 @@
         <p class="section-description">Update your password to keep your account secure.</p>
 
         <!-- Loading State -->
-        <div *ngIf="passwordLoading && !passwordMessage" class="info-badge">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 12a9 9 0 11-6.219-8.53"/>
-          </svg>
-          Updating...
-        </div>
+        @if (passwordLoading && !passwordMessage) {
+          <div class="info-badge">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 12a9 9 0 11-6.219-8.53"/>
+            </svg>
+            Updating...
+          </div>
+        }
 
         <!-- Form -->
-        <form *ngIf="!passwordLoading" #passwordForm="ngForm">
-          <!-- Current Password -->
-          <div class="form-group">
-            <label for="current-password" class="form-label">Current Password <span class="required-indicator">*</span></label>
-            <input 
-              id="current-password"
-              type="password" 
-              class="form-control"
-              [class.invalid]="showCurrentPasswordError"
-              [(ngModel)]="currentPassword"
-              name="currentPassword"
-              placeholder="Enter your current password"
-              required
-            >
-          </div>
-
-          <!-- New Password -->
-          <div class="form-group">
-            <label for="new-password" class="form-label">New Password <span class="required-indicator">*</span></label>
-            <input 
-              id="new-password"
-              type="password" 
-              class="form-control"
-              [class.invalid]="showNewPasswordError || (newPassword.length > 0 && newPassword.length < 8)"
-              [(ngModel)]="newPassword"
-              name="newPassword"
-              placeholder="Enter your new password"
-              required
-            >
-            
-            <!-- Password Strength Indicator -->
-            <div *ngIf="newPassword.length > 0" class="password-strength">
-              <div 
-                [class.active]="calculatePasswordStrength(newPassword) >= 1"
-                class="strength-bar"
-              ></div>
-              <div 
-                [class.active]="calculatePasswordStrength(newPassword) >= 2"
-                class="strength-bar"
-              ></div>
-              <div 
-                [class.active]="calculatePasswordStrength(newPassword) >= 3"
-                class="strength-bar"
-              ></div>
-              <div 
-                [class.active]="calculatePasswordStrength(newPassword) >= 4"
-                class="strength-bar"
-              ></div>
+        @if (!passwordLoading) {
+          <form #passwordForm="ngForm">
+            <!-- Current Password -->
+            <div class="form-group">
+              <label for="current-password" class="form-label">Current Password <span class="required-indicator">*</span></label>
+              <input
+                id="current-password"
+                type="password"
+                class="form-control"
+                [class.invalid]="showCurrentPasswordError"
+                [(ngModel)]="currentPassword"
+                name="currentPassword"
+                placeholder="Enter your current password"
+                required
+                >
             </div>
-
-            <!-- Inline error for short password -->
-            <p *ngIf="newPassword.length > 0 && newPassword.length < 8" class="field-error">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"/>
-                <line x1="15" y1="9" x2="9" y2="15"/>
-                <line x1="9" y1="9" x2="15" y2="15"/>
-              </svg>
-              Password must be at least 8 characters long.
-            </p>
-
-            <!-- Inline error for current password missing -->
-            <p *ngIf="showCurrentPasswordError && !currentPassword" class="field-error">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"/>
-                <line x1="15" y1="9" x2="9" y2="15"/>
-                <line x1="9" y1="9" x2="15" y2="15"/>
-              </svg>
-              Please enter your current password.
-            </p>
-          </div>
-
-          <!-- Confirm New Password -->
-          <div class="form-group">
-            <label for="confirm-password" class="form-label">Confirm New Password <span class="required-indicator">*</span></label>
-            <input 
-              id="confirm-password"
-              type="password" 
-              class="form-control"
-              [class.invalid]="showConfirmPasswordError || (newPassword.length > 0 && confirmPassword.length > 0 && newPassword !== confirmPassword)"
-              [(ngModel)]="confirmPassword"
-              name="confirmPassword"
-              placeholder="Confirm your new password"
-              required
-            >
-
-            <!-- Inline error for mismatch -->
-            <p *ngIf="newPassword.length > 0 && confirmPassword.length > 0 && newPassword !== confirmPassword" class="field-error">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"/>
-                <line x1="15" y1="9" x2="9" y2="15"/>
-                <line x1="9" y1="9" x2="15" y2="15"/>
-              </svg>
-              Passwords do not match.
-            </p>
-          </div>
-
-          <!-- Messages -->
-          <ng-container *ngIf="passwordMessage">
-            <p class="error-message" *ngIf="passwordMessageType === 'error'">{{ passwordMessage }}</p>
-            <p class="success-message" *ngIf="passwordMessageType === 'success'">{{ passwordMessage }}</p>
-          </ng-container>
-
-          <!-- Action Buttons -->
-          <div class="form-actions">
-            <button type="submit" 
-                    [disabled]="passwordLoading"
-                    (click)="changePassword()"
-                    class="btn-save">
-              {{ passwordLoading ? 'Changing...' : 'Change Password' }}
-            </button>
-          </div>
-        </form>
+            <!-- New Password -->
+            <div class="form-group">
+              <label for="new-password" class="form-label">New Password <span class="required-indicator">*</span></label>
+              <input
+                id="new-password"
+                type="password"
+                class="form-control"
+                [class.invalid]="showNewPasswordError || (newPassword.length > 0 && newPassword.length < 8)"
+                [(ngModel)]="newPassword"
+                name="newPassword"
+                placeholder="Enter your new password"
+                required
+                >
+              <!-- Password Strength Indicator -->
+              @if (newPassword.length > 0) {
+                <div class="password-strength">
+                  <div
+                    [class.active]="calculatePasswordStrength(newPassword) >= 1"
+                    class="strength-bar"
+                  ></div>
+                  <div
+                    [class.active]="calculatePasswordStrength(newPassword) >= 2"
+                    class="strength-bar"
+                  ></div>
+                  <div
+                    [class.active]="calculatePasswordStrength(newPassword) >= 3"
+                    class="strength-bar"
+                  ></div>
+                  <div
+                    [class.active]="calculatePasswordStrength(newPassword) >= 4"
+                    class="strength-bar"
+                  ></div>
+                </div>
+              }
+              <!-- Inline error for short password -->
+              @if (newPassword.length > 0 && newPassword.length < 8) {
+                <p class="field-error">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="15" y1="9" x2="9" y2="15"/>
+                    <line x1="9" y1="9" x2="15" y2="15"/>
+                  </svg>
+                  Password must be at least 8 characters long.
+                </p>
+              }
+              <!-- Inline error for current password missing -->
+              @if (showCurrentPasswordError && !currentPassword) {
+                <p class="field-error">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="15" y1="9" x2="9" y2="15"/>
+                    <line x1="9" y1="9" x2="15" y2="15"/>
+                  </svg>
+                  Please enter your current password.
+                </p>
+              }
+            </div>
+            <!-- Confirm New Password -->
+            <div class="form-group">
+              <label for="confirm-password" class="form-label">Confirm New Password <span class="required-indicator">*</span></label>
+              <input
+                id="confirm-password"
+                type="password"
+                class="form-control"
+                [class.invalid]="showConfirmPasswordError || (newPassword.length > 0 && confirmPassword.length > 0 && newPassword !== confirmPassword)"
+                [(ngModel)]="confirmPassword"
+                name="confirmPassword"
+                placeholder="Confirm your new password"
+                required
+                >
+              <!-- Inline error for mismatch -->
+              @if (newPassword.length > 0 && confirmPassword.length > 0 && newPassword !== confirmPassword) {
+                <p class="field-error">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="15" y1="9" x2="9" y2="15"/>
+                    <line x1="9" y1="9" x2="15" y2="15"/>
+                  </svg>
+                  Passwords do not match.
+                </p>
+              }
+            </div>
+            <!-- Messages -->
+            @if (passwordMessage) {
+              @if (passwordMessageType === 'error') {
+                <p class="error-message">{{ passwordMessage }}</p>
+              }
+              @if (passwordMessageType === 'success') {
+                <p class="success-message">{{ passwordMessage }}</p>
+              }
+            }
+            <!-- Action Buttons -->
+            <div class="form-actions">
+              <button type="submit"
+                [disabled]="passwordLoading"
+                (click)="changePassword()"
+                class="btn-save">
+                {{ passwordLoading ? 'Changing...' : 'Change Password' }}
+              </button>
+            </div>
+          </form>
+        }
       </section>
 
       <!-- Danger Zone -->

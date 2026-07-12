@@ -14,109 +14,126 @@ import { PhotoCardComponent } from '../photo-card/photo-card.component';
     template: `
     <div class="container mt-4">
       <!-- Password Protection Modal -->
-      <div class="modal-overlay" *ngIf="showPasswordModal && !albumData">
-        <div class="password-modal-content bg-dark border rounded p-4 text-center">
-          <h3>🔒 This album is password protected</h3>
-          <p class="text-muted mt-2 mb-3">Enter the password to view this content</p>
-          <div class="row justify-content-center">
-            <div class="col-md-6">
-              <input 
-                type="password" 
-                [(ngModel)]="passwordInput" 
-                (keyup.enter)="verifyPassword()"
-                placeholder="Enter password..."
-                class="form-control mb-3 text-dark"
-              >
-              <button (click)="verifyPassword()" class="btn btn-primary w-100">
-                Unlock Album
+      @if (showPasswordModal && !albumData) {
+        <div class="modal-overlay">
+          <div class="password-modal-content bg-dark border rounded p-4 text-center">
+            <h3>🔒 This album is password protected</h3>
+            <p class="text-muted mt-2 mb-3">Enter the password to view this content</p>
+            <div class="row justify-content-center">
+              <div class="col-md-6">
+                <input
+                  type="password"
+                  [(ngModel)]="passwordInput"
+                  (keyup.enter)="verifyPassword()"
+                  placeholder="Enter password..."
+                  class="form-control mb-3 text-dark"
+                  >
+                <button (click)="verifyPassword()" class="btn btn-primary w-100">
+                  Unlock Album
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      }
+    
+      <!-- Loading State -->
+      @if (!albumData && !showError && !showPasswordModal) {
+        <div class="text-center py-5">
+          <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+          </div>
+          <p class="mt-2">Loading album content...</p>
+        </div>
+      }
+    
+      <!-- Error State -->
+      @if (showError) {
+        <div class="text-center py-5">
+          <h3>😕 Album Not Available</h3>
+          <p class="text-muted">{{ errorMessage }}</p>
+          <a routerLink="/" class="btn btn-primary mt-3">Back to Gallery</a>
+        </div>
+      }
+    
+      <!-- Album Content -->
+      @if (albumData) {
+        <div class="row">
+          <div class="col-md-8">
+            <!-- Album Header -->
+            <div class="d-flex justify-content-between align-items-center mb-4">
+              <h2>{{ albumName }}</h2>
+              <button (click)="goBack()" class="btn btn-primary">
+                Back to Gallery
               </button>
             </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Loading State -->
-      <div *ngIf="!albumData && !showError && !showPasswordModal" class="text-center py-5">
-        <div class="spinner-border text-primary" role="status">
-          <span class="visually-hidden">Loading...</span>
-        </div>
-        <p class="mt-2">Loading album content...</p>
-      </div>
-
-      <!-- Error State -->
-      <div *ngIf="showError" class="text-center py-5">
-        <h3>😕 Album Not Available</h3>
-        <p class="text-muted">{{ errorMessage }}</p>
-        <a routerLink="/" class="btn btn-primary mt-3">Back to Gallery</a>
-      </div>
-
-      <!-- Album Content -->
-      <div *ngIf="albumData" class="row">
-        <div class="col-md-8">
-          <!-- Album Header -->
-          <div class="d-flex justify-content-between align-items-center mb-4">
-            <h2>{{ albumName }}</h2>
-            <button (click)="goBack()" class="btn btn-primary">
-              Back to Gallery
-            </button>
-          </div>
-
-          <!-- Album Description -->
-          <p class="text-muted" *ngIf="albumDescription">{{ albumDescription }}</p>
-
-          <!-- Media Grid -->
-          <div *ngIf="!loading && photos.length > 0">
-            <div class="grid-container">
-              <div class="grid-item position-relative" *ngFor="let photo of photos; let i = index">
-                <app-photo-card [photo]="photo" (cardClick)="onPhotoClick(photo.id)"></app-photo-card>
+            <!-- Album Description -->
+            @if (albumDescription) {
+              <p class="text-muted">{{ albumDescription }}</p>
+            }
+            <!-- Media Grid -->
+            @if (!loading && photos.length > 0) {
+              <div>
+                <div class="grid-container">
+                  @for (photo of photos; track photo; let i = $index) {
+                    <div class="grid-item position-relative">
+                      <app-photo-card [photo]="photo" (cardClick)="onPhotoClick(photo.id)"></app-photo-card>
+                    </div>
+                  }
+                </div>
+                <!-- Pagination -->
+                @if (totalAlbumPhotos > albumLimit) {
+                  <div class="pagination-controls mt-4">
+                    <button class="btn btn-outline-primary me-2" [disabled]="albumOffset === 0" (click)="changeAlbumPage(-1)">Previous</button>
+                    <div class="pagination-jump d-flex align-items-center mx-3">
+                      <span class="me-2 text-nowrap">Page</span>
+                      <input type="number" class="form-control form-control-sm jump-input me-2" [(ngModel)]="albumJumpInput" (keyup.enter)="onAlbumJumpToPage()" min="1" [max]="totalAlbumPages">
+                      <button class="btn btn-primary btn-sm jump-btn" type="button" (click)="onAlbumJumpToPage()">Go</button>
+                      <span class="ms-2 text-nowrap">of {{ totalAlbumPages }}</span>
+                    </div>
+                    <button class="btn btn-outline-primary ms-2" [disabled]="albumOffset + albumLimit >= totalAlbumPhotos" (click)="changeAlbumPage(1)">Next</button>
+                  </div>
+                }
               </div>
-            </div>
-
-            <!-- Pagination -->
-            <div class="pagination-controls mt-4" *ngIf="totalAlbumPhotos > albumLimit">
-              <button class="btn btn-outline-primary me-2" [disabled]="albumOffset === 0" (click)="changeAlbumPage(-1)">Previous</button>
-              <div class="pagination-jump d-flex align-items-center mx-3">
-                <span class="me-2 text-nowrap">Page</span>
-                <input type="number" class="form-control form-control-sm jump-input me-2" [(ngModel)]="albumJumpInput" (keyup.enter)="onAlbumJumpToPage()" min="1" [max]="totalAlbumPages">
-                <button class="btn btn-primary btn-sm jump-btn" type="button" (click)="onAlbumJumpToPage()">Go</button>
-                <span class="ms-2 text-nowrap">of {{ totalAlbumPages }}</span>
+            }
+            <!-- Empty State -->
+            @if (!loading && photos.length === 0) {
+              <div class="empty-state py-5 text-center border rounded bg-light">
+                <p class="lead text-muted">This album is empty.</p>
               </div>
-              <button class="btn btn-outline-primary ms-2" [disabled]="albumOffset + albumLimit >= totalAlbumPhotos" (click)="changeAlbumPage(1)">Next</button>
+            }
+          </div>
+          <!-- Album Details Sidebar -->
+          <div class="col-md-4">
+            <div class="card shadow-sm sticky-top" style="top: 100px;">
+              <div class="card-header bg-light">
+                <h5 class="mb-0">Album Info</h5>
+              </div>
+              <ul class="list-group list-group-flush">
+                <li class="list-group-item">
+                  <span class="text-muted">Photos:</span> {{ totalAlbumPhotos }}
+                </li>
+                @if (albumData?.createdAt) {
+                  <li class="list-group-item">
+                    <span class="text-muted">Created:</span> {{ albumData.createdAt | date:'fullDate' }}
+                  </li>
+                }
+              </ul>
             </div>
           </div>
-
-          <!-- Empty State -->
-          <div *ngIf="!loading && photos.length === 0" class="empty-state py-5 text-center border rounded bg-light">
-            <p class="lead text-muted">This album is empty.</p>
-          </div>
         </div>
-        
-        <!-- Album Details Sidebar -->
-        <div class="col-md-4">
-          <div class="card shadow-sm sticky-top" style="top: 100px;">
-            <div class="card-header bg-light">
-              <h5 class="mb-0">Album Info</h5>
-            </div>
-            <ul class="list-group list-group-flush">
-              <li class="list-group-item">
-                <span class="text-muted">Photos:</span> {{ totalAlbumPhotos }}
-              </li>
-              <li class="list-group-item" *ngIf="albumData?.createdAt">
-                <span class="text-muted">Created:</span> {{ albumData.createdAt | date:'fullDate' }}
-              </li>
-            </ul>
-          </div>
-        </div>
-      </div>
-
+      }
+    
       <!-- Loading Spinner for Media -->
-      <div *ngIf="loading && !showPasswordModal && !showError" class="loading-spinner d-flex justify-content-center my-5">
-        <div class="spinner-border text-primary" role="status">
-          <span class="visually-hidden">Loading...</span>
+      @if (loading && !showPasswordModal && !showError) {
+        <div class="loading-spinner d-flex justify-content-center my-5">
+          <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+          </div>
         </div>
-      </div>
+      }
     </div>
-  `,
+    `,
     styles: [`
     .grid-container {
       display: grid;

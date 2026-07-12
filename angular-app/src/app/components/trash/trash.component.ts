@@ -1,28 +1,21 @@
 import { Component, OnInit } from '@angular/core';
-import { CommonModule } from '@angular/common';
+
 import { FormsModule } from '@angular/forms';
 import { TrashService } from '../../services/trash.service';
 import { Photo, ListPhotosResponse } from '../../models/photo.model';
 
 @Component({
     selector: 'app-trash',
-    imports: [CommonModule, FormsModule],
+    imports: [FormsModule],
     template: `
     <div class="trash-container">
       <!-- Header -->
-      <div class="header-section" *ngIf="!isLoading && photos.length > 0; else trashEmptyState">
-        <h1>Trash</h1>
-        <p class="subtitle">{{ totalItems }} item{{ totalItems !== 1 ? 's' : '' }} in trash</p>
-      </div>
-
-      <!-- Loading State -->
-      <div *ngIf="isLoading" class="loading-container">
-        <div class="spinner"></div>
-        <p>Loading trashed items...</p>
-      </div>
-
-      <!-- Empty Trash State -->
-      <ng-template #trashEmptyState>
+      @if (!isLoading && photos.length > 0) {
+        <div class="header-section">
+          <h1>Trash</h1>
+          <p class="subtitle">{{ totalItems }} item{{ totalItems !== 1 ? 's' : '' }} in trash</p>
+        </div>
+      } @else {
         <div class="empty-state">
           <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="3 6 5 6 21 6"></polyline>
@@ -33,101 +26,114 @@ import { Photo, ListPhotosResponse } from '../../models/photo.model';
           <h2>{{ isLoading ? 'Loading...' : (totalItems === 0 && !isLoading ? 'Trash is empty' : '') }}</h2>
           <p class="empty-text">{{ totalItems === 0 && !isLoading ? 'Deleted items will appear here.' : '' }}</p>
         </div>
-      </ng-template>
-
-      <!-- Trash Items List -->
-      <div *ngIf="!isLoading" class="trash-list">
-        <div 
-          *ngFor="let photo of photos; let i = index" 
-          class="trash-item"
-          [class.expanded]="expandedItem === photo.id"
-        >
-          <!-- Item Row -->
-          <div class="item-row" (click)="toggleExpand(photo)">
-            <!-- Thumbnail -->
-            <div class="thumbnail-wrapper">
-              <img *ngIf="photo.thumbnailUrl; else noThumb" [src]="photo.thumbnailUrl" alt="{{ photo.filename }}" />
-              <ng-template #noThumb>
-                <div class="placeholder-thumb">
-                  {{ getInitials(photo) }}
-                </div>
-              </ng-template>
-            </div>
-
-            <!-- Info -->
-            <div class="item-info">
-              <h3 class="filename">{{ photo.filename }}</h3>
-              <p class="meta-text" *ngIf="photo.captured_at || photo.size">
-                {{ getFormattedDate(photo) }} · {{ formatSize(photo.size) }}
-              </p>
-            </div>
-
-            <!-- Actions (visible on hover/expanded or always visible for mobile) -->
-            <div class="item-actions" [class.show]="isExpandedOrMobile()">
-              
-              <!-- Restore Button -->
-              <button 
-                *ngIf="!showDeleteConfirm[photo.id]"
-                class="btn btn-restore"
-                (click)="handleRestore(photo, $event)"
-                title="Restore to library">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="1 4 1 10 7 10"></polyline>
-                  <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
-                </svg>
-                Restore
-              </button>
-
-              <!-- Delete Forever Button -->
-              <button 
-                *ngIf="!showDeleteConfirm[photo.id]"
-                class="btn btn-delete"
-                (click)="handlePermanentDelete(photo, $event)"
-                title="Permanently delete">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="3 6 5 6 21 6"></polyline>
-                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                </svg>
-                Delete Forever
-              </button>
-
-            </div>
-          </div>
-
-          <!-- Confirmation Dialog (Delete Forever) -->
-          <div *ngIf="showDeleteConfirm[photo.id]" class="confirm-delete">
-            <p><strong>Delete "{{ photo.filename }}" forever?</strong></p>
-            <p>This action cannot be undone.</p>
-            <div class="confirm-actions">
-              <button 
-                class="btn btn-cancel"
-                (click)="cancelDelete(photo)">Cancel</button>
-              <button 
-                class="btn btn-confirm-delete"
-                [disabled]="deletingId === photo.id"
-                (click)="confirmPermanentDelete(photo, $event)">Yes, Delete Forever</button>
-            </div>
-          </div>
-
+      }
+    
+      <!-- Loading State -->
+      @if (isLoading) {
+        <div class="loading-container">
+          <div class="spinner"></div>
+          <p>Loading trashed items...</p>
         </div>
-      </div>
-
+      }
+    
+      <!-- Empty Trash State -->
+    
+      <!-- Trash Items List -->
+      @if (!isLoading) {
+        <div class="trash-list">
+          @for (photo of photos; track photo; let i = $index) {
+            <div
+              class="trash-item"
+              [class.expanded]="expandedItem === photo.id"
+              >
+              <!-- Item Row -->
+              <div class="item-row" (click)="toggleExpand(photo)">
+                <!-- Thumbnail -->
+                <div class="thumbnail-wrapper">
+                  @if (photo.thumbnailUrl) {
+                    <img [src]="photo.thumbnailUrl" alt="{{ photo.filename }}" />
+                  } @else {
+                    <div class="placeholder-thumb">
+                      {{ getInitials(photo) }}
+                    </div>
+                  }
+                </div>
+                <!-- Info -->
+                <div class="item-info">
+                  <h3 class="filename">{{ photo.filename }}</h3>
+                  @if (photo.captured_at || photo.size) {
+                    <p class="meta-text">
+                      {{ getFormattedDate(photo) }} · {{ formatSize(photo.size) }}
+                    </p>
+                  }
+                </div>
+                <!-- Actions (visible on hover/expanded or always visible for mobile) -->
+                <div class="item-actions" [class.show]="isExpandedOrMobile()">
+                  <!-- Restore Button -->
+                  @if (!showDeleteConfirm[photo.id]) {
+                    <button
+                      class="btn btn-restore"
+                      (click)="handleRestore(photo, $event)"
+                      title="Restore to library">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="1 4 1 10 7 10"></polyline>
+                        <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+                      </svg>
+                      Restore
+                    </button>
+                  }
+                  <!-- Delete Forever Button -->
+                  @if (!showDeleteConfirm[photo.id]) {
+                    <button
+                      class="btn btn-delete"
+                      (click)="handlePermanentDelete(photo, $event)"
+                      title="Permanently delete">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="3 6 5 6 21 6"></polyline>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                      </svg>
+                      Delete Forever
+                    </button>
+                  }
+                </div>
+              </div>
+              <!-- Confirmation Dialog (Delete Forever) -->
+              @if (showDeleteConfirm[photo.id]) {
+                <div class="confirm-delete">
+                  <p><strong>Delete "{{ photo.filename }}" forever?</strong></p>
+                  <p>This action cannot be undone.</p>
+                  <div class="confirm-actions">
+                    <button
+                      class="btn btn-cancel"
+                    (click)="cancelDelete(photo)">Cancel</button>
+                    <button
+                      class="btn btn-confirm-delete"
+                      [disabled]="deletingId === photo.id"
+                    (click)="confirmPermanentDelete(photo, $event)">Yes, Delete Forever</button>
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        </div>
+      }
+    
       <!-- Pagination -->
-      <div *ngIf="!isLoading && totalItems > photos.length" class="pagination">
-        <button 
-          [disabled]="offset <= 0 || loadingMore" 
-          (click)="loadPrevious()"
+      @if (!isLoading && totalItems > photos.length) {
+        <div class="pagination">
+          <button
+            [disabled]="offset <= 0 || loadingMore"
+            (click)="loadPrevious()"
           class="btn btn-page">← Previous</button>
-        
-        <span class="page-info">{{ offset + 1 }} - {{ Math.min(offset + photos.length, totalItems) }} of {{ totalItems }}</span>
-
-        <button 
-          [disabled]="offset + photos.length >= totalItems || loadingMore" 
-          (click)="loadNext()"
+          <span class="page-info">{{ offset + 1 }} - {{ Math.min(offset + photos.length, totalItems) }} of {{ totalItems }}</span>
+          <button
+            [disabled]="offset + photos.length >= totalItems || loadingMore"
+            (click)="loadNext()"
           class="btn btn-page">Next →</button>
-      </div>
+        </div>
+      }
     </div>
-  `,
+    `,
     styles: [`
     .trash-container {
       padding: 24px;

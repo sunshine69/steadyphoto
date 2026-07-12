@@ -12,75 +12,82 @@ import { ShareService, PublicShareListItem } from '../../services/share.service'
         <h1>My Shared Links</h1>
         <p class="subtitle">Public share links you've created for photos and albums</p>
       </div>
-
+    
       <!-- Loading state -->
-      <div class="loading-state" *ngIf="isLoading && shares.length === 0">
-        <span class="spinner"></span>
-        <p>Loading your shared links...</p>
-      </div>
-
-      <!-- Empty state -->
-      <div class="empty-state" *ngIf="!isLoading && shares.length === 0">
-        <div class="empty-icon">🔗</div>
-        <h3>No shared links yet</h3>
-        <p>Create a shareable link from any photo or album to share it with others.</p>
-      </div>
-
-      <!-- Shared links list -->
-      <ng-container *ngIf="!isLoading && shares.length > 0">
-        <div class="shares-list">
-          <div *ngFor="let share of shares; let i = index" class="share-item" [class.expired]="isExpired(share)">
-            <!-- Resource type badge -->
-            <span class="resource-badge" [class.media]="share.resourceType === 'media'" [class.album]="share.resourceType === 'album'">
-              {{ share.resourceType === 'media' ? '📷 Photo/Video' : '📁 Album' }}
-            </span>
-
-            <!-- Share details -->
-            <div class="share-details">
-              <p class="resource-name">{{ getResourceName(share) }}</p>
-              
-              <div class="share-meta">
-                <!-- Password protection indicator -->
-                <span *ngIf="share.password_protected" class="password-protected">🔒 Password protected</span>
-                
-                <!-- Expiration date -->
-                <span *ngIf="share.expires_at && !isExpired(share)" class="expiration-date">Expires: {{ share.expires_at | date:'short' }}</span>
-                
-                <!-- Expired indicator -->
-                <span *ngIf="isExpired(share)" class="expired-indicator">⚠️ Expired</span>
-
-                <!-- Access count -->
-                <span class="access-count">{{ share.access_count }} view{{ share.access_count === 1 ? '' : 's' }}</span>
-              </div>
-
-              <!-- Share link with copy button -->
-              <div class="share-link-row">
-                <input 
-                  type="text" 
-                  [value]="getShareUrl(share)" 
-                  readonly 
-                  (click)="copyToClipboard(getShareUrl(share))"
-                  class="share-url-input"
-                >
-                <button class="btn-copy" (click)="copyToClipboard(getShareUrl(share))">📋 Copy</button>
-              </div>
-
-              <!-- Revocation -->
-              <button 
-                class="btn-revoke" 
-                *ngIf="!isExpired(share)"
-                (click)="revokeShare(share)">
-                Revoke Link
-              </button>
-            </div>
-          </div>
+      @if (isLoading && shares.length === 0) {
+        <div class="loading-state">
+          <span class="spinner"></span>
+          <p>Loading your shared links...</p>
         </div>
-
+      }
+    
+      <!-- Empty state -->
+      @if (!isLoading && shares.length === 0) {
+        <div class="empty-state">
+          <div class="empty-icon">🔗</div>
+          <h3>No shared links yet</h3>
+          <p>Create a shareable link from any photo or album to share it with others.</p>
+        </div>
+      }
+    
+      <!-- Shared links list -->
+      @if (!isLoading && shares.length > 0) {
+        <div class="shares-list">
+          @for (share of shares; track share; let i = $index) {
+            <div class="share-item" [class.expired]="isExpired(share)">
+              <!-- Resource type badge -->
+              <span class="resource-badge" [class.media]="share.resourceType === 'media'" [class.album]="share.resourceType === 'album'">
+                {{ share.resourceType === 'media' ? '📷 Photo/Video' : '📁 Album' }}
+              </span>
+              <!-- Share details -->
+              <div class="share-details">
+                <p class="resource-name">{{ getResourceName(share) }}</p>
+                <div class="share-meta">
+                  <!-- Password protection indicator -->
+                  @if (share.password_protected) {
+                    <span class="password-protected">🔒 Password protected</span>
+                  }
+                  <!-- Expiration date -->
+                  @if (share.expires_at && !isExpired(share)) {
+                    <span class="expiration-date">Expires: {{ share.expires_at | date:'short' }}</span>
+                  }
+                  <!-- Expired indicator -->
+                  @if (isExpired(share)) {
+                    <span class="expired-indicator">⚠️ Expired</span>
+                  }
+                  <!-- Access count -->
+                  <span class="access-count">{{ share.access_count }} view{{ share.access_count === 1 ? '' : 's' }}</span>
+                </div>
+                <!-- Share link with copy button -->
+                <div class="share-link-row">
+                  <input
+                    type="text"
+                    [value]="getShareUrl(share)"
+                    readonly
+                    (click)="copyToClipboard(getShareUrl(share))"
+                    class="share-url-input"
+                    >
+                  <button class="btn-copy" (click)="copyToClipboard(getShareUrl(share))">📋 Copy</button>
+                </div>
+                <!-- Revocation -->
+                @if (!isExpired(share)) {
+                  <button
+                    class="btn-revoke"
+                    (click)="revokeShare(share)">
+                    Revoke Link
+                  </button>
+                }
+              </div>
+            </div>
+          }
+        </div>
         <!-- No more shares message -->
-        <p class="no-more-message" *ngIf="shares.length > 0">That's all your shared links</p>
-      </ng-container>
+        @if (shares.length > 0) {
+          <p class="no-more-message">That's all your shared links</p>
+        }
+      }
     </div>
-  `,
+    `,
     styles: [`
     .my-shares-container {
       padding: 24px;

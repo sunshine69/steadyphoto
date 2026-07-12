@@ -1,5 +1,5 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
-import { CommonModule } from '@angular/common';
+
 import { FormsModule } from '@angular/forms';
 import { Subscription, combineLatest, switchMap, debounceTime, distinctUntilChanged, of } from 'rxjs';
 import { PhotoService } from '../../services/photo.service';
@@ -12,57 +12,76 @@ import { SelectionService } from '../../services/selection.service';
 
 @Component({
     selector: 'app-photo-list',
-    imports: [CommonModule, RouterModule, PhotoCardComponent, FormsModule],
+    imports: [RouterModule, PhotoCardComponent, FormsModule],
     template: `
     <div class="photo-list-container">
       <!-- Active Tag Filter Display -->
-      <div *ngIf="activeTagFilter && selectedPhotoIds.size === 0" class="alert alert-info d-flex align-items-center justify-content-between mb-3">
-        <span>Showing items with tag: <strong class="text-uppercase">#{{ activeTagFilter }}</strong></span>
-        <button (click)="clearTagFilter()" class="btn btn-sm btn-outline-danger">Clear Filter</button>
-      </div>
-
+      @if (activeTagFilter && selectedPhotoIds.size === 0) {
+        <div class="alert alert-info d-flex align-items-center justify-content-between mb-3">
+          <span>Showing items with tag: <strong class="text-uppercase">#{{ activeTagFilter }}</strong></span>
+          <button (click)="clearTagFilter()" class="btn btn-sm btn-outline-danger">Clear Filter</button>
+        </div>
+      }
+    
       <!-- Empty State -->
-      <div class="empty-state" *ngIf="!loading && (!photos || photos.length === 0)">
-        <p *ngIf="!currentSearchTerm && !activeTagFilter">No photos found. Start by importing your photo library.</p>
-        <p *ngIf="currentSearchTerm && activeTagFilter">No items match search "{{currentSearchTerm}}" and tag "#{{activeTagFilter}}"</p>
-        <p *ngIf="currentSearchTerm && !activeTagFilter">No items match search "{{currentSearchTerm}}"</p>
-      </div>
-      
+      @if (!loading && (!photos || photos.length === 0)) {
+        <div class="empty-state">
+          @if (!currentSearchTerm && !activeTagFilter) {
+            <p>No photos found. Start by importing your photo library.</p>
+          }
+          @if (currentSearchTerm && activeTagFilter) {
+            <p>No items match search "{{currentSearchTerm}}" and tag "#{{activeTagFilter}}"</p>
+          }
+          @if (currentSearchTerm && !activeTagFilter) {
+            <p>No items match search "{{currentSearchTerm}}"</p>
+          }
+        </div>
+      }
+    
       <!-- Photo Grid -->
-      <div class="grid-container" *ngIf="!loading && photos && photos.length > 0">
-        <div class="grid-item position-relative" *ngFor="let photo of photos">
-          <!-- Discrete Selection Button at Top Left Corner -->
-          <button type="button" 
-                  class="selection-checkbox-btn" 
-                  [class.selected]="isPhotoSelected(photo.id)"
-                  (click)="toggleSelection(photo.id); $event.stopPropagation()">
-            <svg *ngIf="isPhotoSelected(photo.id)" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="white" viewBox="0 0 16 16">
-              <path d="M12.736 3.97a.733.733 0 0 1 1.047 0c.286.289.29.756.01 1.05L7.88 12.01a.733.733 0 0 1-1.065.02L3.217 8.384a.757.757 0 0 1 0-1.06.733.733 0 0 1 1.047 0l3.052 3.093 5.777-6.817z"/>
-            </svg>
-          </button>
-
-          <app-photo-card [photo]="photo" (cardClick)="onPhotoClick(photo.id)"></app-photo-card>
+      @if (!loading && photos && photos.length > 0) {
+        <div class="grid-container">
+          @for (photo of photos; track photo) {
+            <div class="grid-item position-relative">
+              <!-- Discrete Selection Button at Top Left Corner -->
+              <button type="button"
+                class="selection-checkbox-btn"
+                [class.selected]="isPhotoSelected(photo.id)"
+                (click)="toggleSelection(photo.id); $event.stopPropagation()">
+                @if (isPhotoSelected(photo.id)) {
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="white" viewBox="0 0 16 16">
+                    <path d="M12.736 3.97a.733.733 0 0 1 1.047 0c.286.289.29.756.01 1.05L7.88 12.01a.733.733 0 0 1-1.065.02L3.217 8.384a.757.757 0 0 1 0-1.06.733.733 0 0 1 1.047 0l3.052 3.093 5.777-6.817z"/>
+                  </svg>
+                }
+              </button>
+              <app-photo-card [photo]="photo" (cardClick)="onPhotoClick(photo.id)"></app-photo-card>
+            </div>
+          }
         </div>
-      </div>
-
-       <!-- Pagination -->
-      <div class="pagination-controls" *ngIf="!loading && totalPhotos > limit">
-        <button class="btn btn-outline-primary me-2" [disabled]="offset === 0" (click)="changePage(-1)">Previous</button>
-        <div class="pagination-jump d-flex align-items-center mx-3">
-          <span class="me-2 text-nowrap">Page</span>
-          <input type="number" class="form-control form-control-sm jump-input me-2" [(ngModel)]="jumpPageInput" (keyup.enter)="onJumpToPage()" min="1" [max]="totalPages">
-          <button class="btn btn-primary btn-sm jump-btn" type="button" (click)="onJumpToPage()">Go</button>
-          <span class="ms-2 text-nowrap">of {{ totalPages }}</span>
+      }
+    
+      <!-- Pagination -->
+      @if (!loading && totalPhotos > limit) {
+        <div class="pagination-controls">
+          <button class="btn btn-outline-primary me-2" [disabled]="offset === 0" (click)="changePage(-1)">Previous</button>
+          <div class="pagination-jump d-flex align-items-center mx-3">
+            <span class="me-2 text-nowrap">Page</span>
+            <input type="number" class="form-control form-control-sm jump-input me-2" [(ngModel)]="jumpPageInput" (keyup.enter)="onJumpToPage()" min="1" [max]="totalPages">
+            <button class="btn btn-primary btn-sm jump-btn" type="button" (click)="onJumpToPage()">Go</button>
+            <span class="ms-2 text-nowrap">of {{ totalPages }}</span>
+          </div>
+          <button class="btn btn-outline-primary ms-2" [disabled]="offset + limit >= totalPhotos" (click)="changePage(1)">Next</button>
         </div>
-        <button class="btn btn-outline-primary ms-2" [disabled]="offset + limit >= totalPhotos" (click)="changePage(1)">Next</button>
-      </div>
-
+      }
+    
       <!-- Loading Spinner -->
-      <div class="loading-spinner" *ngIf="loading">
-        <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>
-      </div>
+      @if (loading) {
+        <div class="loading-spinner">
+          <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>
+        </div>
+      }
     </div>
-  `,
+    `,
     styles: [`
     .photo-list-container { padding-top: 5rem; padding-bottom: 2rem; width: 100%; position: relative; }
     .grid-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 1.5rem; width: 100%; }

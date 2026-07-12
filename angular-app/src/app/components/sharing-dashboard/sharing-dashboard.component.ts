@@ -1,5 +1,5 @@
 import { Component, OnInit, OnDestroy, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
+
 import { RouterModule } from '@angular/router';
 import { ShareService, SharedMediaItem, SharedAlbumItem, ShareGroupListItem } from '../../services/share.service';
 import { Subscription } from 'rxjs';
@@ -10,7 +10,7 @@ const DEBUG_PREFIX = '[Sharing Debug]';
 
 @Component({
     selector: 'app-sharing-dashboard',
-    imports: [CommonModule, RouterModule],
+    imports: [RouterModule],
     template: `
     <div class="sharing-page">
       <!-- Header -->
@@ -18,251 +18,275 @@ const DEBUG_PREFIX = '[Sharing Debug]';
         <h1>Sharing</h1>
         <p class="subtitle">Manage your shared photos and albums</p>
       </div>
-
+    
       <!-- Tabs -->
       <div class="tabs-container">
-        <button 
-          [class.active]="activeTab === 'shared-with-me'" 
+        <button
+          [class.active]="activeTab === 'shared-with-me'"
           (click)="activeTab = 'shared-with-me'">
           Shared with Me
-          <span class="badge" *ngIf="sharedMediaCount > 0">{{ sharedMediaCount }}</span>
+          @if (sharedMediaCount > 0) {
+            <span class="badge">{{ sharedMediaCount }}</span>
+          }
         </button>
-        <button 
-          [class.active]="activeTab === 'my-shares'" 
+        <button
+          [class.active]="activeTab === 'my-shares'"
           (click)="activeTab = 'my-shares'">
           My Shares
         </button>
       </div>
-
+    
       <!-- Tab Content: Shared with Me -->
-      <ng-container *ngIf="activeTab === 'shared-with-me'">
-        
+      @if (activeTab === 'shared-with-me') {
         <!-- Media Section -->
-        <section class="sharing-section" *ngIf="sharedMediaItems.length > 0 || loadingSharedMedia">
-          <div class="section-header">
-            <h2>Photos Shared with You</h2>
-            <span class="count-badge">{{ sharedMediaCount }} items</span>
-          </div>
-
-          <!-- Loading State -->
-          <div *ngIf="loadingSharedMedia" class="loading-state">
-            <div class="spinner"></div>
-            <p>Loading photos...</p>
-          </div>
-
-          <!-- Empty State -->
-          <div *ngIf="!loadingSharedMedia && sharedMediaItems.length === 0" class="empty-state">
-            <span class="icon">📷</span>
-            <h3>No photos shared with you yet</h3>
-            <p>When someone shares a photo with you, it will appear here.</p>
-          </div>
-
-          <!-- Photo Grid -->
-          <div *ngIf="!loadingSharedMedia && sharedMediaItems.length > 0" class="photo-grid">
-            <div 
-              *ngFor="let item of sharedMediaItems; let i = index" 
-              class="shared-photo-card"
-              (click)="viewPhoto(item.id)">
-              <div class="thumb-container">
-                <img [src]="getSharedMediaThumbUrl(item.id)" [alt]="item.filename" class="photo-thumb" (error)="photoThumbError($event)">
-                <div class="share-badge">Shared with you</div>
-              </div>
-              <div class="card-info">
-                <p class="filename">{{ item.filename }}</p>
-              </div>
+        @if (sharedMediaItems.length > 0 || loadingSharedMedia) {
+          <section class="sharing-section">
+            <div class="section-header">
+              <h2>Photos Shared with You</h2>
+              <span class="count-badge">{{ sharedMediaCount }} items</span>
             </div>
-
-            <!-- Load More -->
-            <button 
-              *ngIf="hasMoreSharedMedia" 
-              (click)="loadMoreSharedMedia()" 
-              class="load-more-btn">
-              Load more photos
-            </button>
-          </div>
-        </section>
-
+            <!-- Loading State -->
+            @if (loadingSharedMedia) {
+              <div class="loading-state">
+                <div class="spinner"></div>
+                <p>Loading photos...</p>
+              </div>
+            }
+            <!-- Empty State -->
+            @if (!loadingSharedMedia && sharedMediaItems.length === 0) {
+              <div class="empty-state">
+                <span class="icon">📷</span>
+                <h3>No photos shared with you yet</h3>
+                <p>When someone shares a photo with you, it will appear here.</p>
+              </div>
+            }
+            <!-- Photo Grid -->
+            @if (!loadingSharedMedia && sharedMediaItems.length > 0) {
+              <div class="photo-grid">
+                @for (item of sharedMediaItems; track item; let i = $index) {
+                  <div
+                    class="shared-photo-card"
+                    (click)="viewPhoto(item.id)">
+                    <div class="thumb-container">
+                      <img [src]="getSharedMediaThumbUrl(item.id)" [alt]="item.filename" class="photo-thumb" (error)="photoThumbError($event)">
+                      <div class="share-badge">Shared with you</div>
+                    </div>
+                    <div class="card-info">
+                      <p class="filename">{{ item.filename }}</p>
+                    </div>
+                  </div>
+                }
+                <!-- Load More -->
+                @if (hasMoreSharedMedia) {
+                  <button
+                    (click)="loadMoreSharedMedia()"
+                    class="load-more-btn">
+                    Load more photos
+                  </button>
+                }
+              </div>
+            }
+          </section>
+        }
         <!-- Albums Section -->
-        <section class="sharing-section" *ngIf="sharedAlbums.length > 0 || loadingSharedAlbums">
-          <div class="section-header">
-            <h2>Albums Shared with You</h2>
-            <span class="count-badge">{{ sharedAlbumCount }} albums</span>
-          </div>
-
-          <!-- Loading State -->
-          <div *ngIf="loadingSharedAlbums" class="loading-state">
-            <div class="spinner"></div>
-            <p>Loading albums...</p>
-          </div>
-
-          <!-- Empty State -->
-          <div *ngIf="!loadingSharedAlbums && sharedAlbums.length === 0" class="empty-state">
-            <span class="icon">📁</span>
-            <h3>No albums shared with you yet</h3>
-            <p>When someone shares an album with you, it will appear here.</p>
-          </div>
-
-          <!-- Album Grid -->
-          <div *ngIf="!loadingSharedAlbums && sharedAlbums.length > 0" class="album-grid">
-            <div 
-              *ngFor="let item of sharedAlbums; let i = index" 
-              class="shared-album-card"
-              (click)="viewAlbum(item.id)">
-              <div class="thumb-container">
-                <img [src]="getSharedAlbumThumbUrl(item.id)" [alt]="item.name" class="album-thumb" (error)="albumThumbError($event)">
-                <div class="share-badge">Shared with you</div>
-              </div>
-              <div class="card-info">
-                <p class="filename">{{ item.name }}</p>
-              </div>
+        @if (sharedAlbums.length > 0 || loadingSharedAlbums) {
+          <section class="sharing-section">
+            <div class="section-header">
+              <h2>Albums Shared with You</h2>
+              <span class="count-badge">{{ sharedAlbumCount }} albums</span>
             </div>
-
-            <!-- Load More -->
-            <button 
-              *ngIf="hasMoreSharedAlbums" 
-              (click)="loadMoreSharedAlbums()" 
-              class="load-more-btn">
-              Load more albums
-            </button>
-          </div>
-        </section>
-
+            <!-- Loading State -->
+            @if (loadingSharedAlbums) {
+              <div class="loading-state">
+                <div class="spinner"></div>
+                <p>Loading albums...</p>
+              </div>
+            }
+            <!-- Empty State -->
+            @if (!loadingSharedAlbums && sharedAlbums.length === 0) {
+              <div class="empty-state">
+                <span class="icon">📁</span>
+                <h3>No albums shared with you yet</h3>
+                <p>When someone shares an album with you, it will appear here.</p>
+              </div>
+            }
+            <!-- Album Grid -->
+            @if (!loadingSharedAlbums && sharedAlbums.length > 0) {
+              <div class="album-grid">
+                @for (item of sharedAlbums; track item; let i = $index) {
+                  <div
+                    class="shared-album-card"
+                    (click)="viewAlbum(item.id)">
+                    <div class="thumb-container">
+                      <img [src]="getSharedAlbumThumbUrl(item.id)" [alt]="item.name" class="album-thumb" (error)="albumThumbError($event)">
+                      <div class="share-badge">Shared with you</div>
+                    </div>
+                    <div class="card-info">
+                      <p class="filename">{{ item.name }}</p>
+                    </div>
+                  </div>
+                }
+                <!-- Load More -->
+                @if (hasMoreSharedAlbums) {
+                  <button
+                    (click)="loadMoreSharedAlbums()"
+                    class="load-more-btn">
+                    Load more albums
+                  </button>
+                }
+              </div>
+            }
+          </section>
+        }
         <!-- Nothing to show message -->
-        <div *ngIf="!loadingSharedMedia && !loadingSharedAlbums && sharedMediaItems.length === 0 && sharedAlbums.length === 0" class="nothing-state">
-          <span class="icon">🤝</span>
-          <h3>No sharing activity yet</h3>
-          <p>You haven't received any shares or created any public links.</p>
-        </div>
-      </ng-container>
-
+        @if (!loadingSharedMedia && !loadingSharedAlbums && sharedMediaItems.length === 0 && sharedAlbums.length === 0) {
+          <div class="nothing-state">
+            <span class="icon">🤝</span>
+            <h3>No sharing activity yet</h3>
+            <p>You haven't received any shares or created any public links.</p>
+          </div>
+        }
+      }
+    
       <!-- Tab Content: My Shares -->
-      <ng-container *ngIf="activeTab === 'my-shares'">
-        
+      @if (activeTab === 'my-shares') {
         <!-- Public Links Section -->
-        <section class="sharing-section" *ngIf="publicShares.length > 0 || loadingPublicShares">
-          <div class="section-header">
-            <h2>My Share Links</h2>
-            <span class="count-badge">{{ publicSharesCount }} links</span>
-          </div>
-
-          <!-- Loading State -->
-          <div *ngIf="loadingPublicShares" class="loading-state">
-            <div class="spinner"></div>
-            <p>Loading share links...</p>
-          </div>
-
-          <!-- Empty State -->
-          <div *ngIf="!loadingPublicShares && publicShares.length === 0" class="empty-state">
-            <span class="icon">🔗</span>
-            <h3>No share links yet</h3>
-            <p>Create a public link from the photo detail view to get started.</p>
-          </div>
-
-          <!-- Share Links List -->
-          <div *ngIf="!loadingPublicShares && publicShares.length > 0" class="shares-list">
-            <div 
-              *ngFor="let share of publicShares; let i = index" 
-              class="share-link-card">
-              
-              <div class="share-info">
-                <p class="filename">{{ share.resourceType === 'media' ? '📷 Photo' : '📁 Album' }}: {{ share.resourceName }}</p>
-                <p class="link-url" [title]="getShareableUrl(share)">
-                  {{ getShortUrl(getShareableUrl(share)) }}
-                </p>
-              </div>
-
-              <!-- Share Actions -->
-              <div class="share-actions">
-                <button 
-                  (click)="copyLink(share)" 
-                  class="btn-copy"
-                  [title]="'Copy share link'">
-                  📋 Copy
-                </button>
-                <button 
-                  *ngIf="!isExpired(share.expires_at)"
-                  (click)="revokeShare(share.id)" 
-                  class="btn-revoke"
-                  [disabled]="revokingId === share.id"
-                  [title]="'Revoke share link'">
-                  {{ revokingId === share.id ? 'Revoking...' : '🗑️ Revoke' }}
-                </button>
-              </div>
-
-              <!-- Expiration Info -->
-              <div class="share-meta">
-                <span *ngIf="isExpired(share.expires_at)" class="expired-badge">⏰ Expired</span>
-                <span *ngIf="!isExpired(share.expires_at) && share.expires_at" class="expires-info">Expires {{ formatDate(share.expires_at) }}</span>
-              </div>
+        @if (publicShares.length > 0 || loadingPublicShares) {
+          <section class="sharing-section">
+            <div class="section-header">
+              <h2>My Share Links</h2>
+              <span class="count-badge">{{ publicSharesCount }} links</span>
             </div>
-
-            <!-- Load More -->
-            <button 
-              *ngIf="hasMorePublicShares" 
-              (click)="loadMorePublicShares()" 
-              class="load-more-btn">
-              Load more links
-            </button>
-          </div>
-        </section>
-
+            <!-- Loading State -->
+            @if (loadingPublicShares) {
+              <div class="loading-state">
+                <div class="spinner"></div>
+                <p>Loading share links...</p>
+              </div>
+            }
+            <!-- Empty State -->
+            @if (!loadingPublicShares && publicShares.length === 0) {
+              <div class="empty-state">
+                <span class="icon">🔗</span>
+                <h3>No share links yet</h3>
+                <p>Create a public link from the photo detail view to get started.</p>
+              </div>
+            }
+            <!-- Share Links List -->
+            @if (!loadingPublicShares && publicShares.length > 0) {
+              <div class="shares-list">
+                @for (share of publicShares; track share; let i = $index) {
+                  <div
+                    class="share-link-card">
+                    <div class="share-info">
+                      <p class="filename">{{ share.resourceType === 'media' ? '📷 Photo' : '📁 Album' }}: {{ share.resourceName }}</p>
+                      <p class="link-url" [title]="getShareableUrl(share)">
+                        {{ getShortUrl(getShareableUrl(share)) }}
+                      </p>
+                    </div>
+                    <!-- Share Actions -->
+                    <div class="share-actions">
+                      <button
+                        (click)="copyLink(share)"
+                        class="btn-copy"
+                        [title]="'Copy share link'">
+                        📋 Copy
+                      </button>
+                      @if (!isExpired(share.expires_at)) {
+                        <button
+                          (click)="revokeShare(share.id)"
+                          class="btn-revoke"
+                          [disabled]="revokingId === share.id"
+                          [title]="'Revoke share link'">
+                          {{ revokingId === share.id ? 'Revoking...' : '🗑️ Revoke' }}
+                        </button>
+                      }
+                    </div>
+                    <!-- Expiration Info -->
+                    <div class="share-meta">
+                      @if (isExpired(share.expires_at)) {
+                        <span class="expired-badge">⏰ Expired</span>
+                      }
+                      @if (!isExpired(share.expires_at) && share.expires_at) {
+                        <span class="expires-info">Expires {{ formatDate(share.expires_at) }}</span>
+                      }
+                    </div>
+                  </div>
+                }
+                <!-- Load More -->
+                @if (hasMorePublicShares) {
+                  <button
+                    (click)="loadMorePublicShares()"
+                    class="load-more-btn">
+                    Load more links
+                  </button>
+                }
+              </div>
+            }
+          </section>
+        }
         <!-- User-to-User Shares Section (outgoing share groups) -->
-        <section class="sharing-section" *ngIf="userToUserShares.length > 0 || loadingUserToUserShares">
-          <div class="section-header">
-            <h2>User-to-User Shares</h2>
-            <span class="count-badge">{{ userToUserShareCount }} shares</span>
-          </div>
-
-          <!-- Loading State -->
-          <div *ngIf="loadingUserToUserShares" class="loading-state">
-            <div class="spinner"></div>
-            <p>Loading shared photos...</p>
-          </div>
-
-          <!-- Empty State -->
-          <div *ngIf="!loadingUserToUserShares && userToUserShares.length === 0" class="empty-state">
-            <span class="icon">👥</span>
-            <h3>No shared photos yet</h3>
-            <p>Select photos and share them with people using the Share button.</p>
-          </div>
-
-          <!-- User-to-User Shares List -->
-          <div *ngIf="!loadingUserToUserShares && userToUserShares.length > 0" class="shares-list">
-            <div 
-              *ngFor="let share of userToUserShares; let i = index" 
-              class="share-group-card">
-
-              <!-- Share Group Info -->
-              <div class="share-info">
-                <p class="filename">📷 {{ share.mediaCount }} photos, 📁 {{ share.albumsCount }} albums shared with {{ share.shareeName || 'Someone' }}</p>
-                <p class="shared-date">Shared {{ formatDate(share.sharedAt) }}</p>
-              </div>
-
-              <!-- Share Actions -->
-              <div class="share-actions">
-                <button 
-                  *ngIf="!revokingId"
-                  (click)="revokeOutgoingShare(share.id)" 
-                  class="btn-revoke"
-                  [title]="'Revoke share group'">
-                  🗑️ Revoke
-                </button>
-              </div>
-
+        @if (userToUserShares.length > 0 || loadingUserToUserShares) {
+          <section class="sharing-section">
+            <div class="section-header">
+              <h2>User-to-User Shares</h2>
+              <span class="count-badge">{{ userToUserShareCount }} shares</span>
             </div>
-          </div>
-        </section>
-
+            <!-- Loading State -->
+            @if (loadingUserToUserShares) {
+              <div class="loading-state">
+                <div class="spinner"></div>
+                <p>Loading shared photos...</p>
+              </div>
+            }
+            <!-- Empty State -->
+            @if (!loadingUserToUserShares && userToUserShares.length === 0) {
+              <div class="empty-state">
+                <span class="icon">👥</span>
+                <h3>No shared photos yet</h3>
+                <p>Select photos and share them with people using the Share button.</p>
+              </div>
+            }
+            <!-- User-to-User Shares List -->
+            @if (!loadingUserToUserShares && userToUserShares.length > 0) {
+              <div class="shares-list">
+                @for (share of userToUserShares; track share; let i = $index) {
+                  <div
+                    class="share-group-card">
+                    <!-- Share Group Info -->
+                    <div class="share-info">
+                      <p class="filename">📷 {{ share.mediaCount }} photos, 📁 {{ share.albumsCount }} albums shared with {{ share.shareeName || 'Someone' }}</p>
+                      <p class="shared-date">Shared {{ formatDate(share.sharedAt) }}</p>
+                    </div>
+                    <!-- Share Actions -->
+                    <div class="share-actions">
+                      @if (!revokingId) {
+                        <button
+                          (click)="revokeOutgoingShare(share.id)"
+                          class="btn-revoke"
+                          [title]="'Revoke share group'">
+                          🗑️ Revoke
+                        </button>
+                      }
+                    </div>
+                  </div>
+                }
+              </div>
+            }
+          </section>
+        }
         <!-- Nothing to show message -->
-        <div *ngIf="!loadingPublicShares && !loadingUserToUserShares && publicShares.length === 0 && userToUserShares.length === 0" class="nothing-state">
-          <span class="icon">🤝</span>
-          <h3>No sharing activity yet</h3>
-          <p>You haven't created any share links or shared photos with people.</p>
-        </div>
-      </ng-container>
-
+        @if (!loadingPublicShares && !loadingUserToUserShares && publicShares.length === 0 && userToUserShares.length === 0) {
+          <div class="nothing-state">
+            <span class="icon">🤝</span>
+            <h3>No sharing activity yet</h3>
+            <p>You haven't created any share links or shared photos with people.</p>
+          </div>
+        }
+      }
+    
     </div>
-  `,
+    `,
     styles: [`
     .sharing-page { max-width: 1200px; margin: 0 auto; padding: 32px 24px; }
     .page-header { margin-bottom: 32px; }

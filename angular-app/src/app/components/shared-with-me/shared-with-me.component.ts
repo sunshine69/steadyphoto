@@ -12,103 +12,121 @@ import { Photo } from '../../models/photo.model';
       <!-- Header -->
       <div class="header-section">
         <h1>Shared with me</h1>
-        
+    
         <!-- Tabs for media/albums -->
         <div class="tabs">
           <button [class.active]="activeTab === 'media'" (click)="activeTab = 'media'">Photos & Videos</button>
           <button [class.active]="activeTab === 'albums'" (click)="activeTab = 'albums'">Albums</button>
         </div>
       </div>
-
+    
       <!-- Loading state -->
-      <div class="loading-state" *ngIf="isLoading && contentItems.length === 0">
-        <span class="spinner"></span>
-        <p>Loading...</p>
-      </div>
-
+      @if (isLoading && contentItems.length === 0) {
+        <div class="loading-state">
+          <span class="spinner"></span>
+          <p>Loading...</p>
+        </div>
+      }
+    
       <!-- Empty state -->
-      <div class="empty-state" *ngIf="!isLoading && contentItems.length === 0">
-        <div class="empty-icon">👥</div>
-        <h3>No shared items yet</h3>
-        <p>When someone shares photos, videos, or albums with you, they'll appear here.</p>
-      </div>
-
+      @if (!isLoading && contentItems.length === 0) {
+        <div class="empty-state">
+          <div class="empty-icon">👥</div>
+          <h3>No shared items yet</h3>
+          <p>When someone shares photos, videos, or albums with you, they'll appear here.</p>
+        </div>
+      }
+    
       <!-- Content grid -->
-      <ng-container *ngIf="!isLoading && contentItems.length > 0">
+      @if (!isLoading && contentItems.length > 0) {
         <!-- Media/Photos view -->
-        <div class="content-grid" *ngIf="activeTab === 'media'">
-          <div *ngFor="let item of sharedMedia; let i = index" class="shared-media-card">
-            <!-- Thumbnail with sharer badge -->
-            <div class="thumbnail-wrapper">
-              <img 
-                [src]="item.thumbnailUrl || getFallbackThumbnail()" 
-                [alt]="item.filename"
-                (error)="onImageError($event)"
-                loading="lazy"
-              >
-              <span class="sharer-badge">{{ item.sharerName }}</span>
-            </div>
-            
-            <!-- Info -->
-            <div class="media-info">
-              <p class="filename">{{ item.filename }}</p>
-              <p class="shared-date">{{ item.sharedAt | date:'shortDate' }}</p>
-            </div>
-
-            <!-- Actions -->
-            <div class="media-actions">
-              <button class="action-btn" (click)="viewItem(item)">👁️ View</button>
-              <button class="action-btn" *ngIf="!item.isFavorite" (click)="toggleFavorite(item)">❤️</button>
-              <button class="action-btn" *ngIf="item.isFavorite" (click)="toggleFavorite(item)" style="color: #ef4444;">♥️</button>
-            </div>
+        @if (activeTab === 'media') {
+          <div class="content-grid">
+            @for (item of sharedMedia; track item; let i = $index) {
+              <div class="shared-media-card">
+                <!-- Thumbnail with sharer badge -->
+                <div class="thumbnail-wrapper">
+                  <img
+                    [src]="item.thumbnailUrl || getFallbackThumbnail()"
+                    [alt]="item.filename"
+                    (error)="onImageError($event)"
+                    loading="lazy"
+                    >
+                  <span class="sharer-badge">{{ item.sharerName }}</span>
+                </div>
+                <!-- Info -->
+                <div class="media-info">
+                  <p class="filename">{{ item.filename }}</p>
+                  <p class="shared-date">{{ item.sharedAt | date:'shortDate' }}</p>
+                </div>
+                <!-- Actions -->
+                <div class="media-actions">
+                  <button class="action-btn" (click)="viewItem(item)">👁️ View</button>
+                  @if (!item.isFavorite) {
+                    <button class="action-btn" (click)="toggleFavorite(item)">❤️</button>
+                  }
+                  @if (item.isFavorite) {
+                    <button class="action-btn" (click)="toggleFavorite(item)" style="color: #ef4444;">♥️</button>
+                  }
+                </div>
+              </div>
+            }
+            <!-- Load more button -->
+            @if (hasMoreMedia) {
+              <div class="load-more-container">
+                <button class="btn-load-more" (click)="loadMoreSharedMedia()">Load More Photos & Videos</button>
+              </div>
+            }
           </div>
-
-          <!-- Load more button -->
-          <div class="load-more-container" *ngIf="hasMoreMedia">
-            <button class="btn-load-more" (click)="loadMoreSharedMedia()">Load More Photos & Videos</button>
-          </div>
-        </div>
-
+        }
         <!-- Albums view -->
-        <div class="content-grid" *ngIf="activeTab === 'albums'">
-          <div *ngFor="let item of sharedAlbums; let i = index" class="shared-album-card">
-            <!-- Album thumbnail with sharer badge -->
-            <div class="thumbnail-wrapper">
-              <img 
-                [src]="item.thumbnailUrl || getFallbackThumbnail()" 
-                [alt]="item.name"
-                (error)="onImageError($event)"
-                loading="lazy"
-              >
-              <span class="sharer-badge">{{ item.sharerName }}</span>
-            </div>
-
-            <!-- Info -->
-            <div class="album-info">
-              <p class="name">{{ item.name }}</p>
-              <p class="description" *ngIf="item.description">{{ item.description }}</p>
-              <p class="shared-date">{{ item.sharedAt | date:'shortDate' }}</p>
-            </div>
-
-            <!-- Actions -->
-            <div class="album-actions">
-              <button class="action-btn" (click)="viewAlbum(item)">👁️ View Album</button>
-              <button class="action-btn" *ngIf="!item.isFavorite" (click)="toggleFavorite(item)">❤️</button>
-              <button class="action-btn" *ngIf="item.isFavorite" (click)="toggleFavorite(item)" style="color: #ef4444;">♥️</button>
-            </div>
-
-            <!-- Media count -->
-            <p class="media-count">{{ item.mediaCount }} items in album</p>
+        @if (activeTab === 'albums') {
+          <div class="content-grid">
+            @for (item of sharedAlbums; track item; let i = $index) {
+              <div class="shared-album-card">
+                <!-- Album thumbnail with sharer badge -->
+                <div class="thumbnail-wrapper">
+                  <img
+                    [src]="item.thumbnailUrl || getFallbackThumbnail()"
+                    [alt]="item.name"
+                    (error)="onImageError($event)"
+                    loading="lazy"
+                    >
+                  <span class="sharer-badge">{{ item.sharerName }}</span>
+                </div>
+                <!-- Info -->
+                <div class="album-info">
+                  <p class="name">{{ item.name }}</p>
+                  @if (item.description) {
+                    <p class="description">{{ item.description }}</p>
+                  }
+                  <p class="shared-date">{{ item.sharedAt | date:'shortDate' }}</p>
+                </div>
+                <!-- Actions -->
+                <div class="album-actions">
+                  <button class="action-btn" (click)="viewAlbum(item)">👁️ View Album</button>
+                  @if (!item.isFavorite) {
+                    <button class="action-btn" (click)="toggleFavorite(item)">❤️</button>
+                  }
+                  @if (item.isFavorite) {
+                    <button class="action-btn" (click)="toggleFavorite(item)" style="color: #ef4444;">♥️</button>
+                  }
+                </div>
+                <!-- Media count -->
+                <p class="media-count">{{ item.mediaCount }} items in album</p>
+              </div>
+            }
+            <!-- Load more button for albums -->
+            @if (hasMoreAlbums) {
+              <div class="load-more-container">
+                <button class="btn-load-more" (click)="loadMoreSharedAlbums()">Load More Albums</button>
+              </div>
+            }
           </div>
-
-          <!-- Load more button for albums -->
-          <div class="load-more-container" *ngIf="hasMoreAlbums">
-            <button class="btn-load-more" (click)="loadMoreSharedAlbums()">Load More Albums</button>
-          </div>
-        </div>
-      </ng-container>
+        }
+      }
     </div>
-  `,
+    `,
     styles: [`
     .shared-with-me-container {
       padding: 24px;

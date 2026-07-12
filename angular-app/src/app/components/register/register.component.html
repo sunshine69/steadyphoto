@@ -13,55 +13,59 @@
 
     <!-- Register Form -->
     <form (ngSubmit)="onSubmit()" #regForm="ngForm" class="register-form">
-      
+
       <!-- Email Field -->
       <div class="form-group">
         <label for="email" class="form-label">Email Address</label>
-        <input 
-          type="email" 
-          id="email" 
-          name="email" 
+        <input
+          type="email"
+          id="email"
+          name="email"
           class="form-control"
-          [(ngModel)]="email" 
+          [(ngModel)]="email"
           placeholder="you@example.com"/>
       </div>
 
       <!-- Password Field -->
       <div class="form-group">
         <label for="password" class="form-label">Password</label>
-        <input 
-          type="password" 
-          id="password" 
-          name="password" 
+        <input
+          type="password"
+          id="password"
+          name="password"
           class="form-control"
-          [(ngModel)]="password" 
+          [(ngModel)]="password"
           placeholder="••••••••"/>
       </div>
 
       <!-- Confirm Password Field -->
       <div class="form-group">
         <label for="confirmPassword" class="form-label">Confirm Password</label>
-        <input 
-          type="password" 
-          id="confirmPassword" 
-          name="confirmPassword" 
+        <input
+          type="password"
+          id="confirmPassword"
+          name="confirmPassword"
           class="form-control"
-          [(ngModel)]="confirmPassword" 
+          [(ngModel)]="confirmPassword"
           placeholder="••••••••"/>
       </div>
 
       <!-- Error Message -->
-      <div *ngIf="errorMessage" class="error-message">
-        {{ errorMessage }}
-      </div>
+      @if (errorMessage) {
+        <div class="error-message">
+          {{ errorMessage }}
+        </div>
+      }
 
       <!-- Action Buttons -->
       <div class="form-actions">
         <button type="submit" [disabled]="isLoading" class="btn btn-register w-100">
-          <span *ngIf="isLoading" class="spinner-border spinner-border-sm me-2"></span>
+          @if (isLoading) {
+            <span class="spinner-border spinner-border-sm me-2"></span>
+          }
           {{ isLoading ? 'Creating Account...' : 'Create Account' }}
         </button>
-        
+
         <button type="button" (click)="onReset()" [disabled]="isLoading" class="btn btn-reset">
           Reset
         </button>
@@ -70,7 +74,7 @@
 
     <!-- Login Link -->
     <div class="login-link">
-      Already have an account? 
+      Already have an account?
       <a routerLink="/login" class="text-primary text-decoration-none">Login here</a>
     </div>
   </div>

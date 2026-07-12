@@ -8,97 +8,103 @@ import { PhotoService } from '../../services/photo.service';
     selector: 'app-presentation-mode',
     imports: [CommonModule],
     template: `
-    <div class="presentation-overlay" *ngIf="presentationService.isOpen$ | async; else closeBtn">
-      <!-- Close Button -->
-      <button 
-        class="btn-close-btn" 
-        (click)="closePresentation()"
-        aria-label="Close presentation mode">
-        ×
-      </button>
-
-      <!-- Navigation Buttons -->
-      <button 
-        class="nav-btn nav-prev" 
-        (click)="previousItem()"
-        [class.disabled]="currentIndex <= 0"
-        aria-label="Previous item">
-        ‹
-      </button>
-      
-      <button 
-        class="nav-btn nav-next" 
-        (click)="nextItem()"
-        [class.disabled]="currentIndex >= totalItems - 1"
-        aria-label="Next item">
-        ›
-      </button>
-
-      <!-- Media Display -->
-      <div class="media-container">
-        <!-- Video Player for videos -->
-        <video 
-          *ngIf="currentItem?.mediaType === 'video'"
-          [attr.src]="currentItem.path"
-          controls
-          preload="auto"
-          autoplay
-          class="presentation-media"
-          (error)="onMediaError($event)"
-        >
-          Your browser does not support the video tag.
-        </video>
-
-        <!-- Image display for photos -->
-        <img 
-          *ngIf="currentItem?.mediaType !== 'video'"
-          [src]="currentItem.path" 
-          [alt]="currentItem.filename || 'Presentation media'" 
-          class="presentation-media"
-          (error)="onMediaError($event)"
-        >
-      </div>
-
-      <!-- Bottom Controls -->
-      <div class="bottom-controls">
-        <!-- Progress Info -->
-        <div class="progress-info">
-          <span>{{ currentIndex + 1 }} of {{ totalItems }}</span>
+    @if (presentationService.isOpen$ | async) {
+      <div class="presentation-overlay">
+        <!-- Close Button -->
+        <button
+          class="btn-close-btn"
+          (click)="closePresentation()"
+          aria-label="Close presentation mode">
+          ×
+        </button>
+        <!-- Navigation Buttons -->
+        <button
+          class="nav-btn nav-prev"
+          (click)="previousItem()"
+          [class.disabled]="currentIndex <= 0"
+          aria-label="Previous item">
+          ‹
+        </button>
+        <button
+          class="nav-btn nav-next"
+          (click)="nextItem()"
+          [class.disabled]="currentIndex >= totalItems - 1"
+          aria-label="Next item">
+          ›
+        </button>
+        <!-- Media Display -->
+        <div class="media-container">
+          <!-- Video Player for videos -->
+          @if (currentItem?.mediaType === 'video') {
+            <video
+              [attr.src]="currentItem.path"
+              controls
+              preload="auto"
+              autoplay
+              class="presentation-media"
+              (error)="onMediaError($event)"
+              >
+              Your browser does not support the video tag.
+            </video>
+          }
+          <!-- Image display for photos -->
+          @if (currentItem?.mediaType !== 'video') {
+            <img
+              [src]="currentItem.path"
+              [alt]="currentItem.filename || 'Presentation media'"
+              class="presentation-media"
+              (error)="onMediaError($event)"
+              >
+          }
         </div>
-
-        <!-- Thumbnail Strip (optional, can be expanded later) -->
-        <div class="thumbnail-strip" *ngIf="totalItems > 5">
-          <button 
-            *ngFor="let item of items; let i = index"
-            [class.active]="i === currentIndex"
-            (click)="goToItem(i)"
-            class="thumb-btn"
-            [style.width.px]="60"
-            [style.height.px]="45">
-            <img 
-              *ngIf="item.mediaType !== 'video'"
-              [src]="getThumbnailUrl(item.id)" 
-              alt=""
-              class="thumb-img">
-            <span *ngIf="item.mediaType === 'video'" class="thumb-icon">🎥</span>
-          </button>
+        <!-- Bottom Controls -->
+        <div class="bottom-controls">
+          <!-- Progress Info -->
+          <div class="progress-info">
+            <span>{{ currentIndex + 1 }} of {{ totalItems }}</span>
+          </div>
+          <!-- Thumbnail Strip (optional, can be expanded later) -->
+          @if (totalItems > 5) {
+            <div class="thumbnail-strip">
+              @for (item of items; track item; let i = $index) {
+                <button
+                  [class.active]="i === currentIndex"
+                  (click)="goToItem(i)"
+                  class="thumb-btn"
+                  [style.width.px]="60"
+                  [style.height.px]="45">
+                  @if (item.mediaType !== 'video') {
+                    <img
+                      [src]="getThumbnailUrl(item.id)"
+                      alt=""
+                      class="thumb-img">
+                  }
+                  @if (item.mediaType === 'video') {
+                    <span class="thumb-icon">🎥</span>
+                  }
+                </button>
+              }
+            </div>
+          }
+          <!-- File Name -->
+          @if (currentItem?.filename) {
+            <div class="file-name">
+              {{ currentItem.filename }}
+            </div>
+          }
         </div>
-
-        <!-- File Name -->
-        <div class="file-name" *ngIf="currentItem?.filename">
-          {{ currentItem.filename }}
-        </div>
+        <!-- Loading State -->
+        @if (isLoading) {
+          <div class="loading-overlay">
+            <div class="spinner-border text-white" role="status"></div>
+          </div>
+        }
       </div>
-
-      <!-- Loading State -->
-      <div class="loading-overlay" *ngIf="isLoading">
-        <div class="spinner-border text-white" role="status"></div>
-      </div>
-    </div>
-
+    } @else {
+    }
+    
     <!-- Close button when presentation is closed (for testing) -->
-    <ng-template #closeBtn></ng-template>
-  `,
+    `,
     styles: [`
     .presentation-overlay {
       position: fixed;

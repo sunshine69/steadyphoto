@@ -9,7 +9,7 @@
     "skipLibCheck": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "declaration": false,
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
@@ -17,7 +17,9 @@
     "target": "es2022",
     "outDir": "./dist/out-tsc",
     "rootDir": "./src",
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
   "files": ["src/main.ts"],
   "include": ["src/**/*.ts"]

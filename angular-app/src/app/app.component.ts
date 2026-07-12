@@ -28,7 +28,7 @@ import { ExifTriggerService } from './services/exif-trigger.service';
     <div class="app-layout">
       <!-- Fixed Sidebar Navigation -->
       <app-sidebar></app-sidebar>
-
+    
       <!-- Main Content Area -->
       <main class="main-content">
         <!-- Top Header Bar (Search, Settings, User) -->
@@ -38,9 +38,9 @@ import { ExifTriggerService } from './services/exif-trigger.service';
               <circle cx="11" cy="11" r="8"/>
               <line x1="21" y1="21" x2="16.65" y2="16.65"/>
             </svg>
-            
+    
             <!-- Search Scope Dropdown -->
-            <select 
+            <select
               class="search-scope-select"
               [(ngModel)]="selectedScope"
               (ngModelChange)="onScopeChange($event)">
@@ -51,105 +51,109 @@ import { ExifTriggerService } from './services/exif-trigger.service';
               <option value="location">GPS lat, lon</option>
               <option value="place">Place</option>
             </select>
-            
-            <input 
-              type="text" 
-              placeholder="Search your photos" 
+    
+            <input
+              type="text"
+              placeholder="Search your photos"
               class="search-input"
               [(ngModel)]="searchTerm"
               (keyup)="onKeyUp($event)"
-            />
-            <button *ngIf="searchTerm" class="clear-search-btn" (click)="clearSearch()">×</button>
-
+              />
+            @if (searchTerm) {
+              <button class="clear-search-btn" (click)="clearSearch()">×</button>
+            }
+    
             <!-- Date Range Input -->
-            <div *ngIf="selectedScope === 'date'" class="date-range-container">
-              <div class="date-part-group">
-                <input 
-                  type="text" 
-                  class="date-segment"
-                  placeholder="DD"
-                  [(ngModel)]="startDay"
-                  (keyup.enter)="onDateSearch()"
-                  maxlength="2"
-                  inputmode="numeric"
-                />
-                <span class="date-separator">/</span>
-                <input 
-                  type="text" 
-                  class="date-segment"
-                  placeholder="MM"
-                  [(ngModel)]="startMonth"
-                  (keyup.enter)="onDateSearch()"
-                  maxlength="2"
-                  inputmode="numeric"
-                />
-                <span class="date-separator">/</span>
-                <input 
-                  type="text" 
-                  class="date-segment date-year"
-                  placeholder="YYYY"
-                  [(ngModel)]="startYear"
-                  (keyup.enter)="onDateSearch()"
-                  maxlength="4"
-                  inputmode="numeric"
-                />
+            @if (selectedScope === 'date') {
+              <div class="date-range-container">
+                <div class="date-part-group">
+                  <input
+                    type="text"
+                    class="date-segment"
+                    placeholder="DD"
+                    [(ngModel)]="startDay"
+                    (keyup.enter)="onDateSearch()"
+                    maxlength="2"
+                    inputmode="numeric"
+                    />
+                  <span class="date-separator">/</span>
+                  <input
+                    type="text"
+                    class="date-segment"
+                    placeholder="MM"
+                    [(ngModel)]="startMonth"
+                    (keyup.enter)="onDateSearch()"
+                    maxlength="2"
+                    inputmode="numeric"
+                    />
+                  <span class="date-separator">/</span>
+                  <input
+                    type="text"
+                    class="date-segment date-year"
+                    placeholder="YYYY"
+                    [(ngModel)]="startYear"
+                    (keyup.enter)="onDateSearch()"
+                    maxlength="4"
+                    inputmode="numeric"
+                    />
+                </div>
+                <span class="date-range-separator">to</span>
+                <div class="date-part-group">
+                  <input
+                    type="text"
+                    class="date-segment"
+                    placeholder="DD"
+                    [(ngModel)]="endDay"
+                    (keyup.enter)="onDateSearch()"
+                    maxlength="2"
+                    inputmode="numeric"
+                    />
+                  <span class="date-separator">/</span>
+                  <input
+                    type="text"
+                    class="date-segment"
+                    placeholder="MM"
+                    [(ngModel)]="endMonth"
+                    (keyup.enter)="onDateSearch()"
+                    maxlength="2"
+                    inputmode="numeric"
+                    />
+                  <span class="date-separator">/</span>
+                  <input
+                    type="text"
+                    class="date-segment date-year"
+                    placeholder="YYYY"
+                    [(ngModel)]="endYear"
+                    (keyup.enter)="onDateSearch()"
+                    maxlength="4"
+                    inputmode="numeric"
+                    />
+                </div>
               </div>
-              <span class="date-range-separator">to</span>
-              <div class="date-part-group">
-                <input 
-                  type="text" 
-                  class="date-segment"
-                  placeholder="DD"
-                  [(ngModel)]="endDay"
-                  (keyup.enter)="onDateSearch()"
-                  maxlength="2"
-                  inputmode="numeric"
-                />
-                <span class="date-separator">/</span>
-                <input 
-                  type="text" 
-                  class="date-segment"
-                  placeholder="MM"
-                  [(ngModel)]="endMonth"
-                  (keyup.enter)="onDateSearch()"
-                  maxlength="2"
-                  inputmode="numeric"
-                />
-                <span class="date-separator">/</span>
-                <input 
-                  type="text" 
-                  class="date-segment date-year"
-                  placeholder="YYYY"
-                  [(ngModel)]="endYear"
-                  (keyup.enter)="onDateSearch()"
-                  maxlength="4"
-                  inputmode="numeric"
-                />
-              </div>
-            </div>
+            }
           </div>
-
+    
           <div class="header-actions">
             <!-- Selection Actions Panel (only when items are selected) -->
-            <div class="selection-actions-panel" *ngIf="selectedCount > 0">
-              <div class="selected-count-badge" title="{{ selectedCount }} item(s) selected">{{ selectedCount }}</div>
-              
-              <select class="selection-action-select" [(ngModel)]="selectedAction" (change)="onActionSelected()">
-                <option [ngValue]="null">Select action...</option>
-                <option value="addAlbum">Add to album</option>
-                <option value="removeAlbum">Remove from album</option>
-                <option value="delete">Delete media</option>
-                <option value="addTags">Add tags</option>
-              </select>
-
-              <button class="btn-cancel-selection" (click)="clearSelection()" title="Cancel selection">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="18" y1="6" x2="6" y2="18"/>
-                  <line x1="6" y1="6" x2="18" y2="18"/>
-                </svg>
-              </button>
-            </div>
-
+            @if (selectedCount > 0) {
+              <div class="selection-actions-panel">
+                <div class="selected-count-badge" title="{{ selectedCount }} item(s) selected">{{ selectedCount }}</div>
+                <select class="selection-action-select" [(ngModel)]="selectedAction" (change)="onActionSelected()">
+                  <option [ngValue]="null">Select action...</option>
+                  <option value="addAlbum">Add to album</option>
+                  <option value="removeAlbum">Remove from album</option>
+                  <option value="delete">Delete media</option>
+                  <option value="addTags">Add tags</option>
+                </select>
+                <button class="btn-cancel-selection" (click)="clearSelection()" title="Cancel selection">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
+              </div>
+            }
+    
             <!-- Select All Button -->
             <button class="icon-btn select-all-btn" title="Select All on Page" (click)="onSelectAll()">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -159,7 +163,7 @@ import { ExifTriggerService } from './services/exif-trigger.service';
                 <rect x="14" y="14" width="7" height="7"/>
               </svg>
             </button>
-
+    
             <!-- Upload Button -->
             <button class="icon-btn upload-trigger" title="Upload Media" (click)="uploadTrigger.open()">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -168,7 +172,7 @@ import { ExifTriggerService } from './services/exif-trigger.service';
                 <line x1="12" y1="3" x2="12" y2="15"/>
               </svg>
             </button>
-
+    
             <!-- Share Button - Opens share modal for the currently selected item -->
             <button class="icon-btn share-trigger" title="Share" (click)="openShareModal()">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -178,131 +182,142 @@ import { ExifTriggerService } from './services/exif-trigger.service';
                 <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
               </svg>
             </button>
-
+    
             <!-- User Avatar (click to open user management) -->
             <div class="user-avatar" (click)="openUserManagement()" title="{{ isAdmin ? 'User Management' : 'Profile' }}">{{ avatarInitial }}</div>
           </div>
         </header>
-
+    
         <!-- Router Outlet for Page Content -->
         <router-outlet></router-outlet>
-
+    
         <!-- Upload Modal (shown when upload trigger service is open) -->
-        <app-upload-modal 
-          *ngIf="uploadTrigger.isUploadModalOpen$ | async">
-        </app-upload-modal>
-
+        @if (uploadTrigger.isUploadModalOpen$ | async) {
+          <app-upload-modal
+            >
+          </app-upload-modal>
+        }
+    
         <!-- Presentation Mode Overlay (shown when presentation service is open) -->
-        <app-presentation-mode 
-          *ngIf="presentationService.isOpen$ | async"
-          [items]="presentationService.getItems()"
-          [startIndex]="presentationService.getCurrentIndex()">
-        </app-presentation-mode>
-
+        @if (presentationService.isOpen$ | async) {
+          <app-presentation-mode
+            [items]="presentationService.getItems()"
+            [startIndex]="presentationService.getCurrentIndex()">
+          </app-presentation-mode>
+        }
+    
         <!-- Share Modal (shown when share trigger service is open) -->
-        <app-share-modal 
-          *ngIf="shareTrigger.isShareModalOpen$ | async">
-        </app-share-modal>
-
+        @if (shareTrigger.isShareModalOpen$ | async) {
+          <app-share-modal
+            >
+          </app-share-modal>
+        }
+    
         <!-- User Management Modal -->
         <app-user-management #userManagement></app-user-management>
-
+    
         <!-- Dialog: Add to Album -->
-        <div class="modal-overlay" *ngIf="showAddAlbumDialog">
-          <div class="modal-content bg-dark border rounded p-4" style="border-color: #6c757d;">
-            <h5 class="mb-3 text-white">Add to Album</h5>
-            <p class="text-muted mb-3">{{ selectedCount }} items will be added to the selected album.</p>
-            
-            <div class="mb-3">
-              <label class="form-label text-white">Select Album:</label>
-              <select class="form-select" [(ngModel)]="targetAlbumId" style="background-color: #495057; border-color: #6c757d; color: white;">
-                <option [ngValue]="undefined">Choose an album...</option>
-                <option *ngFor="let album of albums" [ngValue]="album.id">{{ album.name }}</option>
-              </select>
-            </div>
-
-            <div class="d-flex gap-2 justify-content-end">
-              <button class="btn btn-secondary" (click)="closeAddAlbumDialog()">Cancel</button>
-              <button class="btn btn-primary" (click)="executeAddToAlbum()" [disabled]="!targetAlbumId">Add to Album</button>
+        @if (showAddAlbumDialog) {
+          <div class="modal-overlay">
+            <div class="modal-content bg-dark border rounded p-4" style="border-color: #6c757d;">
+              <h5 class="mb-3 text-white">Add to Album</h5>
+              <p class="text-muted mb-3">{{ selectedCount }} items will be added to the selected album.</p>
+              <div class="mb-3">
+                <label class="form-label text-white">Select Album:</label>
+                <select class="form-select" [(ngModel)]="targetAlbumId" style="background-color: #495057; border-color: #6c757d; color: white;">
+                  <option [ngValue]="undefined">Choose an album...</option>
+                  @for (album of albums; track album) {
+                    <option [ngValue]="album.id">{{ album.name }}</option>
+                  }
+                </select>
+              </div>
+              <div class="d-flex gap-2 justify-content-end">
+                <button class="btn btn-secondary" (click)="closeAddAlbumDialog()">Cancel</button>
+                <button class="btn btn-primary" (click)="executeAddToAlbum()" [disabled]="!targetAlbumId">Add to Album</button>
+              </div>
             </div>
           </div>
-        </div>
-
+        }
+    
         <!-- Dialog: Remove from Album -->
-        <div class="modal-overlay" *ngIf="showRemoveAlbumDialog">
-          <div class="modal-content bg-dark border rounded p-4" style="border-color: #6c757d;">
-            <h5 class="mb-3 text-white">Remove from Album</h5>
-            <p class="text-muted mb-3">{{ selectedCount }} items will be removed from the selected album.</p>
-            
-            <div class="mb-3">
-              <label class="form-label text-white">Select Album:</label>
-              <select class="form-select" [(ngModel)]="targetAlbumIdForRemoval" style="background-color: #495057; border-color: #6c757d; color: white;">
-                <option [ngValue]="undefined">Choose an album...</option>
-                <option *ngFor="let album of albums" [ngValue]="album.id">{{ album.name }}</option>
-              </select>
-            </div>
-
-            <div class="d-flex gap-2 justify-content-end">
-              <button class="btn btn-secondary" (click)="closeRemoveAlbumDialog()">Cancel</button>
-              <button class="btn btn-outline-danger" (click)="executeRemoveFromAlbum()" [disabled]="!targetAlbumIdForRemoval">Remove from Album</button>
+        @if (showRemoveAlbumDialog) {
+          <div class="modal-overlay">
+            <div class="modal-content bg-dark border rounded p-4" style="border-color: #6c757d;">
+              <h5 class="mb-3 text-white">Remove from Album</h5>
+              <p class="text-muted mb-3">{{ selectedCount }} items will be removed from the selected album.</p>
+              <div class="mb-3">
+                <label class="form-label text-white">Select Album:</label>
+                <select class="form-select" [(ngModel)]="targetAlbumIdForRemoval" style="background-color: #495057; border-color: #6c757d; color: white;">
+                  <option [ngValue]="undefined">Choose an album...</option>
+                  @for (album of albums; track album) {
+                    <option [ngValue]="album.id">{{ album.name }}</option>
+                  }
+                </select>
+              </div>
+              <div class="d-flex gap-2 justify-content-end">
+                <button class="btn btn-secondary" (click)="closeRemoveAlbumDialog()">Cancel</button>
+                <button class="btn btn-outline-danger" (click)="executeRemoveFromAlbum()" [disabled]="!targetAlbumIdForRemoval">Remove from Album</button>
+              </div>
             </div>
           </div>
-        </div>
-
+        }
+    
         <!-- Dialog: Delete Media -->
-        <div class="modal-overlay" *ngIf="showDeleteDialog">
-          <div class="modal-content bg-dark border rounded p-4" style="border-color: #6c757d;">
-            <h5 class="mb-3 text-danger">Delete Media</h5>
-            <p class="text-muted mb-3">{{ selectedCount }} item(s) will be permanently deleted. This action cannot be undone.</p>
-            
-            <div class="alert alert-warning" role="alert">
-              Are you sure you want to delete the selected media?
-            </div>
-
-            <div class="d-flex gap-2 justify-content-end">
-              <button class="btn btn-secondary" (click)="closeDeleteDialog()">Cancel</button>
-              <button class="btn btn-danger" (click)="executeDelete()" [disabled]="isDeleting">
-                {{ isDeleting ? 'Deleting...' : 'Delete' }}
-              </button>
+        @if (showDeleteDialog) {
+          <div class="modal-overlay">
+            <div class="modal-content bg-dark border rounded p-4" style="border-color: #6c757d;">
+              <h5 class="mb-3 text-danger">Delete Media</h5>
+              <p class="text-muted mb-3">{{ selectedCount }} item(s) will be permanently deleted. This action cannot be undone.</p>
+              <div class="alert alert-warning" role="alert">
+                Are you sure you want to delete the selected media?
+              </div>
+              <div class="d-flex gap-2 justify-content-end">
+                <button class="btn btn-secondary" (click)="closeDeleteDialog()">Cancel</button>
+                <button class="btn btn-danger" (click)="executeDelete()" [disabled]="isDeleting">
+                  {{ isDeleting ? 'Deleting...' : 'Delete' }}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-
+        }
+    
         <!-- Dialog: Add Tags -->
-        <div class="modal-overlay" *ngIf="showAddTagsDialog">
-          <div class="modal-content bg-dark border rounded p-4" style="border-color: #6c757d;">
-            <h5 class="mb-3 text-white">Add Tags</h5>
-            <p class="text-muted mb-3">{{ selectedCount }} items will be tagged.</p>
-            
-            <div class="mb-3">
-              <label class="form-label text-white">Enter Tags:</label>
-              <input 
-                type="text" 
-                [(ngModel)]="tagInput" 
-                placeholder="tag1:tag2:tag3..." 
-                class="form-control" 
-                style="background-color: #495057; border-color: #6c757d; color: white;"
-                autofocus
-              >
-              <small class="text-muted">Separate tags with colons (e.g., vacation:sunset:beach)</small>
-            </div>
-
-            <div class="d-flex gap-2 justify-content-end">
-              <button class="btn btn-secondary" (click)="closeAddTagsDialog()">Cancel</button>
-              <button class="btn btn-success" (click)="executeAddTags()" [disabled]="!tagInput.trim()">Add Tags</button>
+        @if (showAddTagsDialog) {
+          <div class="modal-overlay">
+            <div class="modal-content bg-dark border rounded p-4" style="border-color: #6c757d;">
+              <h5 class="mb-3 text-white">Add Tags</h5>
+              <p class="text-muted mb-3">{{ selectedCount }} items will be tagged.</p>
+              <div class="mb-3">
+                <label class="form-label text-white">Enter Tags:</label>
+                <input
+                  type="text"
+                  [(ngModel)]="tagInput"
+                  placeholder="tag1:tag2:tag3..."
+                  class="form-control"
+                  style="background-color: #495057; border-color: #6c757d; color: white;"
+                  autofocus
+                  >
+                <small class="text-muted">Separate tags with colons (e.g., vacation:sunset:beach)</small>
+              </div>
+              <div class="d-flex gap-2 justify-content-end">
+                <button class="btn btn-secondary" (click)="closeAddTagsDialog()">Cancel</button>
+                <button class="btn btn-success" (click)="executeAddTags()" [disabled]="!tagInput.trim()">Add Tags</button>
+              </div>
             </div>
           </div>
-        </div>
+        }
       </main>
     </div>
-
+    
     <!-- Footer (optional, can be removed if not needed) -->
-    <footer class="bg-dark text-white py-3 mt-5" *ngIf="false">
-      <div class="container text-center">
-        <p class="mb-0">© 2024 SteadyPhoto. All rights reserved.</p>
-      </div>
-    </footer>
-  `,
+    @if (false) {
+      <footer class="bg-dark text-white py-3 mt-5">
+        <div class="container text-center">
+          <p class="mb-0">© 2024 SteadyPhoto. All rights reserved.</p>
+        </div>
+      </footer>
+    }
+    `,
     styles: [`
     .app-layout {
       display: flex;

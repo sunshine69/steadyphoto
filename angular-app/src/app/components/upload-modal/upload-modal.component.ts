@@ -3,7 +3,7 @@ import { Component, ElementRef, ViewChild, OnInit, OnDestroy, inject } from '@an
 import { HttpEventType } from '@angular/common/http';
 
 
-import { CommonModule } from '@angular/common';
+
 import { UploadService, UploadProgressEvent } from '../../services/upload.service';
 import { UploadTriggerService } from '../../services/upload-trigger.service';
 import { Subscription } from 'rxjs';
@@ -17,109 +17,106 @@ interface SelectableFile {
 
 @Component({
     selector: 'app-upload-modal',
-    imports: [CommonModule],
+    imports: [],
     template: `
     <!-- Backdrop -->
-    <div class="modal-backdrop" *ngIf="isVisible" (click)="closeModal()"></div>
-
+    @if (isVisible) {
+      <div class="modal-backdrop" (click)="closeModal()"></div>
+    }
+    
     <!-- Modal Container -->
-    <div class="upload-modal-container" *ngIf="isVisible">
-      <div class="upload-card">
-        <!-- Header -->
-        <div class="card-header">
-          <h2 class="modal-title">Upload Media</h2>
-          <button class="close-btn" (click)="closeModal()">✕</button>
-        </div>
-
-        <!-- Content Area: Changes based on state -->
-        
-        <!-- State 1: Drop Zone / File Selection -->
-        <ng-container *ngIf="!isUploading && !uploadComplete">
-          <div 
-            class="drop-zone" 
-            [class.drag-over]="dragOver"
-            (click)="triggerFilePicker()"
-            (dragover)="onDragOver($event)" 
-            (dragleave)="onDragLeave()" 
-            (drop)="onDrop($event)">
-            
-            <!-- Hidden File Input -->
-            <input type="file" #fileInput multiple accept="image/jpeg,image/png,video/mp4,video/quicktime,.jpg,.jpeg,.png,.mp4,.mov" class="hidden-input" (change)="handleFileSelection($event)">
-
-
-            <div class="drop-icon">📁</div>
-            <p class="drop-text-main">Drag & drop files here or click to browse</p>
-            <p class="drop-subtext">Supports JPG, PNG, MP4, MOV (Max 1GB)</p>
-
-            <!-- Preview Grid -->
-            <ng-container *ngIf="selectedFiles.length > 0; else emptyState">
-              <div class="preview-grid" #fileGrid>
-                <div *ngFor="let file of selectedFiles; let i = index" class="preview-item">
-                  <img [src]="getPreviewUrl(file)" alt="{{ file.name }}" class="thumb-img" (click)="removeFile(i)">
-                  <button class="remove-btn" (click)="$event.stopPropagation(); removeFile(i)">✕</button>
+    @if (isVisible) {
+      <div class="upload-modal-container">
+        <div class="upload-card">
+          <!-- Header -->
+          <div class="card-header">
+            <h2 class="modal-title">Upload Media</h2>
+            <button class="close-btn" (click)="closeModal()">✕</button>
+          </div>
+          <!-- Content Area: Changes based on state -->
+          <!-- State 1: Drop Zone / File Selection -->
+          @if (!isUploading && !uploadComplete) {
+            <div
+              class="drop-zone"
+              [class.drag-over]="dragOver"
+              (click)="triggerFilePicker()"
+              (dragover)="onDragOver($event)"
+              (dragleave)="onDragLeave()"
+              (drop)="onDrop($event)">
+              <!-- Hidden File Input -->
+              <input type="file" #fileInput multiple accept="image/jpeg,image/png,video/mp4,video/quicktime,.jpg,.jpeg,.png,.mp4,.mov" class="hidden-input" (change)="handleFileSelection($event)">
+              <div class="drop-icon">📁</div>
+              <p class="drop-text-main">Drag & drop files here or click to browse</p>
+              <p class="drop-subtext">Supports JPG, PNG, MP4, MOV (Max 1GB)</p>
+              <!-- Preview Grid -->
+              @if (selectedFiles.length > 0) {
+                <div class="preview-grid" #fileGrid>
+                  @for (file of selectedFiles; track file; let i = $index) {
+                    <div class="preview-item">
+                      <img [src]="getPreviewUrl(file)" alt="{{ file.name }}" class="thumb-img" (click)="removeFile(i)">
+                      <button class="remove-btn" (click)="$event.stopPropagation(); removeFile(i)">✕</button>
+                    </div>
+                  }
                 </div>
+                <!-- Upload Button -->
+                <div class="upload-actions">
+                  <span>{{ selectedFiles.length }} files ready to upload</span>
+                  <button class="btn-upload" (click)="startUpload()">Start Upload</button>
+                </div>
+              } @else {
+              }
+            </div>
+          }
+          <!-- State 2: Uploading Progress -->
+          @if (isUploading) {
+            <div class="progress-area">
+              <p class="upload-status-text">{{ currentFileName }}</p>
+              <div class="file-progress-list" #scrollContainer>
+                @for (evt of progressEvents; track evt; let i = $index) {
+                  <div class="single-file-row">
+                    <span class="fname-truncate">{{ evt.fileName.split(',')[0] }}...</span>
+                    <!-- Individual file bar (simplified for batch) -->
+                    <div class="progress-bar-bg">
+                      <div
+                        class="progress-fill"
+                      [style.width.%]="evt.progress"></div>
+                    </div>
+                    <span class="pct-text">{{ evt.status === 'completed' ? 100 : Math.round(evt.progress) }}%</span>
+                  </div>
+                }
               </div>
-
-              <!-- Upload Button -->
-              <div class="upload-actions">
-                <span>{{ selectedFiles.length }} files ready to upload</span>
-                <button class="btn-upload" (click)="startUpload()">Start Upload</button>
-              </div>
-            </ng-container>
-
-            <ng-template #emptyState></ng-template>
-          </div>
-        </ng-container>
-
-        <!-- State 2: Uploading Progress -->
-        <ng-container *ngIf="isUploading">
-          <div class="progress-area">
-             <p class="upload-status-text">{{ currentFileName }}</p>
-             
-             <div class="file-progress-list" #scrollContainer>
-               <div *ngFor="let evt of progressEvents; let i = index" class="single-file-row">
-                 <span class="fname-truncate">{{ evt.fileName.split(',')[0] }}...</span>
-                 
-                 <!-- Individual file bar (simplified for batch) -->
-                 <div class="progress-bar-bg">
-                   <div 
-                     class="progress-fill" 
-                     [style.width.%]="evt.progress"></div>
-                 </div>
-
-                 <span class="pct-text">{{ evt.status === 'completed' ? 100 : Math.round(evt.progress) }}%</span>
-               </div>
-             </div>
-          </div>
-        </ng-container>
-
-        <!-- State 3: Success / Error -->
-        <ng-container *ngIf="uploadComplete">
-           <div class="result-area" [class.success]="!hasError" [class.error]="hasError">
+            </div>
+          }
+          <!-- State 3: Success / Error -->
+          @if (uploadComplete) {
+            <div class="result-area" [class.success]="!hasError" [class.error]="hasError">
               <span class="icon">{{ hasError ? '⚠️' : '✅' }}</span>
               <p>{{ uploadMessage }}</p>
-
               <!-- Show skipped duplicates if any -->
-              <div *ngIf="response?.skipped_duplicates && response.skipped_duplicates.length > 0" class="dupes-box">
-                <strong>Duplicates Skipped ({{ response.skipped_duplicates.length }}):</strong>
-                <ul>
-                  <li *ngFor="let dup of response.skipped_duplicates">{{ dup.filename }}</li>
-                </ul>
-              </div>
-
+              @if (response?.skipped_duplicates && response.skipped_duplicates.length > 0) {
+                <div class="dupes-box">
+                  <strong>Duplicates Skipped ({{ response.skipped_duplicates.length }}):</strong>
+                  <ul>
+                    @for (dup of response.skipped_duplicates; track dup) {
+                      <li>{{ dup.filename }}</li>
+                    }
+                  </ul>
+                </div>
+              }
               <!-- Show uploaded IDs if any -->
-               <div *ngIf="response?.uploaded && response.uploaded.length > 0" class="dupes-box">
-                <strong>Newly Uploaded ({{ response.uploaded.length }}):</strong>
-                 <p>IDs: {{ getUploadedIds() }}</p>
-              </div>
-
-             <button class="btn-close-result" (click)="closeModal()">Close</button>
-           </div>
-        </ng-container>
-
+              @if (response?.uploaded && response.uploaded.length > 0) {
+                <div class="dupes-box">
+                  <strong>Newly Uploaded ({{ response.uploaded.length }}):</strong>
+                  <p>IDs: {{ getUploadedIds() }}</p>
+                </div>
+              }
+              <button class="btn-close-result" (click)="closeModal()">Close</button>
+            </div>
+          }
+        </div>
       </div>
-    </div>
-  `,
+    }
+    `,
     styles: [`
     /* Backdrop */
     .modal-backdrop {

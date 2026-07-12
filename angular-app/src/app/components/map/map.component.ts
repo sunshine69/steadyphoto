@@ -1,9 +1,9 @@
 import { Component } from '@angular/core';
-import { CommonModule } from '@angular/common';
+
 
 @Component({
     selector: 'app-map',
-    imports: [CommonModule],
+    imports: [],
     template: `
     <div class="map-container">
       <h1>Map</h1>

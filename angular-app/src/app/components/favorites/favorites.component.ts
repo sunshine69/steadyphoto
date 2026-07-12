@@ -1,9 +1,9 @@
 import { Component } from '@angular/core';
-import { CommonModule } from '@angular/common';
+
 
 @Component({
     selector: 'app-favorites',
-    imports: [CommonModule],
+    imports: [],
     template: `
     <div class="favorites-container">
       <h1>Favorites</h1>

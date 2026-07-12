@@ -1,9 +1,9 @@
 import { Component } from '@angular/core';
-import { CommonModule } from '@angular/common';
+
 
 @Component({
     selector: 'app-utilities',
-    imports: [CommonModule],
+    imports: [],
     template: `
     <div class="placeholder-container">
       <h1>Utilities</h1>

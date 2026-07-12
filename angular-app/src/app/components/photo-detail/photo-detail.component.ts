@@ -20,89 +20,96 @@ import { Photo } from '../../models/photo.model';
     <div class="container mt-4">
       <div class="row">
         <div class="col-md-8">
-          <div *ngIf="lastPresentationItem" class="alert alert-info d-flex justify-content-between align-items-center" style="font-size: 13px;">
-            <span>
-              <strong>Presentation returned:</strong> Last viewed item ID — {{ lastPresentationItem }}
-            </span>
-            <button class="btn btn-sm btn-outline-primary" (click)="dismissLastPresentation()">Dismiss</button>
-          </div>
-          <div class="photo-detail-container" *ngIf="photo; else loading">
-            <!-- Video Player for videos -->
-            <div class="video-viewer-wrapper" *ngIf="isVideo()">
-              <video 
-                [attr.src]="mediaSrcUrl()" 
-                controls
-                preload="metadata"
-                class="main-video rounded shadow w-100"
-                crossorigin="use-credentials"
-                (error)="onVideoError($event)"
-                (loadstart)="onMediaLoadStart()"
-              >
-                Your browser does not support the video tag.
-              </video>
+          @if (lastPresentationItem) {
+            <div class="alert alert-info d-flex justify-content-between align-items-center" style="font-size: 13px;">
+              <span>
+                <strong>Presentation returned:</strong> Last viewed item ID — {{ lastPresentationItem }}
+              </span>
+              <button class="btn btn-sm btn-outline-primary" (click)="dismissLastPresentation()">Dismiss</button>
             </div>
-            
-            <!-- Image display for photos -->
-            <div class="image-viewer-wrapper" *ngIf="!isVideo()">
-              <img 
-                [src]="originalUrl()" 
-                [alt]="photo.filename" 
-                class="main-image rounded shadow"
-                crossorigin="use-credentials"
-                (error)="onImageError($event)"
-                (loadstart)="onMediaLoadStart()"
-              >
-            </div>
-            
-            <div class="mt-3 d-flex justify-content-between align-items-start">
-              <div>
-                <h3 class="mb-1">{{ photo.filename }}</h3>
-                <p class="text-muted mb-0">Captured: {{ capturedDate | date:'medium' }}</p>
-              </div>
-              <div class="btn-group position-relative">
-                <button (click)="startEditingTags()" class="btn btn-outline-success ms-2" [class.active]="isEditingTags">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
-                  Tag
-                </button>
-                <div *ngIf="isEditingTags" class="tag-editing-popup position-absolute bg-white border rounded shadow-sm p-3 mt-2" style="z-index: 1000; min-width: 300px;">
-                  <input 
-                    type="text" 
-                    [(ngModel)]="tagInput" 
-                    (keyup.enter)="saveTags()"
-                    placeholder="Enter tags separated by colons..."
-                    class="form-control form-control-sm mb-2"
-                  >
-                  <div class="btn-group btn-group-sm">
-                    <button (click)="saveTags()" class="btn btn-success">Save</button>
-                    <button (click)="cancelEditingTags()" class="btn btn-secondary">Cancel</button>
-                  </div>
+          }
+          @if (photo) {
+            <div class="photo-detail-container">
+              <!-- Video Player for videos -->
+              @if (isVideo()) {
+                <div class="video-viewer-wrapper">
+                  <video
+                    [attr.src]="mediaSrcUrl()"
+                    controls
+                    preload="metadata"
+                    class="main-video rounded shadow w-100"
+                    crossorigin="use-credentials"
+                    (error)="onVideoError($event)"
+                    (loadstart)="onMediaLoadStart()"
+                    >
+                    Your browser does not support the video tag.
+                  </video>
                 </div>
-                <a [href]="originalUrl()" download="{{ photo.filename }}" class="btn btn-outline-secondary">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2 2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                  Download
-                </a>
-                <button (click)="sharePhoto()" class="btn btn-info ms-2">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                  Share
-                </button>
-                <button (click)="startPresentation()" class="btn btn-warning ms-2">
-                  🎬 Presentation Mode
-                </button>
-                <button (click)="goBack()" class="btn btn-primary ms-2">
-                  Back to Gallery
-                </button>
+              }
+              <!-- Image display for photos -->
+              @if (!isVideo()) {
+                <div class="image-viewer-wrapper">
+                  <img
+                    [src]="originalUrl()"
+                    [alt]="photo.filename"
+                    class="main-image rounded shadow"
+                    crossorigin="use-credentials"
+                    (error)="onImageError($event)"
+                    (loadstart)="onMediaLoadStart()"
+                    >
+                </div>
+              }
+              <div class="mt-3 d-flex justify-content-between align-items-start">
+                <div>
+                  <h3 class="mb-1">{{ photo.filename }}</h3>
+                  <p class="text-muted mb-0">Captured: {{ capturedDate | date:'medium' }}</p>
+                </div>
+                <div class="btn-group position-relative">
+                  <button (click)="startEditingTags()" class="btn btn-outline-success ms-2" [class.active]="isEditingTags">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+                    Tag
+                  </button>
+                  @if (isEditingTags) {
+                    <div class="tag-editing-popup position-absolute bg-white border rounded shadow-sm p-3 mt-2" style="z-index: 1000; min-width: 300px;">
+                      <input
+                        type="text"
+                        [(ngModel)]="tagInput"
+                        (keyup.enter)="saveTags()"
+                        placeholder="Enter tags separated by colons..."
+                        class="form-control form-control-sm mb-2"
+                        >
+                      <div class="btn-group btn-group-sm">
+                        <button (click)="saveTags()" class="btn btn-success">Save</button>
+                        <button (click)="cancelEditingTags()" class="btn btn-secondary">Cancel</button>
+                      </div>
+                    </div>
+                  }
+                  <a [href]="originalUrl()" download="{{ photo.filename }}" class="btn btn-outline-secondary">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2 2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Download
+                  </a>
+                  <button (click)="sharePhoto()" class="btn btn-info ms-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    Share
+                  </button>
+                  <button (click)="startPresentation()" class="btn btn-warning ms-2">
+                    🎬 Presentation Mode
+                  </button>
+                  <button (click)="goBack()" class="btn btn-primary ms-2">
+                    Back to Gallery
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-          
-          <ng-template #loading>
+          } @else {
             <div class="text-center py-5">
               <div class="spinner-border text-primary" role="status">
                 <span class="visually-hidden">Loading...</span>
               </div>
               <p class="mt-2">Loading details...</p>
             </div>
-          </ng-template>
+          }
+    
         </div>
         <div class="col-md-4">
           <div class="card shadow-sm sticky-top" style="top: 100px;">
@@ -117,54 +124,70 @@ import { Photo } from '../../models/photo.model';
               <li class="list-group-item">
                 <span class="text-muted">Type:</span> {{ isVideo() ? '🎥 Video' : (photo?.type || 'Photo') }}
               </li>
-              <li class="list-group-item" *ngIf="isVideo()">
-                <span class="text-muted">Duration:</span> {{ formatDuration(photo?.videoMetadata?.duration) }}
-              </li>
+              @if (isVideo()) {
+                <li class="list-group-item">
+                  <span class="text-muted">Duration:</span> {{ formatDuration(photo?.videoMetadata?.duration) }}
+                </li>
+              }
               <li class="list-group-item">
                 <span class="text-muted">Captured:</span> {{ capturedDate | date:'fullDate' }}
               </li>
-              <li class="list-group-item" *ngIf="photo?.width || photo?.height">
-                <span class="text-muted">Dimensions:</span> {{ photo?.width }} x {{ photo?.height }}
-              </li>
-              <li class="list-group-item" *ngIf="isVideo()">
-                <span class="text-muted">Video Codec:</span> {{ photo?.videoMetadata?.video_codec || 'Unknown' }}
-              </li>
-              <li class="list-group-item" *ngIf="isVideo()">
-                <span class="text-muted">Audio Codec:</span> {{ photo?.videoMetadata?.audio_codec || 'Unknown' }}
-              </li>
-              <li class="list-group-item" *ngIf="isVideo() && (photo?.videoMetadata?.frame_rate ?? 0) > 0">
-                <span class="text-muted">Frame Rate:</span> {{ photo?.videoMetadata?.frame_rate }} fps
-              </li>
-              <li class="list-group-item" *ngIf="photo?.size">
-                <span class="text-muted">Size:</span> {{ formatFileSize(photo.size) }}
-              </li>
-              
+              @if (photo?.width || photo?.height) {
+                <li class="list-group-item">
+                  <span class="text-muted">Dimensions:</span> {{ photo?.width }} x {{ photo?.height }}
+                </li>
+              }
+              @if (isVideo()) {
+                <li class="list-group-item">
+                  <span class="text-muted">Video Codec:</span> {{ photo?.videoMetadata?.video_codec || 'Unknown' }}
+                </li>
+              }
+              @if (isVideo()) {
+                <li class="list-group-item">
+                  <span class="text-muted">Audio Codec:</span> {{ photo?.videoMetadata?.audio_codec || 'Unknown' }}
+                </li>
+              }
+              @if (isVideo() && (photo?.videoMetadata?.frame_rate ?? 0) > 0) {
+                <li class="list-group-item">
+                  <span class="text-muted">Frame Rate:</span> {{ photo?.videoMetadata?.frame_rate }} fps
+                </li>
+              }
+              @if (photo?.size) {
+                <li class="list-group-item">
+                  <span class="text-muted">Size:</span> {{ formatFileSize(photo.size) }}
+                </li>
+              }
+    
               <!-- Tags Display -->
-              <li class="list-group-item" *ngIf="getTagList(photo?.tags || '').length > 0">
-                <div class="d-flex align-items-center mb-2 gap-3">
-                  <span class="text-muted" style="margin-right: 16px !important;">Tags:</span>
-                </div>
-                <span class="d-flex flex-wrap gap-1">
-                  <span 
-                    *ngFor="let tag of getTagList(photo?.tags || '')" 
-                    class="badge bg-primary text-white"
-                  >
-                    {{ tag }}
+              @if (getTagList(photo?.tags || '').length > 0) {
+                <li class="list-group-item">
+                  <div class="d-flex align-items-center mb-2 gap-3">
+                    <span class="text-muted" style="margin-right: 16px !important;">Tags:</span>
+                  </div>
+                  <span class="d-flex flex-wrap gap-1">
+                    @for (tag of getTagList(photo?.tags || ''); track tag) {
+                      <span
+                        class="badge bg-primary text-white"
+                        >
+                        {{ tag }}
+                      </span>
+                    }
                   </span>
-                </span>
-              </li>
+                </li>
+              }
             </ul>
           </div>
         </div>
       </div>
     </div>
     
-    <app-exif-data-popup 
-      *ngIf="showExifPopup" 
-      [exifData]="exifData"
-      (close)="showExifPopup = false"
-    ></app-exif-data-popup>
-  `,
+    @if (showExifPopup) {
+      <app-exif-data-popup
+        [exifData]="exifData"
+        (close)="showExifPopup = false"
+      ></app-exif-data-popup>
+    }
+    `,
     styles: [`
     .image-viewer-wrapper {
       width: 100%;

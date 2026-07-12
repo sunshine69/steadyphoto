@@ -1,5 +1,5 @@
 import { Component, ElementRef, ViewChild, OnInit, OnDestroy, inject, HostListener, NgZone } from '@angular/core';
-import { CommonModule } from '@angular/common';
+
 import { FormsModule } from '@angular/forms';
 import { ShareService, ShareRequest, PublicShareRequest, CreateShareResponseFull, PublicShareLinkResponse } from '../../services/share.service';
 import { ShareTriggerService } from '../../services/share-trigger.service';
@@ -7,179 +7,189 @@ import { Subscription } from 'rxjs';
 
 @Component({
     selector: 'app-share-modal',
-    imports: [CommonModule, FormsModule],
+    imports: [FormsModule],
     template: `
     <!-- Backdrop -->
-    <div class="modal-backdrop" *ngIf="isVisible" (click)="closeModal()"></div>
-
+    @if (isVisible) {
+      <div class="modal-backdrop" (click)="closeModal()"></div>
+    }
+    
     <!-- Modal Container -->
-    <div class="share-modal-container" *ngIf="isVisible">
-      <div class="share-card">
-        <!-- Header -->
-        <div class="card-header">
-          <h2 class="modal-title">Share</h2>
-          <button class="close-btn" (click)="closeModal()">✕</button>
-        </div>
-
-        <!-- Tabs: User-to-User vs Public Link -->
-        <div class="tabs">
-          <button 
-            [class.active]="activeTab === 'user'" 
-            (click)="activeTab = 'user'">
-            Share with people
-          </button>
-          <button 
-            [class.active]="activeTab === 'public'" 
-            (click)="activeTab = 'public'">
-            Create public link
-          </button>
-        </div>
-
-        <!-- Tab 1: User-to-User Sharing -->
-        <ng-container *ngIf="activeTab === 'user' && !isSharing && !shareComplete">
-          <div class="tab-content">
-            <!-- Selected items summary -->
-            <div class="selected-items-summary" *ngIf="sharedItems.length > 0">
-              <p class="summary-text">{{ sharedItems.length }} item(s) selected to share</p>
-              <button class="clear-btn" (click)="clearSelected()" *ngIf="sharedItems.length > 1">Clear all</button>
-            </div>
-
-            <!-- User search -->
-            <div class="user-search-section">
-              <input 
-                type="text" 
-                placeholder="Search users to share with..." 
-                [(ngModel)]="searchQuery"
-                (input)="onSearchInput()"
-                class="search-input"
-              >
-
-              <!-- Search results -->
-              <div class="user-results" *ngIf="showSearchResults">
-                <div 
-                  *ngFor="let user of searchResults; let i = index" 
-                  class="user-item"
-                  [class.selected]="isSelected(user.id)"
-                  (click)="toggleUserSelection(user)">
-                  <span class="avatar">{{ getInitials(user.email) }}</span>
-                  <div class="user-info">
-                    <p class="user-email">{{ user.email }}</p>
-                    <p class="user-username" *ngIf="user.username">{{ user.username }}</p>
-                  </div>
+    @if (isVisible) {
+      <div class="share-modal-container">
+        <div class="share-card">
+          <!-- Header -->
+          <div class="card-header">
+            <h2 class="modal-title">Share</h2>
+            <button class="close-btn" (click)="closeModal()">✕</button>
+          </div>
+          <!-- Tabs: User-to-User vs Public Link -->
+          <div class="tabs">
+            <button
+              [class.active]="activeTab === 'user'"
+              (click)="activeTab = 'user'">
+              Share with people
+            </button>
+            <button
+              [class.active]="activeTab === 'public'"
+              (click)="activeTab = 'public'">
+              Create public link
+            </button>
+          </div>
+          <!-- Tab 1: User-to-User Sharing -->
+          @if (activeTab === 'user' && !isSharing && !shareComplete) {
+            <div class="tab-content">
+              <!-- Selected items summary -->
+              @if (sharedItems.length > 0) {
+                <div class="selected-items-summary">
+                  <p class="summary-text">{{ sharedItems.length }} item(s) selected to share</p>
+                  @if (sharedItems.length > 1) {
+                    <button class="clear-btn" (click)="clearSelected()">Clear all</button>
+                  }
                 </div>
+              }
+              <!-- User search -->
+              <div class="user-search-section">
+                <input
+                  type="text"
+                  placeholder="Search users to share with..."
+                  [(ngModel)]="searchQuery"
+                  (input)="onSearchInput()"
+                  class="search-input"
+                  >
+                <!-- Search results -->
+                @if (showSearchResults) {
+                  <div class="user-results">
+                    @for (user of searchResults; track user; let i = $index) {
+                      <div
+                        class="user-item"
+                        [class.selected]="isSelected(user.id)"
+                        (click)="toggleUserSelection(user)">
+                        <span class="avatar">{{ getInitials(user.email) }}</span>
+                        <div class="user-info">
+                          <p class="user-email">{{ user.email }}</p>
+                          @if (user.username) {
+                            <p class="user-username">{{ user.username }}</p>
+                          }
+                        </div>
+                      </div>
+                    }
+                  </div>
+                }
+                <!-- No results -->
+                @if (searchQuery && showSearchResults && searchResults.length === 0) {
+                  <p class="no-results">No users found</p>
+                }
               </div>
-
-              <!-- No results -->
-              <p class="no-results" *ngIf="searchQuery && showSearchResults && searchResults.length === 0">No users found</p>
+              <!-- Selected users list -->
+              @if (selectedUsers.length > 0) {
+                <div class="selected-users-section">
+                  <h3>Sharing with:</h3>
+                  <ul class="selected-users-list">
+                    @for (user of selectedUsers; track user; let i = $index) {
+                      <li class="user-tag">
+                        {{ getInitials(user.email) }} {{ user.email }}
+                        <button class="remove-user-btn" (click)="removeUser(i)">✕</button>
+                      </li>
+                    }
+                  </ul>
+                </div>
+              }
+              <!-- Share button -->
+              @if (selectedUsers.length > 0 || sharedItems.length === 0) {
+                @if (!isSharing && !shareComplete) {
+                  <p class="share-hint">
+                    Select users to share with, then click "Share" or create a public link
+                  </p>
+                }
+              }
+              <button
+                class="btn-share-primary"
+                (click)="createUserToUserShare()"
+                [disabled]="!canCreateShare || isSharing">
+                {{ isSharing ? 'Sharing...' : 'Share' }}
+              </button>
             </div>
-
-            <!-- Selected users list -->
-            <div class="selected-users-section" *ngIf="selectedUsers.length > 0">
-              <h3>Sharing with:</h3>
-              <ul class="selected-users-list">
-                <li *ngFor="let user of selectedUsers; let i = index" class="user-tag">
-                  {{ getInitials(user.email) }} {{ user.email }}
-                  <button class="remove-user-btn" (click)="removeUser(i)">✕</button>
-                </li>
-              </ul>
-            </div>
-
-            <!-- Share button -->
-            <ng-container *ngIf="selectedUsers.length > 0 || sharedItems.length === 0">
-              <p class="share-hint" *ngIf="!isSharing && !shareComplete">
-                Select users to share with, then click "Share" or create a public link
-              </p>
-            </ng-container>
-
-            <button 
-              class="btn-share-primary" 
-              (click)="createUserToUserShare()"
-              [disabled]="!canCreateShare || isSharing">
-              {{ isSharing ? 'Sharing...' : 'Share' }}
-            </button>
-          </div>
-        </ng-container>
-
-        <!-- Tab 2: Public Link Sharing -->
-        <ng-container *ngIf="activeTab === 'public' && !isCreatingLink && !linkCreated">
-          <div class="tab-content">
-            <p class="tab-description">Create a shareable link for the selected item. Anyone with the link can view it.</p>
-
-            <!-- Selected item summary -->
-            <div class="selected-items-summary" *ngIf="sharedItems.length > 0">
-              <span class="item-type-icon">{{ getItemTypeIcon() }}</span>
-              <p class="summary-text">{{ sharedItems[0].filename }}</p>
-              <button class="clear-btn" (click)="clearSelected()">Clear</button>
-            </div>
-
-            <!-- Password protection -->
-            <div class="password-section">
-              <label class="checkbox-label">
-                <input type="checkbox" [(ngModel)]="requirePassword">
-                Require password to view link
-              </label>
-
-              <div class="password-input-group" *ngIf="requirePassword">
-                <input 
-                  type="text" 
-                  placeholder="Enter a password..." 
-                  [(ngModel)]="sharePassword"
-                  class="password-input"
-                >
+          }
+          <!-- Tab 2: Public Link Sharing -->
+          @if (activeTab === 'public' && !isCreatingLink && !linkCreated) {
+            <div class="tab-content">
+              <p class="tab-description">Create a shareable link for the selected item. Anyone with the link can view it.</p>
+              <!-- Selected item summary -->
+              @if (sharedItems.length > 0) {
+                <div class="selected-items-summary">
+                  <span class="item-type-icon">{{ getItemTypeIcon() }}</span>
+                  <p class="summary-text">{{ sharedItems[0].filename }}</p>
+                  <button class="clear-btn" (click)="clearSelected()">Clear</button>
+                </div>
+              }
+              <!-- Password protection -->
+              <div class="password-section">
+                <label class="checkbox-label">
+                  <input type="checkbox" [(ngModel)]="requirePassword">
+                  Require password to view link
+                </label>
+                @if (requirePassword) {
+                  <div class="password-input-group">
+                    <input
+                      type="text"
+                      placeholder="Enter a password..."
+                      [(ngModel)]="sharePassword"
+                      class="password-input"
+                      >
+                  </div>
+                }
               </div>
-            </div>
-
-            <!-- Expiration -->
-            <div class="expiration-section">
-              <label class="checkbox-label">
-                <input type="checkbox" [(ngModel)]="requireExpiration">
-                Set expiration date
-              </label>
-
-              <div class="date-input-group" *ngIf="requireExpiration">
-                <input 
-                  type="datetime-local" 
-                  [(ngModel)]="shareExpiresAt"
-                  class="date-input"
-                  [min]="getMinDateTime()"
-                >
+              <!-- Expiration -->
+              <div class="expiration-section">
+                <label class="checkbox-label">
+                  <input type="checkbox" [(ngModel)]="requireExpiration">
+                  Set expiration date
+                </label>
+                @if (requireExpiration) {
+                  <div class="date-input-group">
+                    <input
+                      type="datetime-local"
+                      [(ngModel)]="shareExpiresAt"
+                      class="date-input"
+                      [min]="getMinDateTime()"
+                      >
+                  </div>
+                }
               </div>
+              <!-- Create link button -->
+              <button
+                class="btn-share-primary"
+                (click)="createPublicShareLink()"
+                [disabled]="!canCreatePublicLink || isCreatingLink">
+                {{ isCreatingLink ? 'Creating...' : 'Create Share Link' }}
+              </button>
             </div>
-
-            <!-- Create link button -->
-            <button 
-              class="btn-share-primary" 
-              (click)="createPublicShareLink()"
-              [disabled]="!canCreatePublicLink || isCreatingLink">
-              {{ isCreatingLink ? 'Creating...' : 'Create Share Link' }}
-            </button>
-          </div>
-        </ng-container>
-
-        <!-- Success State -->
-        <ng-container *ngIf="shareComplete || linkCreated">
-           <div class="result-area" [class.success]="!hasError" [class.error]="hasError">
+          }
+          <!-- Success State -->
+          @if (shareComplete || linkCreated) {
+            <div class="result-area" [class.success]="!hasError" [class.error]="hasError">
               <span class="icon">{{ hasError ? '⚠️' : '✅' }}</span>
               <p>{{ shareMessage }}</p>
-
               <!-- Show the public link if created -->
-              <div *ngIf="createdPublicLink && !hasError" class="link-box">
-                <input 
-                  type="text" 
-                  [value]="getShareableUrl()" 
-                  readonly 
-                  class="share-url-input"
-                >
-                <button (click)="copyToClipboard(getShareableUrl())" class="btn-copy-link">Copy</button>
-              </div>
-
-             <button class="btn-close-result" (click)="closeModal()">Close</button>
-           </div>
-        </ng-container>
-
+              @if (createdPublicLink && !hasError) {
+                <div class="link-box">
+                  <input
+                    type="text"
+                    [value]="getShareableUrl()"
+                    readonly
+                    class="share-url-input"
+                    >
+                  <button (click)="copyToClipboard(getShareableUrl())" class="btn-copy-link">Copy</button>
+                </div>
+              }
+              <button class="btn-close-result" (click)="closeModal()">Close</button>
+            </div>
+          }
+        </div>
       </div>
-    </div>
-  `,
+    }
+    `,
     styles: [`
     /* Backdrop */
     .modal-backdrop {
