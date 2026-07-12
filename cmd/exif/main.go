@@ -279,6 +279,10 @@ func main() {
 		media.Metadata = metadata
 		if videoMeta != nil {
 			media.VideoMetadata = *videoMeta
+			// Bridge gap for update-capture-date tool by adding creation date to general metadata map
+			if !videoMeta.CreatedAt.IsZero() {
+				media.Metadata["DateTimeOriginal"] = videoMeta.CreatedAt.Format("2006:01:02 15:04:05")
+			}
 		}
 		media.UpdatedAt = time.Now()
 
