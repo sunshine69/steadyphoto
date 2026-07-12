@@ -10,7 +10,7 @@
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
-    "build": "ng build",
+    "build": "ng build --base-href / --deploy-url /",
     "watch": "ng build --watch",
     "test": "ng test"
   },

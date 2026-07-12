@@ -350,30 +350,8 @@ func (s *Server) routes() {
 			http.ServeFile(w, r, "./ui/browser/index.html")
 			return
 		}
-
-		// 2. MADNESS FIX: Strip any accidental "ui/" or "/ui/" prefixes from the asset path
-		path = strings.TrimPrefix(path, "ui/")
-		path = strings.TrimPrefix(path, "/")
-
-		// 3. Dynamic MIME Type Overrides for Alpine Docker environment
-		ext := filepath.Ext(path)
-		switch ext {
-		case ".css":
-			w.Header().Set("Content-Type", "text/css; charset=utf-8")
-		case ".js", ".mjs":
-			w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
-		case ".wasm":
-			w.Header().Set("Content-Type", "application/wasm")
-		case ".svg":
-			w.Header().Set("Content-Type", "image/svg+xml")
-		case ".png":
-			w.Header().Set("Content-Type", "image/png")
-		case ".jpg", ".jpeg":
-			w.Header().Set("Content-Type", "image/jpeg")
-		case ".ico":
-			w.Header().Set("Content-Type", "image/x-icon")
-		}
-
+		// In angular package.json the build command must have --base-href / --deploy-url /
+		// otherwise angular smartly add /ui into the path which breaks it
 		// 4. Safely map it straight into the root of "./ui/browser"
 		r.URL.Path = "/" + path
 		fileServer.ServeHTTP(w, r)

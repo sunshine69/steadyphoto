@@ -81,8 +81,8 @@ ENV STORAGE_DIR=/app/storage
 ENV API_PORT=8080
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/ui/ || exit 1
+#HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+#    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/ui/ || exit 1
 
 # Run the entrypoint script (runs as root to handle init tasks like chown, then drops privileges for the server)
 ENTRYPOINT ["./entrypoint.sh"]
