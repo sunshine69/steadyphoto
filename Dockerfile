@@ -59,10 +59,10 @@ WORKDIR /app
 COPY --from=go-builder /app/steadyphoto/server ./server
 COPY --from=go-builder /app/steadyphoto/migrate ./migrate
 COPY --from=go-builder /app/steadyphoto/worker ./worker
-COPY --from=go-builder //app/steadyphoto/migrations ./migrations
-COPY --from=go-builder //app/steadyphoto/exif-update ./exif-update 
-COPY --from=go-builder //app/steadyphoto/update-capture-date ./update-capture-date
-COPY --from=go-builder //app/steadyphoto/clean-session ./clean-session 
+COPY --from=go-builder /app/steadyphoto/migrations ./migrations
+COPY --from=go-builder /app/steadyphoto/exif-update ./exif-update 
+COPY --from=go-builder /app/steadyphoto/update-capture-date ./update-capture-date
+COPY --from=go-builder /app/steadyphoto/clean-session ./clean-session 
 
 # Copy the built Angular application to /ui directory
 COPY --from=angular-builder /app/angular-app/dist /app/ui

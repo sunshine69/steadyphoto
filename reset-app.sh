@@ -8,14 +8,16 @@ set +a
 docker compose -f docker-compose-postgres.yml down -v ; docker compose -f docker-compose-postgres.yml up -d
 sleep 3
 
+export CGO_ENABLED=0
+
 go run cmd/migrate/main.go up
 
 killall server.exe
-go build -o server.exe cmd/server/main.go
+go build -ldflags="-extldflags=-static -w -s" --tags "osusergo netgo" -o server.exe cmd/server/main.go
 nohup ./server.exe > server.log 2>&1 &
 sleep 3
 
-go build -o scanner.exe cmd/scanner/main.go
+go build -ldflags="-extldflags=-static -w -s" --tags "osusergo netgo" -o scanner.exe cmd/scanner/main.go
 
 # Scan and upload image from local fs using api.
 # Upload processor should create a thumnail jobs for the worker to process later on.
@@ -26,12 +28,12 @@ rm -rf storage ; mkdir storage;  ./scanner.exe -u ${ADMIN_EMAIL} -p ${ADMIN_PASS
 # ./scanner.exe -source /mnt/doc/Diana\ Place\ 5/ -u ${ADMIN_EMAIL} -p ${ADMIN_PASSWORD}  >> scanner.log  2>&1
 
 # Generate thumbnail
-go build -o worker.exe cmd/worker/main.go
+go build -ldflags="-extldflags=-static -w -s" --tags "osusergo netgo" -o worker.exe cmd/worker/main.go
 ./worker.exe > worker.log 2>&1
 
 # Run the exif manually - we should not need to run it as it should be in the upload
 # processor. but we can always re-run tomanually update if required
-go build -o exif-update cmd/exif/main.go
+go build -ldflags="-extldflags=-static -w -s" --tags "osusergo netgo" -o exif-update cmd/exif/main.go
 #./exif-update
 
 # This comes after exif-update but this function should be at processing time as well
