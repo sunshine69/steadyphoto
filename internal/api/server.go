@@ -340,29 +340,27 @@ func (s *Server) routes() {
 		})
 	})
 
-	// Serve static frontend files from /ui path
-	s.router.Handle("/ui/browser/*", http.StripPrefix("/ui/browser/", http.FileServer(http.Dir("./ui/browser"))))
+	// 1. Initialize your file server targeting the Angular folder
+	fileServer := http.FileServer(http.Dir("./ui/browser"))
 
-	// SPA fallback: serve index.html safely
+	// 2. Catch everything else that didn't match the /api routes
 	s.router.HandleFunc("/*", func(w http.ResponseWriter, r *http.Request) {
-		// 1. Clean the path to prevent directory traversal vulnerabilities
-		path := filepath.Clean(r.URL.Path)
+		// Chi stores the wildcard matched path in the request context
+		path := chi.URLParam(r, "*")
 
-		// 2. Target the physical location of the file in your ui folder
-		fullPath := filepath.Join("./ui/browser", path)
-
-		// 3. Check if the file physically exists on the server disk
-		info, err := os.Stat(fullPath)
-
-		// 4. If the file exists and is not a folder, serve it directly!
-		if err == nil && !info.IsDir() {
-			http.ServeFile(w, r, fullPath)
+		// If the path is empty, root, or does not contain a file extension (dot),
+		// it is an Angular SPA route (e.g., /dashboard, /settings). Serve index.html.
+		if path == "" || path == "/" || !strings.Contains(filepath.Base(path), ".") {
+			http.ServeFile(w, r, "./ui/browser/index.html")
 			return
 		}
 
-		// 5. If it doesn't exist, it's an Angular route. Fallback to index.html.
-		http.ServeFile(w, r, "./ui/browser/index.html")
+		// Otherwise, it's a static asset (e.g., main.js, styles.css).
+		// We update the request URL path so the FileServer can find it at the root of "./ui/browser"
+		r.URL.Path = "/" + path
+		fileServer.ServeHTTP(w, r)
 	})
+
 }
 
 // startCleanupGoroutine starts a background goroutine that periodically cleans up expired upload sessions and orphaned chunk files
