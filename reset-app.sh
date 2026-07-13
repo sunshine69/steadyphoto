@@ -42,4 +42,6 @@ go build -ldflags="-extldflags=-static -w -s" --tags "osusergo netgo" -o exif-up
 # Front end
 ps -ef|grep 'ng serv' | awk '{print $2}' | while read pid; do kill $pid || true; done
 ( cd angular-app && npx ng serve & )
+# Use go to server rather than angular?
+# ( cd angular-app && npx ng build & )
 
