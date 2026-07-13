@@ -1,19 +1,35 @@
 package utils
 
 import (
+	"os"
+	"strconv"
+
 	"github.com/jbrodriguez/mlog"
 )
 
 func init() {
-	mlog.Start(mlog.LevelError, "")
+	level := mlog.LevelError
+
+	logLevelStr := os.Getenv("LOG_LEVEL")
+	switch logLevelStr {
+	case "trace":
+		level = mlog.LevelTrace
+	case "debug":
+		level = mlog.LevelTrace // mlog has no LevelDebug; Trace is the most verbose
+	case "info":
+		level = mlog.LevelInfo
+	case "warn", "warning":
+		level = mlog.LevelWarn
+	case "error":
+		level = mlog.LevelError
+	case "none", "off":
+		level = 0 // suppress everything
+	default:
+		// Try numeric
+		if n, err := strconv.Atoi(logLevelStr); err == nil {
+			level = mlog.LogLevel(n)
+		}
+	}
+
+	mlog.Start(level, "")
 }
-
-// // Errorf formats according to a format specifier and logs it as an error
-// func Errorf(format string, a ...interface{}) {
-// 	mlog.Error(fmt.Errorf(format, a...))
-// }
-
-// // Error wraps a standard string into an error object automatically
-// func Error(msg string) {
-// 	mlog.Error(errors.New(msg))
-// }

@@ -31,7 +31,6 @@ func parseDateRange(dateRange string) (start time.Time, end time.Time, err error
 		return time.Time{}, time.Time{}, nil
 	}
 
-	// First check if this is a range (contains "-" but not as part of date)
 	if strings.Contains(dateRange, " - ") {
 		parts := strings.SplitN(dateRange, " - ", 2)
 		start, err = parseSingleDate(parts[0])
@@ -43,7 +42,6 @@ func parseDateRange(dateRange string) (start time.Time, end time.Time, err error
 			return time.Time{}, time.Time{}, err
 		}
 	} else {
-		// Single date - search for that day only
 		start, err = parseSingleDate(dateRange)
 		if err != nil {
 			return time.Time{}, time.Time{}, err
@@ -51,7 +49,6 @@ func parseDateRange(dateRange string) (start time.Time, end time.Time, err error
 		end = start.Add(24*time.Hour - time.Second)
 	}
 
-	// Swap if start > end
 	if start.After(end) {
 		start, end = end, start
 	}
@@ -66,7 +63,6 @@ func parseSingleDate(dateStr string) (time.Time, error) {
 		return time.Time{}, nil
 	}
 
-	// Try different formats
 	formats := []string{
 		"01/02/2006",
 		"2006/01/02",
@@ -82,11 +78,9 @@ func parseSingleDate(dateStr string) (time.Time, error) {
 
 	for _, format := range formats {
 		if t, err := time.Parse(format, dateStr); err == nil {
-			// For year-only format, set to Jan 1 of that year
 			if format == "2006" {
 				t = time.Date(t.Year(), 1, 1, 0, 0, 0, 0, time.UTC)
 			}
-			// For year/month format, set to first day of that month
 			if format == "2006/01" {
 				t = time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, time.UTC)
 			}
@@ -141,19 +135,16 @@ func parseFloat(s string) (float64, error) {
 // HaversineDistance calculates the distance between two points on Earth using the Haversine formula.
 // Returns distance in kilometers.
 func HaversineDistance(lat1, lon1, lat2, lon2 float64) float64 {
-	const R = 6371.0 // Earth's radius in kilometers
+	const R = 6371.0
 
-	// Convert to radians
 	lat1Rad := lat1 * math.Pi / 180
 	lon1Rad := lon1 * math.Pi / 180
 	lat2Rad := lat2 * math.Pi / 180
 	lon2Rad := lon2 * math.Pi / 180
 
-	// Differences
 	dlat := lat2Rad - lat1Rad
 	dlon := lon2Rad - lon1Rad
 
-	// Haversine formula
 	a := math.Sin(dlat/2)*math.Sin(dlat/2) +
 		math.Cos(lat1Rad)*math.Cos(lat2Rad)*
 			math.Sin(dlon/2)*math.Sin(dlon/2)
@@ -162,17 +153,32 @@ func HaversineDistance(lat1, lon1, lat2, lon2 float64) float64 {
 	return R * c
 }
 
+// isGPSCoordinate checks if a value looks like GPS coordinates (lat,lon format)
+func isGPSCoordinate(value string) bool {
+	parts := strings.SplitN(value, ",", 2)
+	if len(parts) != 2 {
+		return false
+	}
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		var f float64
+		_, err := fmt.Sscanf(part, "%f", &f)
+		if err != nil {
+			return false
+		}
+	}
+	return true
+}
+
 // SearchNearPoint finds media within a radius (in km) of a given point
-// Uses Haversine distance for accurate earth-surface distance calculation
 func (r *PostgresMediaRepository) SearchNearPoint(ctx context.Context, lat, lon, radiusKm float64, userID *uuid.UUID, limit, offset int) ([]*domain.Media, int, error) {
 	var mediaList []*domain.Media
 	var total int
 
-	// Base query to get count and list
 	baseQuery := `
-		SELECT id, user_id, path, filename, hash, size_bytes, width, height, 
+		SELECT id, user_id, path, filename, hash, size_bytes, width, height,
 		       captured_at, media_type, metadata, video_metadata, created_at, updated_at, tags
-		FROM media 
+		FROM media
 		WHERE deleted_at IS NULL
 	`
 
@@ -189,17 +195,12 @@ func (r *PostgresMediaRepository) SearchNearPoint(ctx context.Context, lat, lon,
 		argIdx++
 	}
 
-	// Add GPS coordinate filters (bounding box approximation for performance)
-	// This is a rough filter; we'll do exact Haversine in Go after fetching results
-	gpsFilter := `AND metadata->>'gps_latitude' IS NOT NULL 
+	gpsFilter := `AND metadata->>'gps_latitude' IS NOT NULL
 	               AND metadata->>'gps_longitude' IS NOT NULL`
 
 	countQuery += gpsFilter
 	listQuery += gpsFilter
 
-	// Apply radius-based filtering in WHERE clause
-	// Using bounding box approximation for SQL-level filtering
-	// ±1° latitude ≈ 111 km, ±1° longitude ≈ 111 km * cos(latitude)
 	latRange := radiusKm / 111.0
 	lonRange := radiusKm / (111.0 * math.Cos(lat*math.Pi/180))
 
@@ -213,20 +214,17 @@ func (r *PostgresMediaRepository) SearchNearPoint(ctx context.Context, lat, lon,
 		AND CAST(metadata->>'gps_longitude' AS FLOAT) BETWEEN %f AND %f
 	`, lat-latRange, lat+latRange, lon-lonRange, lon+lonRange)
 
-	// Get total count
 	err := r.db.GetContext(ctx, &total, countQuery, args...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to count media near point: %w", err)
 	}
 
-	// Execute list query
 	listArgs := append(args, int64(limit), int64(offset))
 	err = r.db.SelectContext(ctx, &mediaList, listQuery, listArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to list media near point: %w", err)
 	}
 
-	// Filter by exact Haversine distance in Go
 	filteredMedia := make([]*domain.Media, 0)
 	for _, media := range mediaList {
 		gpsLatStr := media.Metadata["gps_latitude"]
@@ -260,10 +258,8 @@ func (r *PostgresMediaRepository) SearchWithinBoundingBox(ctx context.Context, s
 	var mediaList []*domain.Media
 	var total int
 
-	// Use parameterized query with proper indexing
 	args := []interface{}{}
 
-	// Build the WHERE clause with proper parameter positions
 	whereClauses := []string{"deleted_at IS NULL"}
 
 	if userID != nil {
@@ -271,35 +267,31 @@ func (r *PostgresMediaRepository) SearchWithinBoundingBox(ctx context.Context, s
 		whereClauses = append(whereClauses, fmt.Sprintf("user_id = $%d", len(args)))
 	}
 
-	// GPS filters (no parameters)
 	whereClauses = append(whereClauses,
 		"metadata->>'gps_latitude' IS NOT NULL",
 		"metadata->>'gps_longitude' IS NOT NULL")
 
-	// Bounding box parameters
 	args = append(args, south, north, west, east)
 	whereClauses = append(whereClauses, fmt.Sprintf("CAST(metadata->>'gps_latitude' AS FLOAT) BETWEEN $%d AND $%d", len(args)-3, len(args)-2))
 	whereClauses = append(whereClauses, fmt.Sprintf("CAST(metadata->>'gps_longitude' AS FLOAT) BETWEEN $%d AND $%d", len(args)-1, len(args)))
 
 	whereSQL := strings.Join(whereClauses, " AND ")
 
-	// Count query
 	countSQL := fmt.Sprintf("SELECT COUNT(*) FROM media WHERE %s", whereSQL)
 	err := r.db.GetContext(ctx, &total, countSQL, args...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to count media in bounding box: %w", err)
 	}
 
-	// List query
 	listArgs := make([]interface{}, len(args)+2)
 	copy(listArgs, args)
 	listArgs[len(args)] = int64(limit)
 	listArgs[len(args)+1] = int64(offset)
 
 	listSQL := fmt.Sprintf(`
-		SELECT id, user_id, path, filename, hash, size_bytes, width, height, 
+		SELECT id, user_id, path, filename, hash, size_bytes, width, height,
 		       captured_at, media_type, metadata, video_metadata, created_at, updated_at, tags
-		FROM media 
+		FROM media
 		WHERE %s
 		ORDER BY captured_at DESC LIMIT $%d OFFSET $%d`, whereSQL, len(listArgs)-1, len(listArgs))
 
@@ -478,7 +470,6 @@ func (r *PostgresMediaRepository) ListByType(ctx context.Context, mediaType doma
 	return mediaList, total, nil
 }
 
-// Search searches for media by query string with optional scope and pagination
 // ListAll returns all non-deleted media across all users (admin/worker use only)
 func (r *PostgresMediaRepository) ListAll(ctx context.Context, limit int, offset int) ([]*domain.Media, int, error) {
 	var mediaList []*domain.Media
@@ -499,7 +490,124 @@ func (r *PostgresMediaRepository) ListAll(ctx context.Context, limit int, offset
 	return mediaList, total, nil
 }
 
-func (r *PostgresMediaRepository) Search(ctx context.Context, query string, scope string, limit int, offset int, userID *uuid.UUID, startDate string, endDate string) ([]*domain.Media, int, error) {
+// buildExpressionWhereClauses generates SQL WHERE clauses from an ExpressionResult.
+// Only applies to scopes: all, name, tags.
+// The caller passes argIdx which is the current parameter position in the query.
+// Returns: (whereClause string, args []interface{}, newArgIdx int, hasTerms bool)
+// newArgIdx is the next available parameter position after appending these args.
+func buildExpressionWhereClauses(exprResult *domain.ExpressionResult, scope string, argIdx int) (string, []interface{}, int, bool) {
+	if exprResult == nil {
+		return "", nil, 0, false
+	}
+
+	if len(exprResult.IncludeTerms) == 0 && len(exprResult.ExcludeTerms) == 0 {
+		return "", nil, 0, false
+	}
+
+	// Only apply expression parsing to text-based scopes
+	if scope != "all" && scope != "name" && scope != "tags" {
+		return "", nil, 0, false
+	}
+
+	var whereClauses []string
+	var args []interface{}
+	currentArg := argIdx
+
+	// Add include terms (AND clauses)
+	for _, term := range exprResult.IncludeTerms {
+		switch term.FieldScope {
+		case "name":
+			whereClauses = append(whereClauses, fmt.Sprintf("filename LIKE $%d", currentArg))
+			args = append(args, "%"+term.Value+"%")
+			currentArg++
+		case "tags":
+			whereClauses = append(whereClauses, fmt.Sprintf("tags LIKE $%d", currentArg))
+			args = append(args, "%"+term.Value+"%")
+			currentArg++
+		default: // "all" or "" — searches filename, tags, and metadata (including GPS)
+			whereClauses = append(whereClauses, fmt.Sprintf("(filename LIKE $%d OR tags LIKE $%d OR metadata::text LIKE $%d)", currentArg, currentArg+1, currentArg+2))
+			args = append(args, "%"+term.Value+"%", "%"+term.Value+"%", "%"+term.Value+"%")
+			currentArg += 3
+		}
+	}
+
+	// Add exclude terms (NOT LIKE clauses)
+	for _, term := range exprResult.ExcludeTerms {
+		switch term.FieldScope {
+		case "name":
+			whereClauses = append(whereClauses, fmt.Sprintf("filename NOT LIKE $%d", currentArg))
+			args = append(args, "%"+term.Value+"%")
+			currentArg++
+		case "tags":
+			whereClauses = append(whereClauses, fmt.Sprintf("tags NOT LIKE $%d", currentArg))
+			args = append(args, "%"+term.Value+"%")
+			currentArg++
+		default: // "all" or "" — excludes from filename, tags, and metadata (including GPS)
+			whereClauses = append(whereClauses, fmt.Sprintf("NOT (filename LIKE $%d OR tags LIKE $%d OR metadata::text LIKE $%d)", currentArg, currentArg+1, currentArg+2))
+			args = append(args, "%"+term.Value+"%", "%"+term.Value+"%", "%"+term.Value+"%")
+			currentArg += 3
+		}
+	}
+
+	if len(whereClauses) == 0 {
+		return "", nil, 0, false
+	}
+
+	return strings.Join(whereClauses, " AND "), args, currentArg, true
+}
+
+// buildSearchWhereClause constructs the WHERE clause for the search query.
+// If exprResult is provided, it generates expression-based filtering.
+// Otherwise, it falls back to simple LIKE matching.
+func (r *PostgresMediaRepository) buildSearchWhereClause(query string, scope string, argIdx int, exprResult *domain.ExpressionResult) (string, []interface{}, int, error) {
+	// If expression result is provided and scope supports it, use expression-based filtering
+	if exprResult != nil {
+		clauses, args, newArgIdx, hasTerms := buildExpressionWhereClauses(exprResult, scope, argIdx)
+		if hasTerms {
+			return clauses, args, newArgIdx, nil
+		}
+		// If no expression terms matched, fall through to simple query
+	}
+
+	// Fall back to simple query
+	switch scope {
+	case "name":
+		return fmt.Sprintf("filename LIKE $%d", argIdx), []interface{}{"%" + query + "%"}, argIdx + 1, nil
+	case "tags":
+		return fmt.Sprintf("tags LIKE $%d", argIdx), []interface{}{"%" + query + "%"}, argIdx + 1, nil
+	case "location":
+		if strings.Contains(query, ",") {
+			parts := strings.SplitN(query, ",", 2)
+			if len(parts) == 2 {
+				var centerLat, centerLon float64
+				_, err1 := fmt.Sscanf(parts[0], "%f", &centerLat)
+				if err1 == nil {
+					_, err2 := fmt.Sscanf(parts[1], "%f", &centerLon)
+					if err2 == nil {
+						return "HAVERSINE", []interface{}{centerLat, centerLon, float64(50)}, argIdx + 1, nil
+					}
+				}
+			}
+		}
+		return fmt.Sprintf(`(LOWER(metadata->>'gps_latitude') LIKE $%d OR LOWER(metadata->>'gps_longitude') LIKE $%d OR LOWER(metadata->>'gps_altitude') LIKE $%d)`, argIdx, argIdx+1, argIdx+2),
+			[]interface{}{"%" + query + "%", "%" + query + "%", "%" + query + "%"},
+			argIdx + 3, nil
+	case "all":
+		return fmt.Sprintf("(filename LIKE $%d OR tags LIKE $%d OR metadata::text LIKE $%d)", argIdx, argIdx+1, argIdx+2),
+			[]interface{}{"%" + query + "%", "%" + query + "%", "%" + query + "%"},
+			argIdx + 3, nil
+	default:
+		return fmt.Sprintf("(filename LIKE $%d OR tags LIKE $%d)", argIdx, argIdx+1),
+			[]interface{}{"%" + query + "%", "%" + query + "%"},
+			argIdx + 2, nil
+	}
+}
+
+// Search searches for media by query string with optional scope and pagination.
+// Supports expression-based search with include (+) and exclude (-) terms.
+// For scopes "all", "name", "tags": applies expression filtering.
+// For scopes "place", "location": GPS/geography-based search (no expression parsing).
+func (r *PostgresMediaRepository) Search(ctx context.Context, query string, scope string, limit int, offset int, userID *uuid.UUID, startDate string, endDate string, exprResult *domain.ExpressionResult) ([]*domain.Media, int, error) {
 	var mediaList []*domain.Media
 	var total int
 
@@ -531,12 +639,11 @@ func (r *PostgresMediaRepository) Search(ctx context.Context, query string, scop
 	if scope == "location" && query != "" {
 		south, north, west, east, ok := ParseBoundingboxQuery(query)
 		if ok {
-			// Use bounding box search
 			return r.SearchWithinBoundingBox(ctx, south, north, west, east, userID, limit, offset)
 		}
 	}
 
-	// Start with base query
+	// Build the base query
 	queryStr := `SELECT COUNT(*) FROM media WHERE deleted_at IS NULL`
 	args := []interface{}{}
 	argIdx := 1
@@ -547,7 +654,7 @@ func (r *PostgresMediaRepository) Search(ctx context.Context, query string, scop
 		argIdx++
 	}
 
-	// Add date range filters - prefer EXIF DateTimeOriginal, fall back to captured_at
+	// Add date range filters
 	if !startDateParsed.IsZero() && !endDateParsed.IsZero() {
 		dateFilter := fmt.Sprintf(`
 			(
@@ -565,62 +672,34 @@ func (r *PostgresMediaRepository) Search(ctx context.Context, query string, scop
 		argIdx += 4
 	}
 
-	// Add search conditions based on scope
+	// Add search conditions
 	if query != "" {
-		switch scope {
-		case "name":
-			queryStr += fmt.Sprintf(" AND filename LIKE $%d", argIdx)
-			args = append(args, "%"+query+"%")
-			argIdx++
-		case "tags":
-			queryStr += fmt.Sprintf(" AND tags LIKE $%d", argIdx)
-			args = append(args, "%"+query+"%")
-			argIdx++
-		case "location":
-			// Search GPS coordinates stored in metadata JSONB column
-			// Support both exact coordinate match and "lat,lon" format
-			if strings.Contains(query, ",") {
-				// Parse as lat,lon coordinates for Haversine search
-				parts := strings.SplitN(query, ",", 2)
-				if len(parts) == 2 {
-					var centerLat, centerLon float64
-					_, err := fmt.Sscanf(parts[0], "%f", &centerLat)
-					if err == nil {
-						_, err = fmt.Sscanf(parts[1], "%f", &centerLon)
-						if err == nil {
-							// Search within 50km radius
-							mediaList, total, err = r.SearchNearPoint(ctx, centerLat, centerLon, 50.0, userID, limit, offset)
-							if err != nil {
-								return nil, 0, err
-							}
-							return mediaList, total, nil
-						}
-					}
-				}
-			}
-			// Fallback to text search on GPS fields
-			queryStr += fmt.Sprintf(` AND (LOWER(metadata->>'gps_latitude') LIKE $%d OR LOWER(metadata->>'gps_longitude') LIKE $%d OR LOWER(metadata->>'gps_altitude') LIKE $%d)`, argIdx, argIdx+1, argIdx+2)
-			args = append(args, "%"+query+"%", "%"+query+"%", "%"+query+"%")
-			argIdx += 3
-		case "all":
-			queryStr += fmt.Sprintf(" AND (filename LIKE $%d OR tags LIKE $%d)", argIdx, argIdx+1)
-			args = append(args, "%"+query+"%", "%"+query+"%")
-			argIdx += 2
-		default:
-			// Default to searching both name and tags
-			queryStr += fmt.Sprintf(" AND (filename LIKE $%d OR tags LIKE $%d)", argIdx, argIdx+1)
-			args = append(args, "%"+query+"%", "%"+query+"%")
-			argIdx += 2
+		whereClause, searchArgs, newArgIdx, err := r.buildSearchWhereClause(query, scope, argIdx, exprResult)
+		if err != nil {
+			return nil, 0, err
 		}
+
+		// Handle special Haversine search marker
+		if whereClause == "HAVERSINE" {
+			centerLat := searchArgs[0].(float64)
+			centerLon := searchArgs[1].(float64)
+			mediaList, total, err = r.SearchNearPoint(ctx, centerLat, centerLon, 50.0, userID, limit, offset)
+			if err != nil {
+				return nil, 0, err
+			}
+			return mediaList, total, nil
+		}
+
+		queryStr += " AND " + whereClause
+		args = append(args, searchArgs...)
+		argIdx = newArgIdx
 	}
 
-	// Log SQL query for debugging
 	mlog.Info("[DEBUG] ===== SEARCH SQL (COUNT) =====")
 	mlog.Info("[DEBUG] QUERY: %s", queryStr)
 	mlog.Info("[DEBUG] ARGS: %v", args)
 	mlog.Info("[DEBUG] SCOPE: %s | QUERY: %s", scope, query)
 
-	// Execute count query
 	err := r.db.GetContext(ctx, &total, queryStr, args...)
 	if err != nil {
 		return nil, 0, err
@@ -637,7 +716,7 @@ func (r *PostgresMediaRepository) Search(ctx context.Context, query string, scop
 		listArgIdx++
 	}
 
-	// Add date range filters - use EXIF DateTimeOriginal if available, fall back to captured_at
+	// Add date range filters
 	if !startDateParsed.IsZero() && !endDateParsed.IsZero() {
 		listQuery += fmt.Sprintf(`
 			AND (
@@ -656,63 +735,35 @@ func (r *PostgresMediaRepository) Search(ctx context.Context, query string, scop
 	}
 
 	if query != "" {
-		switch scope {
-		case "name":
-			listQuery += fmt.Sprintf(" AND filename LIKE $%d", listArgIdx)
-			listArgs = append(listArgs, "%"+query+"%")
-			listArgIdx++
-		case "tags":
-			listQuery += fmt.Sprintf(" AND tags LIKE $%d", listArgIdx)
-			listArgs = append(listArgs, "%"+query+"%")
-			listArgIdx++
-		case "location":
-			// Search GPS coordinates stored in metadata JSONB column
-			// Support both exact coordinate match and "lat,lon" format
-			if strings.Contains(query, ",") {
-				// Parse as lat,lon coordinates for Haversine search
-				parts := strings.SplitN(query, ",", 2)
-				if len(parts) == 2 {
-					var centerLat, centerLon float64
-					_, err := fmt.Sscanf(parts[0], "%f", &centerLat)
-					if err == nil {
-						_, err = fmt.Sscanf(parts[1], "%f", &centerLon)
-						if err == nil {
-							// Search within 50km radius
-							mediaList, total, err = r.SearchNearPoint(ctx, centerLat, centerLon, 50.0, userID, limit, offset)
-							if err != nil {
-								return nil, 0, err
-							}
-							return mediaList, total, nil
-						}
-					}
-				}
-			}
-			// Fallback to text search on GPS fields
-			listQuery += fmt.Sprintf(` AND (LOWER(metadata->>'gps_latitude') LIKE $%d OR LOWER(metadata->>'gps_longitude') LIKE $%d OR LOWER(metadata->>'gps_altitude') LIKE $%d)`, listArgIdx, listArgIdx+1, listArgIdx+2)
-			listArgs = append(listArgs, "%"+query+"%", "%"+query+"%", "%"+query+"%")
-			listArgIdx += 3
-		case "all":
-			listQuery += fmt.Sprintf(" AND (filename LIKE $%d OR tags LIKE $%d)", listArgIdx, listArgIdx+1)
-			listArgs = append(listArgs, "%"+query+"%", "%"+query+"%")
-			listArgIdx += 2
-		default:
-			listQuery += fmt.Sprintf(" AND (filename LIKE $%d OR tags LIKE $%d)", listArgIdx, listArgIdx+1)
-			listArgs = append(listArgs, "%"+query+"%", "%"+query+"%")
-			listArgIdx += 2
+		whereClause, searchArgs, newArgIdx, err := r.buildSearchWhereClause(query, scope, listArgIdx, exprResult)
+		if err != nil {
+			return nil, 0, err
 		}
+
+		// Handle special Haversine search marker
+		if whereClause == "HAVERSINE" {
+			centerLat := searchArgs[0].(float64)
+			centerLon := searchArgs[1].(float64)
+			mediaList, total, err = r.SearchNearPoint(ctx, centerLat, centerLon, 50.0, userID, limit, offset)
+			if err != nil {
+				return nil, 0, err
+			}
+			return mediaList, total, nil
+		}
+
+		listQuery += " AND " + whereClause
+		listArgs = append(listArgs, searchArgs...)
+		listArgIdx = newArgIdx
 	}
 
-	// Append limit/offset, then use their final positions in the query
 	listArgs = append(listArgs, int64(limit), int64(offset))
 	listQuery += fmt.Sprintf(" ORDER BY captured_at DESC LIMIT $%d OFFSET $%d", len(listArgs)-1, len(listArgs))
 
-	// Log SQL query for debugging
 	mlog.Info("[DEBUG] ===== SEARCH SQL (LIST) =====")
 	mlog.Info("[DEBUG] QUERY: %s", listQuery)
 	mlog.Info("[DEBUG] ARGS: %v", listArgs)
 	mlog.Info("[DEBUG] LIMIT: %d | OFFSET: %d", limit, offset)
 
-	// Execute list query
 	err = r.db.SelectContext(ctx, &mediaList, listQuery, listArgs...)
 	if err != nil {
 		return nil, 0, err

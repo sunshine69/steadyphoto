@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"steadyphoto/internal/domain"
 )
 
 // handleSearchMedia searches for media by text across filename, tags, and metadata.
@@ -44,6 +45,12 @@ func (s *Server) handleSearchMedia(w http.ResponseWriter, r *http.Request) {
 	mlog.Info("[DEBUG] query='%s' scope='%s' limit=%d offset=%d", query, scope, limit, offset)
 	mlog.Info("[DEBUG] userID='%s'", userID)
 
+	// Parse search expression for +include / -exclude terms
+	// Only applies to scopes that support text matching: all, name, tags
+	searchTokens := ParseSearchExpression(query)
+	exprResult := BuildExpressionResult(ApplyScopeToTokens(searchTokens, scope))
+	mlog.Info("[DEBUG] Parsed %d include tokens, %d exclude tokens", len(exprResult.IncludeTerms), len(exprResult.ExcludeTerms))
+
 	// Handle geocoding for place/location/all scopes - geocode place names to coordinates/bounding box
 	shouldGeocode := false
 	if query != "" {
@@ -60,7 +67,7 @@ func (s *Server) handleSearchMedia(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-		
+
 		if !shouldGeocode && (scope == "place" || scope == "location") {
 			shouldGeocode = true
 		}
@@ -76,7 +83,7 @@ func (s *Server) handleSearchMedia(w http.ResponseWriter, r *http.Request) {
 		} else {
 			mlog.Info("[DEBUG] Geocode SUCCESS: Lat='%s' Lon='%s'", geocodeResult.Lat, geocodeResult.Lon)
 			mlog.Info("[DEBUG] Geocode BoundingBox (raw)=%v (len=%d)", geocodeResult.BoundingBox, len(geocodeResult.BoundingBox))
-			
+
 			scope = "location"
 			if len(geocodeResult.BoundingBox) >= 4 {
 				// BoundingBox is []string - parse each element to float64
@@ -84,10 +91,10 @@ func (s *Server) handleSearchMedia(w http.ResponseWriter, r *http.Request) {
 				north, err2 := strconv.ParseFloat(geocodeResult.BoundingBox[1], 64)
 				west, err3 := strconv.ParseFloat(geocodeResult.BoundingBox[2], 64)
 				east, err4 := strconv.ParseFloat(geocodeResult.BoundingBox[3], 64)
-				
+
 				mlog.Info("[DEBUG] BoundingBox parsed: south=%.6f north=%.6f west=%.6f east=%.6f", south, north, west, east)
 				mlog.Info("[DEBUG] parse errors: err1=%v err2=%v err3=%v err4=%v", err1, err2, err3, err4)
-				
+
 				if err1 == nil && err2 == nil && err3 == nil && err4 == nil {
 					query = fmt.Sprintf("bounding_box:%.6f,%.6f,%.6f,%.6f", south, north, west, east)
 					mlog.Info("[DEBUG] Using bounding box query: %s", query)
@@ -113,7 +120,21 @@ func (s *Server) handleSearchMedia(w http.ResponseWriter, r *http.Request) {
 	mlog.Info("[DEBUG]   query='%s' scope='%s' limit=%d offset=%d", query, scope, limit, offset)
 	mlog.Info("[DEBUG]   userID='%s' startDate='%s' endDate='%s'", userID, startDate, endDate)
 
-	matchingMedia, total, err := s.mediaRepo.Search(ctx, query, scope, limit, offset, &userID, startDate, endDate)
+	// Convert local ExpressionResult to domain.ExpressionResult for the repository
+	var domainExpr *domain.ExpressionResult
+	if exprResult.IncludeTerms != nil || exprResult.ExcludeTerms != nil {
+		domainExpr = &domain.ExpressionResult{
+			IncludeTerms: make([]domain.ExpressionTerm, len(exprResult.IncludeTerms)),
+			ExcludeTerms: make([]domain.ExpressionTerm, len(exprResult.ExcludeTerms)),
+		}
+		for i, t := range exprResult.IncludeTerms {
+			domainExpr.IncludeTerms[i] = domain.ExpressionTerm{Value: t.Text, FieldScope: t.FieldScope}
+		}
+		for i, t := range exprResult.ExcludeTerms {
+			domainExpr.ExcludeTerms[i] = domain.ExpressionTerm{Value: t.Text, FieldScope: t.FieldScope}
+		}
+	}
+	matchingMedia, total, err := s.mediaRepo.Search(ctx, query, scope, limit, offset, &userID, startDate, endDate, domainExpr)
 	if err != nil {
 		mlog.Info("[ERROR] handleSearchMedia - search DB error: %v", err)
 		http.Error(w, "Failed to search media: "+err.Error(), http.StatusInternalServerError)

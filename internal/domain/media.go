@@ -174,7 +174,8 @@ type MediaRepository interface {
 	// startDate/endDate can be in formats: dd/mm/yyyy, yyyy/mm/dd, dd/mm/yyyy hh:mm:ss, etc.
 	// If only one date is given, both startDate and endDate will be the same (single date search).
 	// If startDate > endDate, they are swapped.
-	Search(ctx context.Context, query string, scope string, limit, offset int, userID *uuid.UUID, startDate string, endDate string) ([]*Media, int, error)
+	// ExpressionResult contains include/exclude terms for advanced search (e.g., "holiday -beach")
+	Search(ctx context.Context, query string, scope string, limit, offset int, userID *uuid.UUID, startDate string, endDate string, exprResult *ExpressionResult) ([]*Media, int, error)
 
 	// Trash operations for soft-delete and permanent delete functionality
 	ListTrashed(ctx context.Context, limit, offset int, userID uuid.UUID) ([]*Media, int, error)

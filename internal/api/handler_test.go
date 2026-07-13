@@ -95,7 +95,7 @@ func (m *MockMediaRepository) GetTrashedMedia(ctx context.Context, id uuid.UUID,
 	return args.Get(0).(*domain.Media), args.Error(1)
 }
 
-func (m *MockMediaRepository) Search(ctx context.Context, query string, scope string, limit, offset int, userID *uuid.UUID) ([]*domain.Media, int, error) {
+func (m *MockMediaRepository) Search(ctx context.Context, query string, scope string, limit, offset int, userID *uuid.UUID, startDate string, endDate string, exprResult *domain.ExpressionResult) ([]*domain.Media, int, error) {
 	args := m.Called(ctx, query, scope, limit, offset, userID)
 	if args.Get(0) == nil {
 		return nil, args.Int(1), args.Error(2)
