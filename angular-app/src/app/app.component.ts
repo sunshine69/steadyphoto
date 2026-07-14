@@ -165,7 +165,7 @@ import { ExifTriggerService } from './services/exif-trigger.service';
             </button>
     
             <!-- Upload Button -->
-            <button class="icon-btn upload-trigger" title="Upload Media" (click)="uploadTrigger.open()">
+            <button class="icon-btn upload-trigger" title="Upload Media" (click)="onUploadClick()">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                 <polyline points="17 8 12 3 7 8"/>
@@ -190,124 +190,122 @@ import { ExifTriggerService } from './services/exif-trigger.service';
     
         <!-- Router Outlet for Page Content -->
         <router-outlet></router-outlet>
-    
-        <!-- Upload Modal (shown when upload trigger service is open) -->
-        @if (uploadTrigger.isUploadModalOpen$ | async) {
-          <app-upload-modal
-            >
-          </app-upload-modal>
-        }
-    
-        <!-- Presentation Mode Overlay (shown when presentation service is open) -->
-        @if (presentationService.isOpen$ | async) {
-          <app-presentation-mode
-            [items]="presentationService.getItems()"
-            [startIndex]="presentationService.getCurrentIndex()">
-          </app-presentation-mode>
-        }
-    
-        <!-- Share Modal (shown when share trigger service is open) -->
-        @if (shareTrigger.isShareModalOpen$ | async) {
-          <app-share-modal
-            >
-          </app-share-modal>
-        }
-    
-        <!-- User Management Modal -->
-        <app-user-management #userManagement></app-user-management>
-    
-        <!-- Dialog: Add to Album -->
-        @if (showAddAlbumDialog) {
-          <div class="modal-overlay">
-            <div class="modal-content bg-dark border rounded p-4" style="border-color: #6c757d;">
-              <h5 class="mb-3 text-white">Add to Album</h5>
-              <p class="text-muted mb-3">{{ selectedCount }} items will be added to the selected album.</p>
-              <div class="mb-3">
-                <label class="form-label text-white">Select Album:</label>
-                <select class="form-select" [(ngModel)]="targetAlbumId" style="background-color: #495057; border-color: #6c757d; color: white;">
-                  <option [ngValue]="undefined">Choose an album...</option>
-                  @for (album of albums; track album) {
-                    <option [ngValue]="album.id">{{ album.name }}</option>
-                  }
-                </select>
-              </div>
-              <div class="d-flex gap-2 justify-content-end">
-                <button class="btn btn-secondary" (click)="closeAddAlbumDialog()">Cancel</button>
-                <button class="btn btn-primary" (click)="executeAddToAlbum()" [disabled]="!targetAlbumId">Add to Album</button>
-              </div>
-            </div>
-          </div>
-        }
-    
-        <!-- Dialog: Remove from Album -->
-        @if (showRemoveAlbumDialog) {
-          <div class="modal-overlay">
-            <div class="modal-content bg-dark border rounded p-4" style="border-color: #6c757d;">
-              <h5 class="mb-3 text-white">Remove from Album</h5>
-              <p class="text-muted mb-3">{{ selectedCount }} items will be removed from the selected album.</p>
-              <div class="mb-3">
-                <label class="form-label text-white">Select Album:</label>
-                <select class="form-select" [(ngModel)]="targetAlbumIdForRemoval" style="background-color: #495057; border-color: #6c757d; color: white;">
-                  <option [ngValue]="undefined">Choose an album...</option>
-                  @for (album of albums; track album) {
-                    <option [ngValue]="album.id">{{ album.name }}</option>
-                  }
-                </select>
-              </div>
-              <div class="d-flex gap-2 justify-content-end">
-                <button class="btn btn-secondary" (click)="closeRemoveAlbumDialog()">Cancel</button>
-                <button class="btn btn-outline-danger" (click)="executeRemoveFromAlbum()" [disabled]="!targetAlbumIdForRemoval">Remove from Album</button>
-              </div>
-            </div>
-          </div>
-        }
-    
-        <!-- Dialog: Delete Media -->
-        @if (showDeleteDialog) {
-          <div class="modal-overlay">
-            <div class="modal-content bg-dark border rounded p-4" style="border-color: #6c757d;">
-              <h5 class="mb-3 text-danger">Delete Media</h5>
-              <p class="text-muted mb-3">{{ selectedCount }} item(s) will be permanently deleted. This action cannot be undone.</p>
-              <div class="alert alert-warning" role="alert">
-                Are you sure you want to delete the selected media?
-              </div>
-              <div class="d-flex gap-2 justify-content-end">
-                <button class="btn btn-secondary" (click)="closeDeleteDialog()">Cancel</button>
-                <button class="btn btn-danger" (click)="executeDelete()" [disabled]="isDeleting">
-                  {{ isDeleting ? 'Deleting...' : 'Delete' }}
-                </button>
-              </div>
-            </div>
-          </div>
-        }
-    
-        <!-- Dialog: Add Tags -->
-        @if (showAddTagsDialog) {
-          <div class="modal-overlay">
-            <div class="modal-content bg-dark border rounded p-4" style="border-color: #6c757d;">
-              <h5 class="mb-3 text-white">Add Tags</h5>
-              <p class="text-muted mb-3">{{ selectedCount }} items will be tagged.</p>
-              <div class="mb-3">
-                <label class="form-label text-white">Enter Tags:</label>
-                <input
-                  type="text"
-                  [(ngModel)]="tagInput"
-                  placeholder="tag1:tag2:tag3..."
-                  class="form-control"
-                  style="background-color: #495057; border-color: #6c757d; color: white;"
-                  autofocus
-                  >
-                <small class="text-muted">Separate tags with colons (e.g., vacation:sunset:beach)</small>
-              </div>
-              <div class="d-flex gap-2 justify-content-end">
-                <button class="btn btn-secondary" (click)="closeAddTagsDialog()">Cancel</button>
-                <button class="btn btn-success" (click)="executeAddTags()" [disabled]="!tagInput.trim()">Add Tags</button>
-              </div>
-            </div>
-          </div>
-        }
       </main>
     </div>
+    
+    <!-- Upload Modal (shown when upload trigger service is open) -->
+    @if (uploadTrigger.isUploadModalOpen$ | async) {
+      <app-upload-modal>
+      </app-upload-modal>
+    }
+
+    <!-- Presentation Mode Overlay (shown when presentation service is open) -->
+    @if (presentationService.isOpen$ | async) {
+      <app-presentation-mode
+        [items]="presentationService.getItems()"
+        [startIndex]="presentationService.getCurrentIndex()">
+      </app-presentation-mode>
+    }
+
+    <!-- Share Modal (shown when share trigger service is open) -->
+    @if (shareTrigger.isShareModalOpen$ | async) {
+      <app-share-modal>
+      </app-share-modal>
+    }
+
+    <!-- User Management Modal -->
+    <app-user-management #userManagement></app-user-management>
+
+    <!-- Dialog: Add to Album -->
+    @if (showAddAlbumDialog) {
+      <div class="modal-overlay">
+        <div class="modal-content bg-dark border rounded p-4" style="border-color: #6c757d;">
+          <h5 class="mb-3 text-white">Add to Album</h5>
+          <p class="text-muted mb-3">{{ selectedCount }} items will be added to the selected album.</p>
+          <div class="mb-3">
+            <label class="form-label text-white">Select Album:</label>
+            <select class="form-select" [(ngModel)]="targetAlbumId" style="background-color: #495057; border-color: #6c757d; color: white;">
+              <option [ngValue]="undefined">Choose an album...</option>
+              @for (album of albums; track album) {
+                <option [ngValue]="album.id">{{ album.name }}</option>
+              }
+            </select>
+          </div>
+          <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" (click)="closeAddAlbumDialog()">Cancel</button>
+            <button class="btn btn-primary" (click)="executeAddToAlbum()" [disabled]="!targetAlbumId">Add to Album</button>
+          </div>
+        </div>
+      </div>
+    }
+
+    <!-- Dialog: Remove from Album -->
+    @if (showRemoveAlbumDialog) {
+      <div class="modal-overlay">
+        <div class="modal-content bg-dark border rounded p-4" style="border-color: #6c757d;">
+          <h5 class="mb-3 text-white">Remove from Album</h5>
+          <p class="text-muted mb-3">{{ selectedCount }} items will be removed from the selected album.</p>
+          <div class="mb-3">
+            <label class="form-label text-white">Select Album:</label>
+            <select class="form-select" [(ngModel)]="targetAlbumIdForRemoval" style="background-color: #495057; border-color: #6c757d; color: white;">
+              <option [ngValue]="undefined">Choose an album...</option>
+              @for (album of albums; track album) {
+                <option [ngValue]="album.id">{{ album.name }}</option>
+              }
+            </select>
+          </div>
+          <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" (click)="closeRemoveAlbumDialog()">Cancel</button>
+            <button class="btn btn-outline-danger" (click)="executeRemoveFromAlbum()" [disabled]="!targetAlbumIdForRemoval">Remove from Album</button>
+          </div>
+        </div>
+      </div>
+    }
+
+    <!-- Dialog: Delete Media -->
+    @if (showDeleteDialog) {
+      <div class="modal-overlay">
+        <div class="modal-content bg-dark border rounded p-4" style="border-color: #6c757d;">
+          <h5 class="mb-3 text-danger">Delete Media</h5>
+          <p class="text-muted mb-3">{{ selectedCount }} item(s) will be permanently deleted. This action cannot be undone.</p>
+          <div class="alert alert-warning" role="alert">
+            Are you sure you want to delete the selected media?
+          </div>
+          <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" (click)="closeDeleteDialog()">Cancel</button>
+            <button class="btn btn-danger" (click)="executeDelete()" [disabled]="isDeleting">
+              {{ isDeleting ? 'Deleting...' : 'Delete' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    }
+
+    <!-- Dialog: Add Tags -->
+    @if (showAddTagsDialog) {
+      <div class="modal-overlay">
+        <div class="modal-content bg-dark border rounded p-4" style="border-color: #6c757d;">
+          <h5 class="mb-3 text-white">Add Tags</h5>
+          <p class="text-muted mb-3">{{ selectedCount }} items will be tagged.</p>
+          <div class="mb-3">
+            <label class="form-label text-white">Enter Tags:</label>
+            <input
+              type="text"
+              [(ngModel)]="tagInput"
+              placeholder="tag1:tag2:tag3..."
+              class="form-control"
+              style="background-color: #495057; border-color: #6c757d; color: white;"
+              autofocus
+              >
+            <small class="text-muted">Separate tags with colons (e.g., vacation:sunset:beach)</small>
+          </div>
+          <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-secondary" (click)="closeAddTagsDialog()">Cancel</button>
+            <button class="btn btn-success" (click)="executeAddTags()" [disabled]="!tagInput.trim()">Add Tags</button>
+          </div>
+        </div>
+      </div>
+    }
     
     <!-- Footer (optional, can be removed if not needed) -->
     @if (false) {
@@ -592,6 +590,34 @@ import { ExifTriggerService } from './services/exif-trigger.service';
       color: #ef4444;
     }
 
+    /* Modal Overlay - Centers dialogs in the viewport */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-color: rgba(0, 0, 0, 0.6);
+      z-index: 1000;
+    }
+
+    .modal-content {
+      background-color: #1e293b;
+      border-radius: 12px;
+      min-width: 400px;
+      max-width: 500px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    }
+
+    /* Dialog positioned below the selection dropdown */
+    .modal-overlay.positioned-below {
+      align-items: flex-start;
+      padding-top: 120px;
+    }
+
     .icon-btn {
       width: 40px;
       height: 40px;
@@ -655,6 +681,9 @@ export class AppComponent implements OnInit, OnDestroy {
 
   // Selection action state
   selectedAction: string | null = null;
+
+  // Auth state for upload button gating
+  isUserLoggedIn = false;
 
   // Dialog visibility flags
   showAddAlbumDialog = false;
@@ -740,8 +769,9 @@ export class AppComponent implements OnInit, OnDestroy {
       // Refresh gallery logic can be added here if needed
     });
 
-    // Subscribe to auth state changes to keep isAdmin and avatarInitial reactive
+    // Subscribe to auth state changes to keep isAdmin, avatarInitial, and isUserLoggedIn reactive
     this.authSubscription = this.authService.isAuthenticated$.subscribe(isAuth => {
+      this.isUserLoggedIn = isAuth;
       if (isAuth) {
         this.checkAdminStatus();
         this.avatarInitial = this.authService.getUsername();
@@ -772,8 +802,24 @@ export class AppComponent implements OnInit, OnDestroy {
       error: (err: any) => console.error('Error loading albums for header actions', err)
     });
 
+    // Subscribe to album changes so the dropdown updates after creating a new album
+    this.albumService.albumsChanged.subscribe(() => {
+      this.albumService.getAlbums().subscribe({
+        next: (albums: Album[]) => this.albums = albums,
+        error: (err: any) => console.error('Error refreshing albums list', err)
+      });
+    });
+
     // Initial check for admin status and avatar
     this.checkAdminStatus();
+  }
+
+  onUploadClick(): void {
+    if (!this.isUserLoggedIn) {
+      alert('Please log in to upload media.');
+      return;
+    }
+    this.uploadTrigger.open();
   }
 
   checkAdminStatus(): void {
