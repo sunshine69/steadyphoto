@@ -30,6 +30,14 @@ import { Photo } from '../../models/photo.model';
           }
           @if (photo) {
             <div class="photo-detail-container">
+              @if (isFromAlbum) {
+                <div class="alert alert-info d-flex justify-content-between align-items-center" style="font-size: 13px;">
+                  <span>
+                    <strong>Album View:</strong> Viewing photo from album
+                  </span>
+                  <button class="btn btn-sm btn-outline-primary" (click)="goBack()">Back to Album</button>
+                </div>
+              }
               <!-- Video Player for videos -->
               @if (isVideo()) {
                 <div class="video-viewer-wrapper">
@@ -96,7 +104,7 @@ import { Photo } from '../../models/photo.model';
                     🎬 Presentation Mode
                   </button>
                   <button (click)="goBack()" class="btn btn-primary ms-2">
-                    Back to Gallery
+                    {{ isFromAlbum ? 'Back to Album' : 'Back to Gallery' }}
                   </button>
                 </div>
               </div>
@@ -330,9 +338,23 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
       this.showExifPopup = true;
     });
     
+    // Detect if we're coming from an album view (albumIds or currentAlbumId query param present)
+    const albumIdsParam = this.route.snapshot.queryParams['albumIds'];
+    const currentAlbumIdParam = this.route.snapshot.queryParams['currentAlbumId'];
+    if (albumIdsParam || currentAlbumIdParam) {
+      this.isFromAlbum = true;
+    }
+    
     // Subscribe to route parameter changes to handle navigation between photos
     this.route.paramMap.subscribe(params => {
       const id = params.get('id');
+      
+      if (id) {
+        // Re-check if coming from album on route change (check both albumIds and currentAlbumId)
+        const currentAlbumIds = this.route.snapshot.queryParams['albumIds'];
+        const currentAlbumId = this.route.snapshot.queryParams['currentAlbumId'];
+        this.isFromAlbum = !!currentAlbumIds || !!currentAlbumId;
+      }
       
       if (!id) {
         this.router.navigate(['/']);
@@ -442,6 +464,9 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
     return this.photo?.mediaType === 'video';
   }
 
+  /** Whether the photo was opened from an album */
+  isFromAlbum = false;
+
   formatDuration(seconds?: number): string {
     if (!seconds || seconds <= 0) return 'Unknown';
     const hrs = Math.floor(seconds / 3600);
@@ -509,6 +534,29 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
   }
 
   goBack(): void {
+    // If coming from an album, navigate back to the album detail page
+    if (this.isFromAlbum) {
+      const currentAlbumId = this.route.snapshot.queryParams['currentAlbumId'];
+      const source = this.route.snapshot.queryParams['source'];
+      const shareToken = this.route.snapshot.queryParams['shareToken'];
+      
+      const queryParams: any = {};
+      if (source === 'shared') {
+        queryParams.source = 'shared';
+        if (shareToken) {
+          queryParams.shareToken = shareToken;
+        }
+      }
+      
+      // Navigate to the actual album using currentAlbumId (the real album ID)
+      if (currentAlbumId) {
+        this.router.navigate(['/albums', currentAlbumId], { queryParams });
+      } else {
+        this.router.navigate(['/albums']);
+      }
+      return;
+    }
+
     // Read the saved page from GalleryStateService
     const savedPage = this.galleryState.getCurrentPage() || 1;
 
@@ -518,23 +566,14 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
       queryParams.searchTerm = this.route.snapshot.queryParams['searchTerm'];
       queryParams.searchScope = this.route.snapshot.queryParams['searchScope'];
     }
-    if (this.route.snapshot.queryParams['albumIds']) {
-      queryParams.albumIds = this.route.snapshot.queryParams['albumIds'];
-    }
-    if (this.route.snapshot.queryParams['albumMediaPaths']) {
-      queryParams.albumMediaPaths = this.route.snapshot.queryParams['albumMediaPaths'];
+    if (this.route.snapshot.queryParams['tag']) {
+      queryParams.tag = this.route.snapshot.queryParams['tag'];
     }
     if (this.route.snapshot.queryParams['source'] === 'shared') {
       queryParams.source = 'shared';
       if (this.route.snapshot.queryParams['shareToken']) {
         queryParams.shareToken = this.route.snapshot.queryParams['shareToken'];
       }
-    }
-    if (this.route.snapshot.queryParams['mediaPath']) {
-      queryParams.mediaPath = this.route.snapshot.queryParams['mediaPath'];
-    }
-    if (this.route.snapshot.queryParams['tag']) {
-      queryParams.tag = this.route.snapshot.queryParams['tag'];
     }
 
     this.router.navigate(['/' ], { queryParams, queryParamsHandling: 'merge' });
@@ -547,6 +586,7 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
     const isSharedMedia = this.route.snapshot.queryParams['source'] === 'shared';
     const shareToken = this.route.snapshot.queryParams['shareToken'];
     const albumIdsParam = this.route.snapshot.queryParams['albumIds'];
+    const currentAlbumIdParam = this.route.snapshot.queryParams['currentAlbumId'];
     const albumMediaPaths = this.route.snapshot.queryParams['mediaPaths'];
     const searchParam = this.route.snapshot.queryParams['searchTerm'];
     const searchScopeParam = this.route.snapshot.queryParams['searchScope'] || 'all';
@@ -575,10 +615,31 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
 
       if (foundIndex !== -1 && items.length > 0) {
         this.presentationService.open(items, foundIndex);
-        this.router.navigate(['/presentation'], navigateOpts);
+        // Ensure navigateOpts wraps params in { queryParams: ... } for router.navigate
+        const navOpts = (navigateOpts && navigateOpts.queryParams !== undefined)
+          ? navigateOpts
+          : { queryParams: navigateOpts || {} };
+        this.router.navigate(['/presentation'], navOpts);
       } else {
         alert('No items available for presentation.');
       }
+    };
+
+    // Build navigation queryParams that preserve album context for return navigation
+    const buildNavQueryParams = (): any => {
+      const qp: any = {};
+      // Always preserve source/album context so goBack() works after presentation
+      if (albumIdsParam) {
+        qp.albumIds = albumIdsParam;
+      }
+      if (currentAlbumIdParam) {
+        qp.currentAlbumId = currentAlbumIdParam;
+      }
+      if (isSharedMedia && shareToken) {
+        qp.source = 'shared';
+        qp.shareToken = shareToken;
+      }
+      return qp;
     };
 
     if (albumIdsParam) {
@@ -598,7 +659,7 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
         forkJoin(requests$).subscribe({
           next: (photos: (Photo | null)[]) => {
             mediaItems = buildMediaItems(photos, 'album');
-            startPresentationWithItems(mediaItems, { queryParams: { shareToken } });
+            startPresentationWithItems(mediaItems, buildNavQueryParams());
           },
           error: (err: unknown) => {
             console.error('Failed to load album media for presentation', err);
@@ -628,7 +689,7 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
             filename: p.filename || '',
             mediaType: p.mediaType || 'photo'
           }));
-          startPresentationWithItems(mediaItems, {});
+          startPresentationWithItems(mediaItems, buildNavQueryParams());
         },
         error: (err: unknown) => {
           console.error('Failed to load search results for presentation', err);
@@ -645,7 +706,7 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
             filename: p.Filename || p.filename || '',
             mediaType: (p.MediaType || p.mediaType || 'photo')
           }));
-          startPresentationWithItems(mediaItems, { queryParams: { shareToken } });
+          startPresentationWithItems(mediaItems, buildNavQueryParams());
         },
         error: (err) => {
           console.error('Failed to load public share media for presentation', err);
@@ -662,7 +723,7 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
             filename: p.filename || '',
             mediaType: (p.mediaType || 'photo')
           }));
-          startPresentationWithItems(mediaItems, { queryParams: { source: 'shared' } });
+          startPresentationWithItems(mediaItems, buildNavQueryParams());
         },
         error: (err) => {
           console.error('Failed to load shared media for presentation', err);

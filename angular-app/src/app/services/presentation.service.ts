@@ -14,8 +14,17 @@ interface PresentationState {
   currentIndex: number;
 }
 
+export interface AlbumContext {
+  albumId?: string;
+  albumIds?: string;
+  source?: string;
+  shareToken?: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class PresentationService {
+  private albumContext = signal<AlbumContext | null>(null);
+
   private state = signal<PresentationState>({
     isOpen: false,
     items: [],
@@ -83,5 +92,17 @@ export class PresentationService {
 
   isOpen(): boolean {
     return this.state().isOpen;
+  }
+
+  setAlbumContext(ctx: AlbumContext | null): void {
+    this.albumContext.set(ctx);
+  }
+
+  getAlbumContext(): AlbumContext | null {
+    return this.albumContext();
+  }
+
+  clearAlbumContext(): void {
+    this.albumContext.set(null);
   }
 }

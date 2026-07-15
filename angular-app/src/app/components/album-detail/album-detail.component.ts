@@ -10,6 +10,7 @@ import { Album } from '../../models/album.model';
 import { ShareTriggerService } from '../../services/share-trigger.service';
 import { PhotoCardComponent } from '../photo-card/photo-card.component';
 import { FormsModule } from '@angular/forms';
+import { GalleryStateService } from '../../services/gallery-state.service';
 
 @Component({
     selector: 'app-album-detail',
@@ -161,12 +162,9 @@ import { FormsModule } from '@angular/forms';
             @if (totalAlbumPhotos > albumLimit) {
               <div class="pagination-controls mt-4">
                 <button class="btn btn-outline-primary me-2" [disabled]="albumOffset === 0" (click)="changeAlbumPage(-1)">Previous</button>
-                <div class="pagination-jump d-flex align-items-center mx-3">
-                  <span class="me-2 text-nowrap">Page</span>
-                  <input type="number" class="form-control form-control-sm jump-input me-2" [(ngModel)]="albumJumpInput" (keyup.enter)="onAlbumJumpToPage()" min="1" [max]="totalAlbumPages">
-                  <button class="btn btn-primary btn-sm jump-btn" type="button" (click)="onAlbumJumpToPage()">Go</button>
-                  <span class="ms-2 text-nowrap">of {{ totalAlbumPages }}</span>
-                </div>
+                <span class="text-nowrap me-2">Page {{ getAlbumCurrentPage() }} of {{ totalAlbumPages }}</span>
+                <input type="number" class="form-control form-control-sm jump-input me-2" [(ngModel)]="albumJumpInput" (keyup.enter)="onAlbumJumpToPage()" min="1" [max]="totalAlbumPages" style="width: 60px; text-align: center;">
+                <button class="btn btn-primary btn-sm jump-btn" type="button" (click)="onAlbumJumpToPage()">Go</button>
                 <button class="btn btn-outline-primary ms-2" [disabled]="albumOffset + albumLimit >= totalAlbumPhotos" (click)="changeAlbumPage(1)">Next</button>
               </div>
             }
@@ -315,6 +313,7 @@ export class AlbumDetailComponent implements OnInit, OnDestroy {
   private ngZone = inject(NgZone);
   private http = inject(HttpClient);
   private shareTrigger = inject(ShareTriggerService);
+  private galleryState = inject(GalleryStateService);
 
   albumName: string = 'Loading...';
   photos: Photo[] = [];
@@ -391,22 +390,22 @@ export class AlbumDetailComponent implements OnInit, OnDestroy {
           this.fetchMedia(id, isShared);
         },
         error: (err: any) => {
-          console.error('Error loading shared album metadata', err);
-          this.loading = false;
-          this.albumName = 'Error loading album';
+          console.warn('Shared album metadata failed, loading media anyway', err);
+          this.albumName = 'Shared Album';
+          this.fetchMedia(id, isShared);
         }
       });
     } else {
-      // Use ownership-checking album endpoint
+      // Use ownership-checking album endpoint (may 404 if not available)
       this.albumService.getAlbum(id).subscribe({
         next: (album: Album) => {
           this.albumName = album.name || 'Untitled Album';
           this.fetchMedia(id);
         },
         error: (err: any) => {
-          console.error('Error loading album metadata', err);
-          this.loading = false;
-          this.albumName = 'Error loading album';
+          console.warn('Album metadata failed (404?), loading media anyway', err);
+          this.albumName = 'Untitled Album';
+          this.fetchMedia(id);
         }
       });
     }
@@ -522,6 +521,11 @@ export class AlbumDetailComponent implements OnInit, OnDestroy {
 
   goBack(): void { this.router.navigate(['/albums']); }
 
+  /** Returns the 1-based current album page number */
+  getAlbumCurrentPage(): number {
+    return Math.floor(this.albumOffset / this.albumLimit) + 1;
+  }
+
   shareAlbum(): void {
     if (!this.albumId) return;
     this.shareTrigger.open(this.albumId, 'album');
@@ -533,10 +537,17 @@ export class AlbumDetailComponent implements OnInit, OnDestroy {
     // Pass source=shared if viewing from a shared album, so PhotoDetailComponent uses the correct endpoint
     const isSharedAlbum = this.route.snapshot.queryParams['source'] === 'shared';
     
+    // Store the real album ID separately so goBack() can navigate back correctly
+    const albumId = this.route.snapshot.paramMap.get('id') || this.albumId;
+    
     if (isSharedAlbum) {
-      this.router.navigate(['/photos', id], { queryParams: { albumIds: ids, source: 'shared' } }); 
+      this.router.navigate(['/photos', id], { 
+        queryParams: { albumIds: ids, source: 'shared', currentAlbumId: albumId } 
+      }); 
     } else {
-      this.router.navigate(['/photos', id], { queryParams: { albumIds: ids } }); 
+      this.router.navigate(['/photos', id], { 
+        queryParams: { albumIds: ids, currentAlbumId: albumId } 
+      }); 
     }
   }
 

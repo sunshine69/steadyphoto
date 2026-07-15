@@ -1,5 +1,5 @@
 import { Component, OnInit, OnDestroy, AfterViewInit, inject } from '@angular/core';
-import { Router } from '@angular/router';
+import { Router, ActivatedRoute } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { PresentationService, MediaItem } from '../../services/presentation.service';
 import { PhotoService } from '../../services/photo.service';
@@ -185,7 +185,7 @@ import { PhotoService } from '../../services/photo.service';
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 80px 100px; /* Space for controls */
+      padding: 80px 100px;
     }
 
     .presentation-media {
@@ -280,6 +280,8 @@ import { PhotoService } from '../../services/photo.service';
 export class PresentationModeComponent implements OnInit, AfterViewInit, OnDestroy {
   public presentationService = inject(PresentationService);
   private photoService = inject(PhotoService);
+  private router = inject(Router);
+  private route = inject(ActivatedRoute);
 
   items: MediaItem[] = [];
   currentIndex = 0;
@@ -288,7 +290,6 @@ export class PresentationModeComponent implements OnInit, AfterViewInit, OnDestr
   isLoading = false;
 
   ngOnInit(): void {
-    // Subscribe to presentation service changes
     this.presentationService.isOpen$.subscribe((isOpen: boolean) => {
       if (isOpen) {
         this.loadPresentationData();
@@ -299,7 +300,6 @@ export class PresentationModeComponent implements OnInit, AfterViewInit, OnDestr
   }
 
   ngAfterViewInit(): void {
-    // Setup keyboard navigation after view is initialized
     document.addEventListener('keydown', this.handleKeyDown);
   }
 
@@ -348,24 +348,41 @@ export class PresentationModeComponent implements OnInit, AfterViewInit, OnDestr
     }
   }
 
-  private router = inject(Router);
-
   closePresentation(): void {
     // Capture the last viewed item BEFORE closing (close() resets state)
     const lastItem = this.presentationService.getCurrentItem();
     this.presentationService.close();
 
     if (lastItem?.id) {
-      // Navigate directly to the detail page of the last viewed photo
-      this.router.navigate(['/photos', lastItem.id]);
+      // Preserve album context for proper goBack() behavior in PhotoDetail
+      const queryParams: any = {};
+      
+      // Read album context from current presentation route
+      const currentAlbumId = this.route.snapshot.queryParams['currentAlbumId'];
+      const albumIds = this.route.snapshot.queryParams['albumIds'];
+      const source = this.route.snapshot.queryParams['source'];
+      const shareToken = this.route.snapshot.queryParams['shareToken'];
+      
+      if (currentAlbumId) {
+        queryParams.currentAlbumId = currentAlbumId;
+      }
+      if (albumIds) {
+        queryParams.albumIds = albumIds;
+      }
+      if (source === 'shared') {
+        queryParams.source = 'shared';
+        if (shareToken) {
+          queryParams.shareToken = shareToken;
+        }
+      }
+      
+      this.router.navigate(['/photos', lastItem.id], { queryParams });
     } else {
-      // Fallback: go back to previous page (gallery, album, etc.)
       window.history.back();
     }
   }
 
   getThumbnailUrl(id: string): string {
-    // Use the same thumbnail URL pattern as in PhotoService
     return `${this.photoService['API_BASE_URL']}/media/${id}/thumb`;
   }
 
