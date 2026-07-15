@@ -159,15 +159,16 @@ import { GalleryStateService } from '../../services/gallery-state.service';
               </div>
             }
             <!-- Pagination for Album Grid -->
-            @if (totalAlbumPhotos > albumLimit) {
-              <div class="pagination-controls mt-4">
-                <button class="btn btn-outline-primary me-2" [disabled]="albumOffset === 0" (click)="changeAlbumPage(-1)">Previous</button>
-                <span class="text-nowrap me-2">Page {{ getAlbumCurrentPage() }} of {{ totalAlbumPages }}</span>
-                <input type="number" class="form-control form-control-sm jump-input me-2" [(ngModel)]="albumJumpInput" (keyup.enter)="onAlbumJumpToPage()" min="1" [max]="totalAlbumPages" style="width: 60px; text-align: center;">
+            <div class="pagination-controls">
+              <button class="btn btn-outline-primary me-2" [disabled]="albumOffset === 0" (click)="changeAlbumPage(-1)">Previous</button>
+              <div class="pagination-jump d-flex align-items-center mx-3">
+                <span class="me-2 text-nowrap">Page</span>
+                <input type="number" class="form-control form-control-sm jump-input me-2" [(ngModel)]="albumJumpInput" (keyup.enter)="onAlbumJumpToPage()" min="1" [max]="totalAlbumPages">
                 <button class="btn btn-primary btn-sm jump-btn" type="button" (click)="onAlbumJumpToPage()">Go</button>
-                <button class="btn btn-outline-primary ms-2" [disabled]="albumOffset + albumLimit >= totalAlbumPhotos" (click)="changeAlbumPage(1)">Next</button>
+                <span class="ms-2 text-nowrap">of {{ totalAlbumPages }}</span>
               </div>
-            }
+              <button class="btn btn-outline-primary ms-2" [disabled]="albumOffset + albumLimit >= totalAlbumPhotos" (click)="changeAlbumPage(1)">Next</button>
+            </div>
           </div>
         }
     
@@ -432,6 +433,7 @@ export class AlbumDetailComponent implements OnInit, OnDestroy {
         this.photos = rawPhotos.map((p: any) => this.normalizePhoto(p, isShared));
         this.totalAlbumPhotos = totalItems;
         this.albumOffset = offset;
+        this.albumJumpInput = this.getAlbumCurrentPage();
         this.loading = false;
       },
       error: (err: any) => {
@@ -449,6 +451,7 @@ export class AlbumDetailComponent implements OnInit, OnDestroy {
     
     if (!this.albumId) return;
     
+    this.albumJumpInput = this.getAlbumCurrentPage() + dir;
     this.loadAlbumPageFromAPI(this.albumId, newOffset, this.isSharedAlbumView);
     window.scrollTo(0, 0);
   }
