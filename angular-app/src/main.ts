@@ -1,19 +1,24 @@
-import 'zone.js';
 import { bootstrapApplication } from '@angular/platform-browser';
-import { importProvidersFrom } from '@angular/core';
+import { provideZoneChangeDetection, importProvidersFrom } from '@angular/core';
 import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
-import { RouterModule } from '@angular/router';
+import { provideRouter } from '@angular/router'; // Modern router provider
 import { AppComponent } from './app/app.component';
 import { routes } from './app/app.routes';
 import { authInterceptor } from './app/interceptors/auth.interceptor';
 
 bootstrapApplication(AppComponent, {
   providers: [
-    importProvidersFrom(
-      BrowserAnimationsModule,
-      RouterModule.forRoot(routes)
-    ),
+    // 1. Explicitly restore Zone.js behavior to fix the async image-loading issue
+    provideZoneChangeDetection({ eventCoalescing: true }),
+    
+    // 2. Modern routing registration replacing importProvidersFrom(RouterModule)
+    provideRouter(routes), 
+    
+    // 3. Kept for legacy animation modules
+    importProvidersFrom(BrowserAnimationsModule),
+    
     provideHttpClient(withInterceptors([authInterceptor]))
   ]
 }).catch(err => console.error(err));
+
