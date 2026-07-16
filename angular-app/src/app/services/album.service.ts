@@ -1,6 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import { catchError, throwError, Observable } from 'rxjs';
+import { catchError, throwError, Observable, Subject, tap } from 'rxjs';
 import { environment } from '../../environments/environment';
 import { Album, CreateAlbumRequest, UpdateAlbumRequest, AddMediaToAlbumRequest, BulkRemoveMediaRequest } from '../models/album.model';
 import { Photo } from '../models/photo.model';
@@ -11,6 +11,11 @@ import { Photo } from '../models/photo.model';
 export class AlbumService {
   private http = inject(HttpClient);
   private API_BASE_URL = environment.apiBaseUrl;
+
+  private albumsChanged$ = new Subject<void>();
+  get albumsChanged() {
+    return this.albumsChanged$.asObservable();
+  }
 
   /**
    * Fetches all albums for the authenticated user.
@@ -33,7 +38,12 @@ export class AlbumService {
    */
   createAlbum(request: CreateAlbumRequest): Observable<Album> {
     return this.http.post<Album>(`${this.API_BASE_URL}/albums`, request)
-      .pipe(catchError(this.handleError));
+      .pipe(
+        catchError(this.handleError),
+        tap((album) => {
+          this.albumsChanged$.next();
+        })
+      );
   }
 
   /**
