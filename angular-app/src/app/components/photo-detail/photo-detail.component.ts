@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
@@ -134,7 +134,7 @@ import { Photo } from '../../models/photo.model';
               </li>
               @if (isVideo()) {
                 <li class="list-group-item">
-                  <span class="text-muted">Duration:</span> {{ formatDuration(photo?.videoMetadata?.duration) }}
+                  <span class="text-muted">Duration:</span> {{ formatDuration($safeNavigationMigration(photo?.videoMetadata?.duration)) }}
                 </li>
               }
               <li class="list-group-item">
@@ -196,6 +196,7 @@ import { Photo } from '../../models/photo.model';
       ></app-exif-data-popup>
     }
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [`
     .image-viewer-wrapper {
       width: 100%;

@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject, ChangeDetectionStrategy } from '@angular/core';
 
 import { RouterModule } from '@angular/router';
 import { ShareService, SharedMediaItem, SharedAlbumItem, ShareGroupListItem } from '../../services/share.service';
@@ -287,6 +287,7 @@ const DEBUG_PREFIX = '[Sharing Debug]';
     
     </div>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [`
     .sharing-page { max-width: 1200px; margin: 0 auto; padding: 32px 24px; }
     .page-header { margin-bottom: 32px; }

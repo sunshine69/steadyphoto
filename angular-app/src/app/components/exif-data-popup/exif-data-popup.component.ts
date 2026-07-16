@@ -58,6 +58,7 @@ interface ExifData {
       </div>
     </div>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [`
     .exif-popup-overlay {
       position: fixed;

@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, ChangeDetectionStrategy } from '@angular/core';
 
 
 @Component({
@@ -10,6 +10,7 @@ import { Component } from '@angular/core';
       <p class="placeholder-text">Explore view coming soon...</p>
     </div>
   `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [`
     .explore-container {
       padding: 20px;

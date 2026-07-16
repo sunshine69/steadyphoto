@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, AfterViewInit, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, AfterViewInit, inject, ChangeDetectionStrategy } from '@angular/core';
 import { Router, ActivatedRoute } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { PresentationService, MediaItem } from '../../services/presentation.service';
@@ -50,8 +50,8 @@ import { PhotoService } from '../../services/photo.service';
           <!-- Image display for photos -->
           @if (currentItem?.mediaType !== 'video') {
             <img
-              [src]="currentItem.path"
-              [alt]="currentItem.filename || 'Presentation media'"
+              [src]="currentItem?.path"
+              [alt]="currentItem?.filename || 'Presentation media'"
               class="presentation-media"
               (error)="onMediaError($event)"
               >
@@ -105,6 +105,7 @@ import { PhotoService } from '../../services/photo.service';
     
     <!-- Close button when presentation is closed (for testing) -->
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [`
     .presentation-overlay {
       position: fixed;

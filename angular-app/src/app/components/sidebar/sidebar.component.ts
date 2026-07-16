@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject, ChangeDetectionStrategy } from '@angular/core';
 import { Router } from '@angular/router';
 
 import { RouterModule, RouterLinkActive } from '@angular/router';
@@ -150,6 +150,7 @@ import { Subscription } from 'rxjs';
       </div>
     </div>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [`
     .sidebar {
       position: fixed;

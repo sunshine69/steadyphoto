@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, ChangeDetectionStrategy } from '@angular/core';
 
 import { FormsModule } from '@angular/forms';
 import { TrashService } from '../../services/trash.service';
@@ -134,6 +134,7 @@ import { Photo, ListPhotosResponse } from '../../models/photo.model';
       }
     </div>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [`
     .trash-container {
       padding: 24px;

@@ -1,4 +1,4 @@
-import { Component, inject, OnInit } from '@angular/core';
+import { Component, inject, OnInit, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterModule } from '@angular/router';
 import { ShareService, SharedMediaItem, SharedAlbumItem } from '../../services/share.service';
@@ -127,6 +127,7 @@ import { Photo } from '../../models/photo.model';
       }
     </div>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [`
     .shared-with-me-container {
       padding: 24px;

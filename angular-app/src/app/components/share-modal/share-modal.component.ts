@@ -1,4 +1,4 @@
-import { Component, ElementRef, ViewChild, OnInit, OnDestroy, inject, HostListener, NgZone } from '@angular/core';
+import { Component, ElementRef, ViewChild, OnInit, OnDestroy, inject, HostListener, NgZone, ChangeDetectionStrategy } from '@angular/core';
 
 import { FormsModule } from '@angular/forms';
 import { ShareService, ShareRequest, PublicShareRequest, CreateShareResponseFull, PublicShareLinkResponse } from '../../services/share.service';
@@ -190,6 +190,7 @@ import { Subscription } from 'rxjs';
       </div>
     }
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [`
     /* Backdrop */
     .modal-backdrop {

@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, inject, ViewChild } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject, ViewChild, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterModule } from '@angular/router';
@@ -201,10 +201,7 @@ import { ExifTriggerService } from './services/exif-trigger.service';
 
     <!-- Presentation Mode Overlay (shown when presentation service is open) -->
     @if (presentationService.isOpen$ | async) {
-      <app-presentation-mode
-        [items]="presentationService.getItems()"
-        [startIndex]="presentationService.getCurrentIndex()">
-      </app-presentation-mode>
+      <app-presentation-mode></app-presentation-mode>
     }
 
     <!-- Share Modal (shown when share trigger service is open) -->
@@ -316,6 +313,7 @@ import { ExifTriggerService } from './services/exif-trigger.service';
       </footer>
     }
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [`
     .app-layout {
       display: flex;

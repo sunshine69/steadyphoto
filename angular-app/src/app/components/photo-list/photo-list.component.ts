@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectionStrategy } from '@angular/core';
 
 import { FormsModule } from '@angular/forms';
 import { Subscription, combineLatest, switchMap, debounceTime, distinctUntilChanged, of } from 'rxjs';
@@ -82,6 +82,7 @@ import { SelectionService } from '../../services/selection.service';
       }
     </div>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [`
     .photo-list-container { padding-top: 5rem; padding-bottom: 2rem; width: 100%; position: relative; }
     .grid-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 1.5rem; width: 100%; }

@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
@@ -166,6 +166,7 @@ import { UserManagementService, User } from '../../services/user-management.serv
       </div>
     }
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [`
     .user-management-overlay {
       position: fixed;

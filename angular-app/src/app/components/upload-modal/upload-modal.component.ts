@@ -1,8 +1,6 @@
-import { Component, ElementRef, ViewChild, OnInit, OnDestroy, inject } from '@angular/core';
+import { Component, ElementRef, ViewChild, OnInit, OnDestroy, inject, ChangeDetectionStrategy } from '@angular/core';
 
 import { HttpEventType } from '@angular/common/http';
-
-
 
 import { UploadService, UploadProgressEvent } from '../../services/upload.service';
 import { UploadTriggerService } from '../../services/upload-trigger.service';
@@ -81,7 +79,7 @@ interface SelectableFile {
                         class="progress-fill"
                       [style.width.%]="evt.progress"></div>
                     </div>
-                    <span class="pct-text">{{ evt.status === 'completed' ? 100 : Math.round(evt.progress) }}%</span>
+                    <span class="pct-text">{{ getPctText(evt) }}%</span>
                   </div>
                 }
               </div>
@@ -117,6 +115,7 @@ interface SelectableFile {
       </div>
     }
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [`
     /* Backdrop */
     .modal-backdrop {
@@ -327,6 +326,11 @@ export class UploadModalComponent implements OnInit, OnDestroy {
   getUploadedIds(): string {
     if (!this.response?.uploaded) return '';
     return this.response.uploaded.map((item: any) => item.id).join(', ');
+  }
+
+  /** Helper for the progress percentage text */
+  getPctText(evt: UploadProgressEvent): number {
+    return evt.status === 'completed' ? 100 : Math.round(evt.progress);
   }
 
   startUpload(): void {

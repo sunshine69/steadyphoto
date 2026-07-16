@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+import { Component, inject, ChangeDetectionStrategy } from '@angular/core';
 
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -8,6 +8,7 @@ import { AuthService } from '../../services/auth.service';
     selector: 'app-settings',
     imports: [FormsModule],
     templateUrl: './settings.component.html',
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [`
     .settings-wrapper {
       min-height: calc(100vh - 64px); /* Subtract sidebar height */

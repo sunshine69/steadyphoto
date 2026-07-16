@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, OnDestroy } from '@angular/core';
+import { Component, inject, OnInit, OnDestroy, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule, Router } from '@angular/router';
 import { AlbumService } from '../../services/album.service';
@@ -202,6 +202,7 @@ import { Subscription } from 'rxjs';
     }
     
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [`
     .album-card { 
       cursor: pointer; 

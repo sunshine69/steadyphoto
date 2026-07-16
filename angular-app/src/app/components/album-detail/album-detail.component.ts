@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, OnDestroy, ChangeDetectorRef, NgZone } from '@angular/core';
+import { Component, inject, OnInit, OnDestroy, ChangeDetectorRef, NgZone, ChangeDetectionStrategy } from '@angular/core';
 
 import { ActivatedRoute, RouterModule, Router } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
@@ -189,6 +189,7 @@ import { GalleryStateService } from '../../services/gallery-state.service';
         }
       </div>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [`
     .grid-container {
       display: grid;

@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+import { Component, inject, ChangeDetectionStrategy } from '@angular/core';
 
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
@@ -8,6 +8,7 @@ import { AuthService } from '../../services/auth.service';
     selector: 'app-register',
     imports: [FormsModule, RouterLink],
     templateUrl: './register.component.html',
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [`
     .register-wrapper {
       min-height: 100vh;

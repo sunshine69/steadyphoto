@@ -42,7 +42,7 @@ import { ShareTriggerService } from '../../services/share-trigger.service';
       </div >
       <div class="photo-info">
         <p class="photo-filename" [title]="photo.filename">{{ photo.filename }}</p>
-        <p class="photo-date">{{ isVideo() ? formatDuration(photo.videoMetadata?.duration) : formatDisplayDate(getPhotoDate(photo)) }}</p>
+        <p class="photo-date">{{ isVideo() ? formatDuration($safeNavigationMigration(photo.videoMetadata?.duration)) : formatDisplayDate(getPhotoDate(photo)) }}</p>
         <!-- EXIF Data Display -->
         @if (photo.metadata && !isVideo()) {
           <div class="exif-info">

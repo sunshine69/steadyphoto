@@ -1,4 +1,4 @@
-import { Component, OnInit, inject } from '@angular/core';
+import { Component, OnInit, inject, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -119,11 +119,11 @@ import { environment } from '../../../environments/environment';
                 </li>
                 @if (isVideo()) {
                   <li class="list-group-item">
-                    <span class="text-muted">Duration:</span> {{ formatDuration(mediaItem?.videoMetadata?.duration) }}
+                    <span class="text-muted">Duration:</span> {{ formatDuration($safeNavigationMigration(mediaItem?.videoMetadata?.duration)) }}
                   </li>
                 }
                 <li class="list-group-item">
-                  <span class="text-muted">Captured:</span> {{ mediaItem?.captured_at | date:'fullDate' }}
+                  <span class="text-muted">Captured:</span> {{ $safeNavigationMigration(mediaItem?.captured_at) | date:'fullDate' }}
                 </li>
                 @if (mediaItem?.width || mediaItem?.height) {
                   <li class="list-group-item">
@@ -152,6 +152,7 @@ import { environment } from '../../../environments/environment';
       }
     </div>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [`
     .image-viewer-wrapper {
       width: 100%;
@@ -277,7 +278,7 @@ export class PublicShareMediaComponent implements OnInit {
     });
   }
 
-  private verifyPassword(): void {
+  public verifyPassword(): void {
  
     const token = this.route.snapshot.paramMap.get('token');
     if (!token || !this.passwordInput) return;

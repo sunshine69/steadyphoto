@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ShareService, PublicShareListItem } from '../../services/share.service';
 
@@ -88,6 +88,7 @@ import { ShareService, PublicShareListItem } from '../../services/share.service'
       }
     </div>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [`
     .my-shares-container {
       padding: 24px;

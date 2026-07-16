@@ -1,7 +1,7 @@
 import { bootstrapApplication } from '@angular/platform-browser';
 import { provideZoneChangeDetection, importProvidersFrom } from '@angular/core';
 import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
-import { provideHttpClient, withInterceptors } from '@angular/common/http';
+import { provideHttpClient, withInterceptors, withXhr } from '@angular/common/http';
 import { provideRouter } from '@angular/router'; // Modern router provider
 import { AppComponent } from './app/app.component';
 import { routes } from './app/app.routes';
@@ -18,7 +18,7 @@ bootstrapApplication(AppComponent, {
     // 3. Kept for legacy animation modules
     importProvidersFrom(BrowserAnimationsModule),
     
-    provideHttpClient(withInterceptors([authInterceptor]))
+    provideHttpClient(withXhr(), withInterceptors([authInterceptor]))
   ]
 }).catch(err => console.error(err));
 

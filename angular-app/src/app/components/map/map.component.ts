@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, ChangeDetectionStrategy } from '@angular/core';
 
 
 @Component({
@@ -10,6 +10,7 @@ import { Component } from '@angular/core';
       <p class="placeholder-text">Interactive map view coming soon...</p>
     </div>
   `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [`
     .map-container {
       padding: 20px;

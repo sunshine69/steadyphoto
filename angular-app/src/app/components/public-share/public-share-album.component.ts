@@ -1,4 +1,4 @@
-import { Component, OnInit, inject } from '@angular/core';
+import { Component, OnInit, inject, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -134,6 +134,7 @@ import { PhotoCardComponent } from '../photo-card/photo-card.component';
       }
     </div>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [`
     .grid-container {
       display: grid;
@@ -265,7 +266,7 @@ export class PublicShareAlbumComponent implements OnInit {
     });
   }
 
-  private verifyPassword(): void {
+  public verifyPassword(): void {
     const token = this.route.snapshot.paramMap.get('token');
     if (!token || !this.passwordInput) {
       return;
