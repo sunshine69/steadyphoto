@@ -77,9 +77,9 @@ if command -v gomobile &> /dev/null; then
     # Include default compiler flags (-O2) alongside the 16KB alignment parameters
     export CGO_CFLAGS="-O2"
     export CGO_LDFLAGS="-O2 -s -w -Wl,-z,max-page-size=16384"
-
+# To support 32 bit arm need to add 'android/arm' but then max-page-size=16384 above wont work as 32 bit use 4k default. Thus probably drop Oxygen Support for all
     gomobile bind \
-        -v \ # To support 32 bit arm need to add 'android/arm' but then max-page-size=16384 above wont work as 32 bit use 4k default. Thus probably drop Oxygen Support for all
+        -v \
         -target $GOMOBILE_TARGET \
         -androidapi 21 \
         -ldflags="-extldflags=-Wl,-z,max-page-size=16384 -s -w" \

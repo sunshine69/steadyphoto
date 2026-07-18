@@ -6,6 +6,7 @@ import com.steadyphoto.sync.data.remote.api.ApiClient
 import com.steadyphoto.sync.di.appModule
 import com.steadyphoto.sync.worker.SyncManager
 import com.steadyphoto.sync.worker.SyncService
+import kotlinx.coroutines.flow.first
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
 import org.koin.core.context.startKoin
