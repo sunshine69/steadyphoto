@@ -117,8 +117,66 @@ import { PhotoService } from '../../services/photo.service';
       z-index: 9999;
       display: flex;
       flex-direction: column;
-      justify-content: center;
       align-items: center;
+    }
+
+    /* Landscape orientation — media left, controls right */
+    @media (orientation: landscape) and (max-width: 768px) {
+      .presentation-overlay {
+        flex-direction: row;
+        align-items: stretch;
+      }
+
+      .media-container {
+        flex: 1;
+        width: auto;
+        padding: 10px;
+        min-width: 0;
+      }
+
+      .presentation-media {
+        width: 100%;
+        height: 100%;
+      }
+
+      .bottom-controls {
+        width: 120px;
+        flex-shrink: 0;
+        flex-direction: column;
+        padding: 10px 10px 10px 8px;
+        gap: 6px;
+        overflow-y: auto;
+      }
+
+      .thumbnail-strip {
+        max-width: 100%;
+        overflow-x: hidden;
+        overflow-y: auto;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .thumb-btn {
+        width: 100%;
+        height: 50px;
+      }
+
+      .thumb-img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .progress-info {
+        font-size: 11px;
+        padding: 3px 8px;
+      }
+
+      .file-name {
+        max-width: 100%;
+        font-size: 11px;
+        text-align: center;
+      }
     }
 
     .btn-close-btn {
@@ -181,12 +239,14 @@ import { PhotoService } from '../../services/photo.service';
     }
 
     .media-container {
+      flex: 1;
       width: 100%;
-      height: 100%;
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 80px 100px;
+      overflow: hidden;
+      min-width: 0;
+      min-height: 0;
     }
 
     .presentation-media {
@@ -194,22 +254,30 @@ import { PhotoService } from '../../services/photo.service';
       max-height: 100%;
       object-fit: contain;
       display: block;
+      width: 100%;
+      height: 100%;
     }
 
     video.presentation-media {
       background-color: #000;
+      max-width: 100%;
+      max-height: 100%;
     }
 
     .bottom-controls {
-      position: absolute;
-      bottom: 20px;
-      left: 50%;
-      transform: translateX(-50%);
+      flex-shrink: 0;
+      width: 100%;
       display: flex;
       flex-direction: column;
       align-items: center;
       gap: 10px;
+      padding: 10px 20px 20px 20px;
+      box-sizing: border-box;
       z-index: 10000;
+    }
+
+    .bottom-controls .thumbnail-strip {
+      max-width: 100%;
     }
 
     .progress-info {
@@ -275,6 +343,107 @@ import { PhotoService } from '../../services/photo.service';
       left: 50%;
       transform: translate(-50%, -50%);
       z-index: 10002;
+    }
+
+    /* ===== Mobile Responsive Styles ===== */
+    @media (max-width: 768px) {
+      .btn-close-btn {
+        top: 10px;
+        right: 10px;
+        width: 40px;
+        height: 40px;
+        font-size: 28px;
+      }
+
+      .nav-btn {
+        width: 48px;
+        height: 48px;
+        font-size: 36px;
+      }
+
+      .nav-prev {
+        left: 10px;
+      }
+
+      .nav-next {
+        right: 10px;
+      }
+
+      .media-container {
+        flex: 1;
+        width: 100%;
+        padding: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+      }
+
+      .bottom-controls {
+        gap: 6px;
+        padding: 10px 16px 16px 16px;
+      }
+
+      .progress-info {
+        font-size: 12px;
+        padding: 4px 10px;
+      }
+
+      .thumbnail-strip {
+        max-width: 100vw;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .thumb-btn {
+        width: 50px;
+        height: 35px;
+        flex-shrink: 0;
+      }
+
+      .thumb-icon {
+        font-size: 16px;
+        line-height: 35px;
+      }
+
+      .file-name {
+        max-width: 90vw;
+        font-size: 11px;
+      }
+    }
+
+    /* Small mobile devices */
+    @media (max-width: 480px) {
+      .btn-close-btn {
+        width: 36px;
+        height: 36px;
+        font-size: 24px;
+      }
+
+      .nav-btn {
+        width: 40px;
+        height: 40px;
+        font-size: 32px;
+      }
+
+      .media-container {
+        flex: 1;
+        width: 100%;
+        padding: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+      }
+
+      .bottom-controls {
+        gap: 4px;
+        padding: 6px 12px 12px 12px;
+      }
+
+      .file-name {
+        font-size: 10px;
+      }
     }
   `]
 })

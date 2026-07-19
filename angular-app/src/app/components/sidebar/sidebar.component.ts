@@ -1,4 +1,5 @@
 import { Component, OnInit, OnDestroy, inject, ChangeDetectionStrategy } from '@angular/core';
+import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 
 import { RouterModule, RouterLinkActive } from '@angular/router';
@@ -7,9 +8,22 @@ import { Subscription } from 'rxjs';
 
 @Component({
     selector: 'app-sidebar',
-    imports: [RouterModule],
+    imports: [RouterModule, CommonModule],
     template: `
-    <div class="sidebar">
+    <!-- Mobile Overlay Backdrop -->
+    @if (isOpen) {
+      <div class="mobile-overlay" (click)="closeDrawer()"></div>
+    }
+
+    <!-- Sidebar -->
+    <div class="sidebar" [class.open]="isOpen" [class.mobile-hidden]="isOpen">
+      <!-- Mobile Close Button -->
+      @if (isMobile) {
+        <button class="sidebar-close-btn" (click)="closeDrawer()">
+          ×
+        </button>
+      }
+
       <!-- Logo Section -->
       <div class="sidebar-header">
         <div class="logo-container">
@@ -24,7 +38,7 @@ import { Subscription } from 'rxjs';
     
       <!-- Main Navigation -->
       <nav class="sidebar-nav">
-        <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{exact: true}" class="nav-item">
+        <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{exact: true}" class="nav-item" (click)="onNavClick()">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
             <circle cx="8.5" cy="8.5" r="1.5"/>
@@ -33,7 +47,7 @@ import { Subscription } from 'rxjs';
           <span>Photos</span>
         </a>
     
-        <a routerLink="/explore" routerLinkActive="active" class="nav-item">
+        <a routerLink="/explore" routerLinkActive="active" class="nav-item" (click)="onNavClick()">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="11" cy="11" r="8"/>
             <line x1="21" y1="21" x2="16.65" y2="16.65"/>
@@ -41,7 +55,7 @@ import { Subscription } from 'rxjs';
           <span>Explore</span>
         </a>
     
-        <a routerLink="/map" routerLinkActive="active" class="nav-item">
+        <a routerLink="/map" routerLinkActive="active" class="nav-item" (click)="onNavClick()">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/>
             <line x1="8" y1="2" x2="8" y2="18"/>
@@ -50,7 +64,7 @@ import { Subscription } from 'rxjs';
           <span>Map</span>
         </a>
     
-        <a routerLink="/sharing" routerLinkActive="active" class="nav-item">
+        <a routerLink="/sharing" routerLinkActive="active" class="nav-item" (click)="onNavClick()">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
             <circle cx="9" cy="7" r="4"/>
@@ -64,7 +78,7 @@ import { Subscription } from 'rxjs';
         <div class="nav-section">
           <h3 class="section-title">LIBRARY</h3>
     
-          <a routerLink="/favorites" routerLinkActive="active" class="nav-item">
+          <a routerLink="/favorites" routerLinkActive="active" class="nav-item" (click)="onNavClick()">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
             </svg>
@@ -72,7 +86,7 @@ import { Subscription } from 'rxjs';
           </a>
     
           <!-- Albums link - navigates to /albums page -->
-          <a routerLink="/albums" routerLinkActive="active" class="nav-item">
+          <a routerLink="/albums" routerLinkActive="active" class="nav-item" (click)="onNavClick()">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z"/>
               <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
@@ -80,15 +94,15 @@ import { Subscription } from 'rxjs';
             <span>Albums</span>
           </a>
     
-          <a routerLink="/utilities" routerLinkActive="active" class="nav-item">
+          <a routerLink="/utilities" routerLinkActive="active" class="nav-item" (click)="onNavClick()">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="3"/>
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06-.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
             </svg>
             <span>Utilities</span>
           </a>
     
-          <a routerLink="/archive" routerLinkActive="active" class="nav-item">
+          <a routerLink="/archive" routerLinkActive="active" class="nav-item" (click)="onNavClick()">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="21 8 21 21 3 21 3 8"/>
               <rect x="1" y="3" width="22" height="5"/>
@@ -97,7 +111,7 @@ import { Subscription } from 'rxjs';
             <span>Archive</span>
           </a>
     
-          <a routerLink="/locked" routerLinkActive="active" class="nav-item">
+          <a routerLink="/locked" routerLinkActive="active" class="nav-item" (click)="onNavClick()">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
               <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
@@ -105,7 +119,7 @@ import { Subscription } from 'rxjs';
             <span>Locked Folder</span>
           </a>
     
-          <a routerLink="/trash" routerLinkActive="active" class="nav-item">
+          <a routerLink="/trash" routerLinkActive="active" class="nav-item" (click)="onNavClick()">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="3 6 5 6 21 6"/>
               <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
@@ -129,14 +143,14 @@ import { Subscription } from 'rxjs';
         @if (isMenuOpen) {
           <div class="dropdown-menu" (click)="$event.stopPropagation()">
             <ul class="menu-list">
-              <li class="menu-item" (click)="onSettings()">
+              <li class="menu-item" (click)="onSettings(); onNavClick()">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <circle cx="12" cy="12" r="3"/>
-                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06-.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
                 </svg>
                 <span>Settings</span>
               </li>
-              <li class="menu-item" (click)="onLogout()">
+              <li class="menu-item" (click)="onLogout(); onNavClick()">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
                   <polyline points="16 17 21 12 16 7"/>
@@ -164,6 +178,25 @@ import { Subscription } from 'rxjs';
       flex-direction: column;
       z-index: 100;
       overflow-y: auto;
+      transform: translateX(-100%);
+      transition: transform 0.3s ease;
+    }
+
+    /* Desktop: sidebar always visible */
+    @media (min-width: 769px) {
+      .sidebar {
+        transform: translateX(0);
+      }
+    }
+
+    /* Mobile: sidebar hidden by default, shown when open */
+    @media (max-width: 768px) {
+      .sidebar {
+        transform: translateX(-100%);
+      }
+      .sidebar.open {
+        transform: translateX(0);
+      }
     }
 
     .sidebar::-webkit-scrollbar {
@@ -334,6 +367,55 @@ import { Subscription } from 'rxjs';
     .menu-item svg {
       flex-shrink: 0;
     }
+
+    /* Mobile Close Button */
+    .sidebar-close-btn {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      background: transparent;
+      border: none;
+      color: #9ca3af;
+      font-size: 28px;
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      z-index: 101;
+      border-radius: 50%;
+    }
+
+    .sidebar-close-btn:hover {
+      background-color: rgba(99, 102, 241, 0.1);
+      color: #e5e7eb;
+    }
+
+    /* Mobile Overlay Backdrop */
+    .mobile-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: rgba(0, 0, 0, 0.5);
+      z-index: 99;
+      display: none;
+    }
+
+    @media (max-width: 768px) {
+      .mobile-overlay {
+        display: block;
+      }
+    }
+
+    /* Mobile Styles */
+    @media (max-width: 768px) {
+      .sidebar {
+        width: 280px;
+      }
+    }
   `]
 })
 export class SidebarComponent implements OnInit, OnDestroy {
@@ -344,6 +426,8 @@ export class SidebarComponent implements OnInit, OnDestroy {
   emailInitial = 'U';
   emailUsername = 'User';
   isMenuOpen = false;
+  isOpen = false;
+  isMobile = window.innerWidth <= 768;
 
   ngOnInit(): void {
     // Subscribe to auth state changes to update display values reactively
@@ -361,10 +445,14 @@ export class SidebarComponent implements OnInit, OnDestroy {
 
     // Close menu when clicking outside
     document.addEventListener('click', this.closeMenuOnOutsideClick);
+
+    // Handle window resize for mobile detection
+    window.addEventListener('resize', this.handleResize);
   }
 
   ngOnDestroy(): void {
     document.removeEventListener('click', this.closeMenuOnOutsideClick);
+    window.removeEventListener('resize', this.handleResize);
     this.subscription?.unsubscribe();
   }
 
@@ -375,18 +463,36 @@ export class SidebarComponent implements OnInit, OnDestroy {
     }
   };
 
+  private handleResize = (): void => {
+    this.isMobile = window.innerWidth <= 768;
+  };
+
   toggleMenu(): void {
     this.isMenuOpen = !this.isMenuOpen;
   }
 
+  openDrawer(): void {
+    this.isOpen = true;
+    document.body.style.overflow = 'hidden';
+  }
+
+  closeDrawer(): void {
+    this.isOpen = false;
+    document.body.style.overflow = '';
+  }
+
+  onNavClick(): void {
+    if (this.isMobile) {
+      this.closeDrawer();
+    }
+  }
+
   onSettings(): void {
-    
     this.router.navigate(['/settings']);
     this.isMenuOpen = false;
   }
 
   onLogout(): void {
-    
     this.authService.logout().subscribe({
       next: () => {
         this.authService.clearUser();

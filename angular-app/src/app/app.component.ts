@@ -27,7 +27,16 @@ import { ExifTriggerService } from './services/exif-trigger.service';
     <!-- Main Layout Container -->
     <div class="app-layout">
       <!-- Fixed Sidebar Navigation -->
-      <app-sidebar></app-sidebar>
+      <app-sidebar #sidebar></app-sidebar>
+    
+      <!-- Mobile Hamburger Button (only visible on mobile) -->
+      <button class="mobile-hamburger" (click)="toggleSidebar()">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="3" y1="6" x2="21" y2="6"/>
+          <line x1="3" y1="12" x2="21" y2="12"/>
+          <line x1="3" y1="18" x2="21" y2="18"/>
+        </svg>
+      </button>
     
       <!-- Main Content Area -->
       <main class="main-content">
@@ -657,6 +666,166 @@ import { ExifTriggerService } from './services/exif-trigger.service';
       padding: 24px;
       background-color: #0f172a;
     }
+
+    /* ===== Mobile Hamburger Button ===== */
+    .mobile-hamburger {
+      display: none;
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      z-index: 102;
+      width: 44px;
+      height: 44px;
+      background-color: #1a1b2e;
+      border: 1px solid #2d3748;
+      border-radius: 8px;
+      color: #e5e7eb;
+      cursor: pointer;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    }
+
+    .mobile-hamburger:hover {
+      background-color: #2d3748;
+    }
+
+    /* ===== Responsive Styles ===== */
+    @media (max-width: 768px) {
+      /* Show hamburger button */
+      .mobile-hamburger {
+        display: flex;
+      }
+
+      /* Adjust main content margin */
+      .main-content {
+        margin-left: 0;
+        padding-top: 0;
+      }
+
+      /* Header adjustments */
+      .top-header {
+        padding: 12px 16px;
+        padding-left: 72px; /* Space for hamburger button */
+      }
+
+      .header-actions {
+        gap: 8px;
+      }
+
+      /* Selection actions - compact on mobile */
+      .selection-actions-panel {
+        margin-right: 4px;
+        padding: 4px 6px;
+      }
+
+      .selection-action-select {
+        min-width: 110px;
+        font-size: 12px;
+        padding: 4px 24px 4px 6px;
+      }
+
+      .selected-count-badge {
+        min-width: 24px;
+        height: 24px;
+        font-size: 11px;
+      }
+
+      /* Hide date range on mobile if too cramped */
+      .date-range-container {
+        margin-left: 8px;
+        padding: 4px 8px;
+      }
+
+      .date-segment {
+        width: 28px;
+        height: 28px;
+        font-size: 12px;
+      }
+
+      .date-year {
+        width: 36px;
+      }
+
+      .date-range-separator {
+        display: none;
+      }
+
+      /* Adjust icon buttons for mobile touch */
+      .icon-btn {
+        width: 36px;
+        height: 36px;
+      }
+
+      .user-avatar {
+        width: 32px;
+        height: 32px;
+        font-size: 12px;
+      }
+
+      /* Router outlet content padding */
+      router-outlet + * {
+        padding: 16px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .top-header {
+        padding: 10px 12px;
+        padding-left: 64px;
+      }
+
+      .mobile-hamburger {
+        top: 10px;
+        left: 10px;
+        width: 40px;
+        height: 40px;
+      }
+
+      .header-actions {
+        gap: 6px;
+      }
+
+      /* Hide less critical action buttons on very small screens */
+      .select-all-btn {
+        display: none;
+      }
+
+      /* Compact date range */
+      .date-segment {
+        width: 24px;
+        height: 26px;
+        font-size: 11px;
+      }
+
+      .date-year {
+        width: 32px;
+      }
+
+      .date-separator {
+        font-size: 11px;
+      }
+
+      /* Adjust search container */
+      .search-container {
+        max-width: 100%;
+      }
+
+      .search-scope-select {
+        padding: 8px 28px 8px 40px;
+        font-size: 13px;
+      }
+
+      .search-input {
+        padding: 8px 36px 8px 12px;
+        font-size: 13px;
+      }
+
+      /* Router outlet content padding */
+      router-outlet + * {
+        padding: 12px;
+      }
+    }
   `]
 })
 export class AppComponent implements OnInit, OnDestroy {
@@ -707,6 +876,7 @@ export class AppComponent implements OnInit, OnDestroy {
   public shareTrigger = inject(ShareTriggerService);
   
   @ViewChild('userManagement', { static: false }) userManagementComponent!: UserManagementComponent;
+  @ViewChild('sidebar', { static: false }) sidebarComponent!: SidebarComponent;
 
   private authService = inject(AuthService);
   private authSubscription?: Subscription;
@@ -810,6 +980,10 @@ export class AppComponent implements OnInit, OnDestroy {
 
     // Initial check for admin status and avatar
     this.checkAdminStatus();
+  }
+
+  toggleSidebar(): void {
+    this.sidebarComponent?.openDrawer();
   }
 
   onUploadClick(): void {
