@@ -6,7 +6,11 @@ import com.steadyphoto.sync.data.remote.api.ApiClient
 import com.steadyphoto.sync.di.appModule
 import com.steadyphoto.sync.worker.SyncManager
 import com.steadyphoto.sync.worker.SyncService
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.SupervisorJob
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
 import org.koin.core.context.startKoin
@@ -17,6 +21,9 @@ class SteadyPhotoApplication : Application() {
     // Use lazy injection to ensure Koin is started before we access it
     private val syncManager: SyncManager by inject()
     private val settingsRepository: com.steadyphoto.sync.data.settings.SettingsRepository by inject()
+
+    // CoroutineScope for background initialization tasks (e.g. auto-start at boot)
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     override fun onCreate() {
         super.onCreate()
@@ -31,10 +38,9 @@ class SteadyPhotoApplication : Application() {
             modules(appModule)
         }
 
-        // Use runBlocking only once here to check boot setting if we are being triggered by a broadcast or startup
-        // Note: In a real production app, you might want to avoid blocking the main thread in onCreate. 
-        // However, for this initialization sequence it's acceptable.
-        kotlinx.coroutines.runBlocking {
+        // Launch auto-start logic in a coroutine (not runBlocking) to avoid blocking
+        // the main thread during boot, which can cause ANR on some devices.
+        appScope.launch {
             val autoStartAtBoot = settingsRepository.autoStartAtBootFlow.first()
 
             if (autoStartAtBoot) {

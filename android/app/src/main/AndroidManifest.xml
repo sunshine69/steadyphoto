@@ -67,6 +67,10 @@
                 <action android:name="android.intent.action.ACTION_EXTERNAL_APPLICATIONS_AVAILABLE" />
                 <action android:name="android.intent.action.ACTION_EXTERNAL_APPLICATIONS_UNAVAILABLE" />
             </intent-filter>
+            <intent-filter>
+                <!-- CRITICAL: Without this filter, Android will never deliver BOOT_COMPLETED to this receiver -->
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
         </receiver>
 
     </application>

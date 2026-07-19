@@ -70,6 +70,7 @@ class SettingsViewModel(
     fun setAutoStartAtBoot(enabled: Boolean) {
         viewModelScope.launch {
             settingsRepository.setAutoStartAtBoot(enabled)
+            syncManager.rescheduleWithCurrentSettings()
         }
     }
 }
