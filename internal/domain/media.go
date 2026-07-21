@@ -111,23 +111,24 @@ const (
 
 // Media represents a single image/video asset
 type Media struct {
-	ID            uuid.UUID      `db:"id" json:"id"`
-	Path          string         `db:"path" json:"path"`
-	Filename      string         `db:"filename" json:"filename"`
-	Hash          string         `db:"hash" json:"hash"`
-	SizeBytes     int64          `db:"size_bytes" json:"sizeBytes"`
-	Width         int            `db:"width" json:"width"`
-	Height        int            `db:"height" json:"height"`
-	CapturedAt    time.Time      `db:"captured_at" json:"capturedAt"`
-	MediaType     MediaType      `db:"media_type" json:"mediaType"`
-	Metadata      Metadata       `db:"metadata" json:"metadata"`
-	VideoMetadata VideoMetadata  `db:"video_metadata" json:"videoMetadata"`
-	CreatedAt     time.Time      `db:"created_at" json:"createdAt"`
-	UpdatedAt     time.Time      `db:"updated_at" json:"updatedAt"`
-	Tags          string             `db:"tags" json:"tags"`
-	UserID        uuid.UUID          `db:"user_id" json:"userId"`
-	ClientSource  ClientSource     `db:"client_source" json:"clientSource"`
-	DeletedAt     *time.Time         `db:"deleted_at" json:"-"` // Soft delete timestamp, not exposed in JSON API
+	ID              uuid.UUID      `db:"id" json:"id"`
+	Path            string         `db:"path" json:"path"`
+	Filename        string         `db:"filename" json:"filename"`
+	Hash            string         `db:"hash" json:"hash"`
+	SizeBytes       int64          `db:"size_bytes" json:"sizeBytes"`
+	Width           int            `db:"width" json:"width"`
+	Height          int            `db:"height" json:"height"`
+	CapturedAt      time.Time      `db:"captured_at" json:"capturedAt"`
+	MediaType       MediaType      `db:"media_type" json:"mediaType"`
+	Metadata        Metadata       `db:"metadata" json:"metadata"`
+	VideoMetadata   VideoMetadata  `db:"video_metadata" json:"videoMetadata"`
+	CreatedAt       time.Time      `db:"created_at" json:"createdAt"`
+	UpdatedAt       time.Time      `db:"updated_at" json:"updatedAt"`
+	Tags            string             `db:"tags" json:"tags"`
+	UserID          uuid.UUID          `db:"user_id" json:"userId"`
+	ClientSource    ClientSource     `db:"client_source" json:"clientSource"`
+	DeletedAt       *time.Time         `db:"deleted_at" json:"-"` // Soft delete timestamp, not exposed in JSON API
+	FileCreatedAt   *time.Time       `db:"file_created_at" json:"fileCreatedAt,omitempty"` // Filesystem creation time from upload
 }
 
 // Face represents a detected face in a media item

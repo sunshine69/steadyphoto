@@ -334,6 +334,14 @@ func (h *MediaUploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		// Parse file creation date from client (filesystem DATE_ADDED)
+		if fileCreatedAtStr := r.FormValue("fileCreatedAt"); fileCreatedAtStr != "" {
+			if fcTime, err := time.Parse("2006/01/02 15:04:05", fileCreatedAtStr); err == nil {
+				meta.FileCreatedAt = &fcTime
+				mlog.Info("[INFO] UploadHandler: file creation date from client for '%s': %s", header.Filename, fcTime.Format(time.RFC3339))
+			}
+		}
+
 		// Determine CapturedAt: prefer VideoMetadata.CreatedAt (for videos), then EXIF DateTimeOriginal (for images), then filename heuristic, fall back to upload time
 		meta.CapturedAt = time.Now() // default fallback
 		if !capturedAt.IsZero() {
@@ -393,12 +401,13 @@ func (h *MediaUploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 
 		// FIX: Return the actual filesystem relative path instead of an API URL.
 		uploaded = append(uploaded, map[string]interface{}{
-			"id":          meta.ID.String(),
-			"filename":    header.Filename,
-			"mediaType":   string(meta.MediaType),
-			"path":        relPathFromRoot, // Use the actual relative path stored in DB for filesystem resolution.
-			"size":        n,
-			"captured_at": meta.CapturedAt.Format(time.RFC3339),
+			"id":              meta.ID.String(),
+			"filename":        header.Filename,
+			"mediaType":       string(meta.MediaType),
+			"path":            relPathFromRoot,
+			"size":            n,
+			"captured_at":     meta.CapturedAt.Format(time.RFC3339),
+			"file_created_at": meta.FileCreatedAt,
 		})
 
 		mlog.Info("[INFO] UploadHandler: Successfully processed '%s' (ID=%s)", header.Filename, meta.ID)

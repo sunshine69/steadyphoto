@@ -256,7 +256,8 @@ class UploadManager(
                     file = filePart,
                     fileName = item.fileName.toRequestBody("text/plain".toMediaType()),
                     mimeType = item.mimeType.toRequestBody("text/plain".toMediaType()),
-                    fileSize = item.fileSize.toString().toRequestBody("text/plain".toMediaType())
+                    fileSize = item.fileSize.toString().toRequestBody("text/plain".toMediaType()),
+                    fileCreatedAt = (item.fileCreatedAt?.toString() ?: "").toRequestBody("text/plain".toMediaType())
                 )
 
                 _uploadProgress.update { current ->

@@ -66,7 +66,8 @@ interface ApiService {
         @Part("fileName") fileName: RequestBody,
         @Part("mimeType") mimeType: RequestBody,
         @Part("fileSize") fileSize: RequestBody,
-        @Part("uploadId") uploadId: RequestBody? = null
+        @Part("uploadId") uploadId: RequestBody? = null,
+        @Part("fileCreatedAt") fileCreatedAt: RequestBody? = null
     ): com.steadyphoto.sync.data.remote.dto.UploadResponse
 
     /**

@@ -310,8 +310,8 @@ func (r *PostgresMediaRepository) GetDB() *sqlx.DB {
 
 func (r *PostgresMediaRepository) Create(ctx context.Context, media *domain.Media) error {
 	query := `
-		INSERT INTO media (id, user_id, path, filename, hash, size_bytes, width, height, captured_at, media_type, metadata, video_metadata, created_at, updated_at, tags)
-		VALUES (:id, :user_id, :path, :filename, :hash, :size_bytes, :width, :height, :captured_at, :media_type, :metadata, :video_metadata, :created_at, :updated_at, :tags)
+		INSERT INTO media (id, user_id, path, filename, hash, size_bytes, width, height, captured_at, file_created_at, media_type, metadata, video_metadata, created_at, updated_at, tags)
+		VALUES (:id, :user_id, :path, :filename, :hash, :size_bytes, :width, :height, :captured_at, :file_created_at, :media_type, :metadata, :video_metadata, :created_at, :updated_at, :tags)
 	`
 	_, err := r.db.NamedExecContext(ctx, query, media)
 	return err
@@ -348,7 +348,7 @@ func (r *PostgresMediaRepository) GetByHash(ctx context.Context, hash string) (*
 func (r *PostgresMediaRepository) Update(ctx context.Context, media *domain.Media) error {
 	query := `
 		UPDATE media
-		SET path = :path, filename = :filename, size_bytes = :size_bytes, width = :width, height = :height, media_type = :media_type, metadata = :metadata, video_metadata = :video_metadata, updated_at = :updated_at, tags = :tags
+		SET path = :path, filename = :filename, size_bytes = :size_bytes, width = :width, height = :height, media_type = :media_type, metadata = :metadata, video_metadata = :video_metadata, file_created_at = :file_created_at, updated_at = :updated_at, tags = :tags
 		WHERE id = :id AND user_id = :user_id AND deleted_at IS NULL
 	`
 	result, err := r.db.NamedExecContext(ctx, query, media)

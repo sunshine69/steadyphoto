@@ -36,6 +36,9 @@ data class MediaItemEntity(
     /** Capture time from EXIF data (if available) */
     val captureTime: Long? = null,
 
+    /** Filesystem creation time from MediaStore DATE_ADDED (epoch seconds) */
+    val fileCreatedAt: Long? = null,
+
     /** Camera model from EXIF (if available) */
     val cameraModel: String? = null,
 

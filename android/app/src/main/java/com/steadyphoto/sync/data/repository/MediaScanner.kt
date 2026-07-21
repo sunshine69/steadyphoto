@@ -173,7 +173,7 @@ class MediaScanner(
         
         contentResolver.query(
             uri,
-            arrayOf(idColumnName, MediaStore.MediaColumns.DISPLAY_NAME, mimeTypeColumn, MediaStore.MediaColumns.SIZE),
+            arrayOf(idColumnName, MediaStore.MediaColumns.DISPLAY_NAME, mimeTypeColumn, MediaStore.MediaColumns.SIZE, MediaStore.MediaColumns.DATE_ADDED),
             finalSelection,
             null,
             null
@@ -185,6 +185,7 @@ class MediaScanner(
                     val fileName = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)) ?: continue
                     val mimeType = cursor.getString(cursor.getColumnIndexOrThrow(mimeTypeColumn)) ?: continue
                     val fileSize = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE))
+                    val dateAdded = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_ADDED))
 
                     val contentUri = uri.buildUpon().appendPath(id.toString()).build()
 
@@ -201,12 +202,13 @@ class MediaScanner(
                         mimeType = mimeType,
                         fileSize = fileSize,
                         uploadStatus = com.steadyphoto.sync.data.local.entity.UploadStatus.PENDING,
+                        fileCreatedAt = dateAdded,
                     )
 
                     val insertedId = mediaItemDao.insert(entity)
                     if (insertedId != -1L) {
                         newItemsInserted++
-                        Log.d(TAG, "Added new file via type scan: $fileName")
+                        Log.d(TAG, "Added new file via type scan: $fileName (dateAdded=$dateAdded)")
                     }
                 } catch (e: Exception) {
                     Log.w(TAG, "Error processing media item", e)

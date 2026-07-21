@@ -447,6 +447,14 @@ func (h *MediaUploadHandlerSingle) HandleSingleFileUpload(w http.ResponseWriter,
 		CapturedAt: time.Now(),
 	}
 
+	// Parse file creation date from client (filesystem DATE_ADDED)
+	if fileCreatedAtStr := r.FormValue("fileCreatedAt"); fileCreatedAtStr != "" {
+		if fcTime, err := time.Parse("2006/01/02 15:04:05", fileCreatedAtStr); err == nil {
+			meta.FileCreatedAt = &fcTime
+			mlog.Info("[INFO] UploadHandlerSingle: file creation date from client for '%s': %s", fileName, fcTime.Format(time.RFC3339))
+		}
+	}
+
 	var capturedAt time.Time
 	var exifErr error
 	var exifMeta domain.Metadata
@@ -466,6 +474,14 @@ func (h *MediaUploadHandlerSingle) HandleSingleFileUpload(w http.ResponseWriter,
 			meta.VideoMetadata = *videoMeta
 			mlog.Info("[INFO] UploadHandlerSingle: Video metadata extracted for '%s' - codec=%s res=%dx%d dur=%.1fs fps=%.2f",
 				fileName, videoMeta.VideoCodec, videoMeta.Width, videoMeta.Height, videoMeta.Duration, videoMeta.FrameRate)
+		}
+	}
+
+	// Parse file creation date from client (filesystem DATE_ADDED)
+	if fileCreatedAtStr := r.FormValue("fileCreatedAt"); fileCreatedAtStr != "" {
+		if fcTime, err := time.Parse("2006/01/02 15:04:05", fileCreatedAtStr); err == nil {
+			meta.FileCreatedAt = &fcTime
+			mlog.Info("[INFO] UploadHandlerSingle: file creation date from client for '%s': %s", fileName, fcTime.Format(time.RFC3339))
 		}
 	}
 
@@ -493,12 +509,13 @@ func (h *MediaUploadHandlerSingle) HandleSingleFileUpload(w http.ResponseWriter,
 	}
 
 	uploadedMedia := map[string]interface{}{
-		"id":          meta.ID.String(),
-		"filename":    fileName,
-		"mediaType":   string(meta.MediaType),
-		"path":        relPathFromRoot,
-		"size":        n,
-		"captured_at": meta.CapturedAt.Format(time.RFC3339),
+		"id":              meta.ID.String(),
+		"filename":        fileName,
+		"mediaType":       string(meta.MediaType),
+		"path":            relPathFromRoot,
+		"size":            n,
+		"captured_at":     meta.CapturedAt.Format(time.RFC3339),
+		"file_created_at": meta.FileCreatedAt,
 	}
 
 	response := map[string]interface{}{
