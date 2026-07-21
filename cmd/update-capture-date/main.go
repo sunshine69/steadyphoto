@@ -14,6 +14,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
+	"steadyphoto/internal/processor"
 )
 
 func init() {
@@ -24,6 +25,7 @@ type MediaRecord struct {
 	ID         string         `db:"id"`
 	Metadata   sql.NullString `db:"metadata"`
 	CapturedAt time.Time      `db:"captured_at"`
+	Filename   string         `db:"filename"`
 }
 
 func main() {
@@ -58,7 +60,7 @@ func main() {
 	ctx := context.Background()
 
 	// Query all media records
-	query := `SELECT id, metadata, captured_at FROM media WHERE deleted_at IS NULL`
+	query := `SELECT id, metadata, captured_at, filename FROM media WHERE deleted_at IS NULL`
 	var records []MediaRecord
 	err = db.SelectContext(ctx, &records, query)
 	if err != nil {
@@ -92,7 +94,13 @@ func main() {
 		}
 
 		if dateStr == "" {
-			continue
+			// Fallback: try to parse date from filename
+			if fnDate, _, _ := processor.ExtractDateFromString(record.Filename); !fnDate.IsZero() {
+				dateStr = fnDate.Format("2006:01:02 15:04:05")
+				mlog.Info("[FILENAME] Using filename heuristic for %s: %s", record.ID, record.Filename)
+			} else {
+				continue
+			}
 		}
 
 		// Parse the date string
