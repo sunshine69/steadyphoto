@@ -3,6 +3,7 @@ package processor
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -21,6 +22,11 @@ func ParseDateFromFilename(filename string) time.Time {
 // Tries each date pattern. For each match, extracts capture groups,
 // builds a canonical date string, then tries Go time.Parse with each layout.
 func ExtractDateFromString(input string) (time.Time, string, error) {
+	// First try: look for long digit blocks (16+ digits = microseconds Unix time)
+	if t, remaining, err := tryUnixTimestamp(input); err == nil {
+		return t, remaining, nil
+	}
+
 	for _, dp := range datePatterns {
 		loc := dp.re.FindStringIndex(input)
 		if loc == nil {
@@ -112,4 +118,59 @@ var datePatterns = []datePattern{
 		},
 		canonSepIdxs: []int{2, 4},
 	},
+}
+
+// tryUnixTimestamp looks for a 16+ digit block and converts it via ParseFlexibleUnixString.
+func tryUnixTimestamp(input string) (time.Time, string, error) {
+	re := regexp.MustCompile(`\d+`)
+	digitStr := re.FindString(input)
+	if len(digitStr) < 16 {
+		return time.Time{}, input, fmt.Errorf("no 16+ digit block found")
+	}
+	t, err := ParseFlexibleUnixString(input)
+	if err != nil {
+		return time.Time{}, input, err
+	}
+	// Remove the digit block from input
+	remaining := strings.Replace(input, digitStr, "", 1)
+	return t, remaining, nil
+}
+
+// ParseFlexibleUnixString takes a filename/string, extracts the digits,
+// determines the precision based on digit length, and returns a time.Time object.
+func ParseFlexibleUnixString(input string) (time.Time, error) {
+	re := regexp.MustCompile(`\d+`)
+	digitStr := re.FindString(input)
+	if digitStr == "" {
+		return time.Time{}, fmt.Errorf("no digits found in input string")
+	}
+	length := len(digitStr)
+	if length > 19 {
+		digitStr = digitStr[:19]
+		length = 19
+	}
+	val, err := strconv.ParseInt(digitStr, 10, 64)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to parse digits to integer: %w", err)
+	}
+	switch {
+	case length >= 19: // Nanoseconds
+		return time.Unix(0, val), nil
+	case length >= 16: // Microseconds
+		seconds := val / 1_000_000
+		microsRemainder := val % 1_000_000
+		return time.Unix(seconds, microsRemainder*1_000), nil
+	case length >= 13: // Milliseconds
+		seconds := val / 1_000
+		millisRemainder := val % 1_000
+		return time.Unix(seconds, millisRemainder*1_000_000), nil
+	case length >= 10: // Seconds
+		if length > 10 {
+			digitStr = digitStr[:10]
+			val, _ = strconv.ParseInt(digitStr, 10, 64)
+		}
+		return time.Unix(val, 0), nil
+	default:
+		return time.Time{}, fmt.Errorf("digit string length (%d) is below the minimum 10-digit threshold for Unix seconds", length)
+	}
 }
