@@ -213,6 +213,9 @@ func (c *ScannerClient) uploadFile(ctx context.Context, filePath string) error {
 	// Add optional fileName field (the API expects this for metadata)
 	formWriter.WriteField("fileName", fileInfo.Name())
 
+	// Add file creation date as mtime from filesystem
+	formWriter.WriteField("fileCreatedAt", fileInfo.ModTime().Format("2006/01/02 15:04:05"))
+
 	// Close the form writer to finalize the multipart body
 	if err := formWriter.Close(); err != nil {
 		return fmt.Errorf("failed to close multipart writer: %w", err)
