@@ -64,7 +64,7 @@ interface SelectableFile {
               <!-- Upload Button -->
               <div class="upload-actions">
                 <span>{{ selectedFiles.length }} file{{ selectedFiles.length === 1 ? '' : 's' }} ready</span>
-                <button class="btn-upload" (click)="startUpload()">Upload</button>
+                <button class="btn-upload" (click)="$event.stopPropagation(); startUpload()">Upload</button>
               </div>
             }
           </div>

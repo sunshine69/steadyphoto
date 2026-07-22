@@ -300,20 +300,8 @@ func (h *MediaUploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		meta.SizeBytes = n
 		meta.Hash = hash
 		meta.ClientSource = clientSource
-
-		mlog.Info("[INFO] UploadHandler: Detected client source '%s' for '%s'", clientSource, header.Filename)
-		if meta.Metadata != nil && meta.Metadata["gps_latitude"] != "" {
-			mlog.Info("[INFO] UploadHandler: GPS found - lat=%s lon=%s", meta.Metadata["gps_latitude"], meta.Metadata["gps_longitude"])
-		}
-
-		meta.ID = uuid.New()
-		meta.UserID = userID
-		meta.Filename = header.Filename
-		meta.MediaType = mediaType
-		meta.Path = relPathFromRoot
-		meta.SizeBytes = n
-		meta.Hash = hash
-		meta.ClientSource = clientSource
+		meta.CreatedAt = time.Now()
+		meta.UpdatedAt = time.Now()
 
 		mlog.Info("[INFO] UploadHandler: Detected client source '%s' for '%s'", clientSource, header.Filename)
 		if meta.Metadata != nil && meta.Metadata["gps_latitude"] != "" {

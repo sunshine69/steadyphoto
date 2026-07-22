@@ -322,8 +322,7 @@ func (h *MediaUploadHandlerSingle) HandleSingleFileUpload(w http.ResponseWriter,
 	}
 
 	header := files[0]
-	fileName := r.FormValue("fileName")
-	_ = fileName // mimeType is not used currently - it could be added later for validation
+	fileName := header.Filename
 	fileSizeStr := r.FormValue("fileSize")
 	var fileSize int64 = header.Size
 	if fileSizeStr != "" {
@@ -445,6 +444,8 @@ func (h *MediaUploadHandlerSingle) HandleSingleFileUpload(w http.ResponseWriter,
 		SizeBytes:  n,
 		Hash:       hash,
 		CapturedAt: time.Now(),
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
 	}
 
 	// Parse file creation date from client (filesystem DATE_ADDED)
