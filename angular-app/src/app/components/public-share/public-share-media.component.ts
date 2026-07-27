@@ -94,11 +94,11 @@ import { environment } from '../../../environments/environment';
                   }
                 </div>
                 <div class="btn-group">
-                  <button (click)="downloadMedia()" class="btn btn-outline-secondary" type="button">
+                  <button (click)="downloadMedia()" class="btn action-btn btn-download" type="button">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2 2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                     Download
                   </button>
-                  <button (click)="goBack()" class="btn btn-outline-primary" type="button">
+                  <button (click)="goBack()" class="btn action-btn btn-back" type="button">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
                     Gallery
                   </button>
@@ -194,6 +194,38 @@ import { environment } from '../../../environments/environment';
     }
     .password-modal-content {
       min-width: 400px; max-width: 90%;
+    }
+    .btn {
+      font-size: 14px;
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-weight: 500;
+      transition: all 0.2s ease-in-out;
+      border: none;
+    }
+    .btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    .btn:active {
+      transform: translateY(0);
+    }
+    .action-btn {
+      color: white !important;
+    }
+    .btn-download {
+      background: linear-gradient(135deg, #007bff, #0069d9);
+      color: white;
+    }
+    .btn-download:hover {
+      background: linear-gradient(135deg, #0069d9, #0056b3);
+    }
+    .btn-back {
+      background: linear-gradient(135deg, #74b9ff, #0984e3);
+      color: white;
+    }
+    .btn-back:hover {
+      background: linear-gradient(135deg, #0984e3, #0770c2);
     }
   `]
 })

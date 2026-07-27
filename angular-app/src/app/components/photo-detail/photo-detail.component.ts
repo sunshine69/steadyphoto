@@ -73,7 +73,7 @@ import { Photo } from '../../models/photo.model';
                   <p class="text-muted mb-0">Captured: {{ capturedDate | date:'medium' }}</p>
                 </div>
                 <div class="btn-group position-relative">
-                  <button (click)="startEditingTags()" class="btn btn-outline-success" [class.active]="isEditingTags" type="button">
+                  <button (click)="startEditingTags()" class="btn action-btn btn-tag" [class.active]="isEditingTags" type="button">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
                     Tag
                   </button>
@@ -92,19 +92,19 @@ import { Photo } from '../../models/photo.model';
                       </div>
                     </div>
                   }
-                  <button (click)="downloadPhoto()" class="btn btn-outline-secondary" type="button">
+                  <button (click)="downloadPhoto()" class="btn action-btn btn-download" type="button">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2 2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                     Download
                   </button>
-                  <button (click)="sharePhoto()" class="btn btn-outline-info" type="button">
+                  <button (click)="sharePhoto()" class="btn action-btn btn-share" type="button">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                     Share
                   </button>
-                  <button (click)="startPresentation()" class="btn btn-outline-warning" type="button">
+                  <button (click)="startPresentation()" class="btn action-btn btn-presentation" type="button">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
                     Presentation
                   </button>
-                  <button (click)="goBack()" class="btn btn-outline-primary" type="button">
+                  <button (click)="goBack()" class="btn action-btn btn-back" type="button">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
                     {{ isFromAlbum ? 'Album' : 'Gallery' }}
                   </button>
@@ -258,6 +258,53 @@ import { Photo } from '../../models/photo.model';
     }
     .btn {
       font-size: 14px;
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-weight: 500;
+      transition: all 0.2s ease-in-out;
+      border: none;
+    }
+    .btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    .btn:active {
+      transform: translateY(0);
+    }
+    .btn-tag {
+      background: linear-gradient(135deg, #6b46c1, #805ad5);
+      color: white;
+    }
+    .btn-tag:hover {
+      background: linear-gradient(135deg, #553c9a, #6b46c1);
+    }
+    .btn-download {
+      background: linear-gradient(135deg, #007bff, #0069d9);
+      color: white;
+    }
+    .btn-download:hover {
+      background: linear-gradient(135deg, #0069d9, #0056b3);
+    }
+    .btn-share {
+      background: linear-gradient(135deg, #00cec9, #00b894);
+      color: white;
+    }
+    .btn-share:hover {
+      background: linear-gradient(135deg, #00b894, #00a085);
+    }
+    .btn-presentation {
+      background: linear-gradient(135deg, #e17055, #d63031);
+      color: white;
+    }
+    .btn-presentation:hover {
+      background: linear-gradient(135deg, #d63031, #c0392b);
+    }
+    .btn-back {
+      background: linear-gradient(135deg, #74b9ff, #0984e3);
+      color: white;
+    }
+    .btn-back:hover {
+      background: linear-gradient(135deg, #0984e3, #0770c2);
     }
     p {
       font-size: 14px;

@@ -63,14 +63,14 @@ import { SelectionService } from '../../services/selection.service';
       <!-- Pagination -->
       @if (!loading && totalPhotos > limit) {
         <div class="pagination-controls">
-          <button class="btn btn-outline-primary me-2" [disabled]="offset === 0" (click)="changePage(-1)">Previous</button>
+          <button class="btn pagination-btn btn-prev" [disabled]="offset === 0" (click)="changePage(-1)">Previous</button>
           <div class="pagination-jump d-flex align-items-center mx-3">
             <span class="me-2 text-nowrap">Page</span>
-            <input type="number" class="form-control form-control-sm jump-input me-2" [(ngModel)]="jumpPageInput" (keyup.enter)="onJumpToPage()" min="1" [max]="totalPages">
-            <button class="btn btn-primary btn-sm jump-btn" type="button" (click)="onJumpToPage()">Go</button>
+            <input type="number" class="jump-input me-2" [(ngModel)]="jumpPageInput" (keyup.enter)="onJumpToPage()" min="1" [max]="totalPages">
+            <button class="btn pagination-btn btn-jump" type="button" (click)="onJumpToPage()">Go</button>
             <span class="ms-2 text-nowrap">of {{ totalPages }}</span>
           </div>
-          <button class="btn btn-outline-primary ms-2" [disabled]="offset + limit >= totalPhotos" (click)="changePage(1)">Next</button>
+          <button class="btn pagination-btn btn-next" [disabled]="offset + limit >= totalPhotos" (click)="changePage(1)">Next</button>
         </div>
       }
     
@@ -97,7 +97,57 @@ import { SelectionService } from '../../services/selection.service';
     .empty-state { text-align: center; padding: 4rem 2rem; color: #6c757d; font-size: 1.2rem; }
     .loading-spinner { display: flex; justify-content: center; align-items: center; min-height: 300px; }
     .pagination-controls { display: flex; justify-content: center; align-items: center; margin-top: 2rem; padding-bottom: 2rem; }
-    .jump-input { width: 60px !important; text-align: center; }
+    .pagination-jump { align-items: center; }
+    .pagination-btn {
+      padding: 8px 18px;
+      border-radius: 8px;
+      font-weight: 500;
+      transition: all 0.2s ease-in-out;
+      border: none;
+      color: white !important;
+    }
+    .pagination-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .pagination-btn:not(:disabled):hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+    .btn-prev {
+      background: linear-gradient(135deg, #0984e3, #0770c2);
+    }
+    .btn-prev:not(:disabled):hover {
+      background: linear-gradient(135deg, #0770c2, #0663a9);
+    }
+    .btn-next {
+      background: linear-gradient(135deg, #00cec9, #00b894);
+    }
+    .btn-next:not(:disabled):hover {
+      background: linear-gradient(135deg, #00b894, #009978);
+    }
+    .btn-jump {
+      background: linear-gradient(135deg, #e17055, #d63031);
+    }
+    .btn-jump:not(:disabled):hover {
+      background: linear-gradient(135deg, #d63031, #c0392b);
+    }
+    .jump-input {
+      width: 60px !important;
+      text-align: center;
+      padding: 8px 6px;
+      border-radius: 8px;
+      border: 2px solid #636e72;
+      background: #2d3436;
+      color: white;
+      font-weight: 500;
+      height: 36px;
+    }
+    .jump-input:focus {
+      outline: none;
+      border-color: #0984e3;
+      box-shadow: 0 0 0 3px rgba(9, 132, 227, 0.3);
+    }
   `]
 })
 export class PhotoListComponent implements OnInit, OnDestroy {
