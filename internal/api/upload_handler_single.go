@@ -486,23 +486,27 @@ func (h *MediaUploadHandlerSingle) HandleSingleFileUpload(w http.ResponseWriter,
 		}
 	}
 
-	// Determine CapturedAt: prefer VideoMetadata.CreatedAt (for videos), then EXIF DateTimeOriginal (for images), fall back to upload time
-	if !capturedAt.IsZero() {
-		meta.CapturedAt = capturedAt
-		mlog.Info("[INFO] UploadHandlerSingle: EXIF DateTimeOriginal found for '%s': %s", fileName, capturedAt.Format(time.RFC3339))
-	} else if meta.VideoMetadata.CreatedAt != (time.Time{}) {
-		meta.CapturedAt = meta.VideoMetadata.CreatedAt
-		mlog.Info("[INFO] UploadHandlerSingle: VideoMetadata.CreatedAt found for '%s': %s", fileName, meta.VideoMetadata.CreatedAt.Format(time.RFC3339))
-	} else {
-		// Heuristic fallback: try to parse date from filename
-		if fnDate, _, _ := processor.ExtractDateFromString(fileName); !fnDate.IsZero() {
-			meta.CapturedAt = fnDate
-			mlog.Info("[INFO] UploadHandlerSingle: Filename heuristic date parsed for '%s': %s", fileName, fnDate.Format(time.RFC3339))
-		} else {
-			mlog.Info("[INFO] UploadHandlerSingle: No EXIF/Video/Filename date found for '%s', using upload time: %s", fileName, meta.CapturedAt.Format(time.RFC3339))
-		}
-	}
 
+		// Determine CapturedAt: prefer VideoMetadata.CreatedAt (for videos), then EXIF DateTimeOriginal (for images), then filename heuristic, then filesystem mtime (fileCreatedAt from client), fall back to upload time
+		if !capturedAt.IsZero() {
+			meta.CapturedAt = capturedAt
+			mlog.Info("[INFO] UploadHandlerSingle: EXIF DateTimeOriginal found for '%s': %s", fileName, capturedAt.Format(time.RFC3339))
+		} else if meta.VideoMetadata.CreatedAt != (time.Time{}) {
+			meta.CapturedAt = meta.VideoMetadata.CreatedAt
+			mlog.Info("[INFO] UploadHandlerSingle: VideoMetadata.CreatedAt found for '%s': %s", fileName, meta.VideoMetadata.CreatedAt.Format(time.RFC3339))
+		} else {
+			// Heuristic fallback: try to parse date from filename
+			if fnDate, _, _ := processor.ExtractDateFromString(fileName); !fnDate.IsZero() {
+				meta.CapturedAt = fnDate
+				mlog.Info("[INFO] UploadHandlerSingle: Filename heuristic date parsed for '%s': %s", fileName, fnDate.Format(time.RFC3339))
+			} else if meta.FileCreatedAt != nil && !meta.FileCreatedAt.IsZero() {
+				// Filesystem mtime from the client (sent as fileCreatedAt in the form)
+				meta.CapturedAt = *meta.FileCreatedAt
+				mlog.Info("[INFO] UploadHandlerSingle: Filesystem mtime (fileCreatedAt) used for '%s': %s", fileName, meta.FileCreatedAt.Format(time.RFC3339))
+			} else {
+				mlog.Info("[INFO] UploadHandlerSingle: No EXIF/Video/Filename/date found for '%s', using upload time: %s", fileName, meta.CapturedAt.Format(time.RFC3339))
+			}
+		}
 	if err := h.mediaRepo.Create(dbCtx, meta); err != nil {
 		mlog.Info("[ERROR] UploadHandlerSingle: Failed to insert media %s (hash=%s): %v", newFilename, hash[:8]+"...", err)
 		http.Error(w, "Failed to save media record.", http.StatusInternalServerError)

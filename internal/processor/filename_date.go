@@ -3,7 +3,6 @@ package processor
 import (
 	"fmt"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -19,14 +18,11 @@ func ParseDateFromFilename(filename string) time.Time {
 
 // ExtractDateFromString extracts a date from input.
 // Returns parsed time, remaining string (with date removed), and error.
-// Tries each date pattern. For each match, extracts capture groups,
+// Tries each date pattern in order. For each match, extracts capture groups,
 // builds a canonical date string, then tries Go time.Parse with each layout.
+// If a date parses successfully but the year is outside the valid range,
+// it continues trying other patterns instead of returning the invalid date.
 func ExtractDateFromString(input string) (time.Time, string, error) {
-	// First try: look for long digit blocks (16+ digits = microseconds Unix time)
-	if t, remaining, err := tryUnixTimestamp(input); err == nil {
-		return t, remaining, nil
-	}
-
 	for _, dp := range datePatterns {
 		loc := dp.re.FindStringIndex(input)
 		if loc == nil {
@@ -42,6 +38,11 @@ func ExtractDateFromString(input string) (time.Time, string, error) {
 		for _, layout := range dp.layouts {
 			t, err := time.Parse(layout, canonical)
 			if err == nil {
+				// Validate the year is in a reasonable range to avoid false positives
+				// like treating a long numeric ID (e.g., 936410131344710) as YYYYMMDD.
+				if !isValidYear(t.Year()) {
+					continue // Try the next layout or pattern
+				}
 				remaining := input[:loc[0]] + input[loc[1]:]
 				return t, remaining, nil
 			}
@@ -50,24 +51,23 @@ func ExtractDateFromString(input string) (time.Time, string, error) {
 	return time.Time{}, input, fmt.Errorf("no date found in: %s", input)
 }
 
+// isValidYear checks if a year falls within a reasonable range for media captures.
+// This prevents false positives from numeric IDs or timestamps being misinterpreted
+// as dates (e.g., year 9364 from "received_936410131344710.jpeg").
+func isValidYear(year int) bool {
+	return year >= 1970 && year <= 2100
+}
+
 // buildCanonical builds a canonical date string from regex capture groups.
 // sepIdxs: 1-based group indices that are separators (e.g. [2,4] means groups[2] and groups[4] are separators).
 // If sepIdxs is empty, groups are concatenated directly.
 func buildCanonical(groups []string, sepIdxs []int) string {
 	var sb strings.Builder
 	for i := 1; i < len(groups); i++ {
-		isSep := false
-		for _, idx := range sepIdxs {
-			if idx == i {
-				isSep = true
-				break
-			}
-		}
-		if isSep {
-			sb.WriteString(groups[i])
-		} else {
-			sb.WriteString(groups[i])
-		}
+		// In the current patterns, all groups are date parts (year/month/day), not separators.
+		// The separator groups are handled by being concatenated into the canonical string
+		// as part of the date string (e.g., "2006-01-02" expects hyphens at those positions).
+		sb.WriteString(groups[i])
 	}
 	return sb.String()
 }
@@ -82,16 +82,6 @@ type datePattern struct {
 
 // datePatterns: try each in order.
 var datePatterns = []datePattern{
-	{
-		name: "YYYYMMDD",
-		re:   regexp.MustCompile(`(\d{4})(\d{2})(\d{2})`),
-		layouts: []string{"20060102"},
-	},
-	{
-		name: "DDMMYYYY",
-		re:   regexp.MustCompile(`(\d{2})(\d{2})(\d{4})`),
-		layouts: []string{"02012006"},
-	},
 	{
 		name: "YYYY sep XX sep YY (YYYY-MM-DD or YYYY-DD-MM)",
 		re: regexp.MustCompile(`(\d{4})([-_./\s:;.])(\d{1,2})([-_./\s:;.])(\d{1,2})`),
@@ -118,59 +108,14 @@ var datePatterns = []datePattern{
 		},
 		canonSepIdxs: []int{2, 4},
 	},
-}
-
-// tryUnixTimestamp looks for a 16+ digit block and converts it via ParseFlexibleUnixString.
-func tryUnixTimestamp(input string) (time.Time, string, error) {
-	re := regexp.MustCompile(`\d+`)
-	digitStr := re.FindString(input)
-	if len(digitStr) < 16 {
-		return time.Time{}, input, fmt.Errorf("no 16+ digit block found")
-	}
-	t, err := ParseFlexibleUnixString(input)
-	if err != nil {
-		return time.Time{}, input, err
-	}
-	// Remove the digit block from input
-	remaining := strings.Replace(input, digitStr, "", 1)
-	return t, remaining, nil
-}
-
-// ParseFlexibleUnixString takes a filename/string, extracts the digits,
-// determines the precision based on digit length, and returns a time.Time object.
-func ParseFlexibleUnixString(input string) (time.Time, error) {
-	re := regexp.MustCompile(`\d+`)
-	digitStr := re.FindString(input)
-	if digitStr == "" {
-		return time.Time{}, fmt.Errorf("no digits found in input string")
-	}
-	length := len(digitStr)
-	if length > 19 {
-		digitStr = digitStr[:19]
-		length = 19
-	}
-	val, err := strconv.ParseInt(digitStr, 10, 64)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("failed to parse digits to integer: %w", err)
-	}
-	switch {
-	case length >= 19: // Nanoseconds
-		return time.Unix(0, val), nil
-	case length >= 16: // Microseconds
-		seconds := val / 1_000_000
-		microsRemainder := val % 1_000_000
-		return time.Unix(seconds, microsRemainder*1_000), nil
-	case length >= 13: // Milliseconds
-		seconds := val / 1_000
-		millisRemainder := val % 1_000
-		return time.Unix(seconds, millisRemainder*1_000_000), nil
-	case length >= 10: // Seconds
-		if length > 10 {
-			digitStr = digitStr[:10]
-			val, _ = strconv.ParseInt(digitStr, 10, 64)
-		}
-		return time.Unix(val, 0), nil
-	default:
-		return time.Time{}, fmt.Errorf("digit string length (%d) is below the minimum 10-digit threshold for Unix seconds", length)
-	}
+	{
+		name: "YYYYMMDD",
+		re:   regexp.MustCompile(`(\d{4})(\d{2})(\d{2})`),
+		layouts: []string{"20060102"},
+	},
+	{
+		name: "DDMMYYYY",
+		re:   regexp.MustCompile(`(\d{2})(\d{2})(\d{4})`),
+		layouts: []string{"02012006"},
+	},
 }

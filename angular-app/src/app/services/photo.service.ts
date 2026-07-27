@@ -275,6 +275,32 @@ export class PhotoService {
   }
 
   /**
+   * Fetches the original file as a Blob for download.
+   * This is needed because browsers don't honor the 'download' attribute for images/videos.
+   */
+  downloadOriginal(id: string): Observable<Blob> {
+    return this.http.get(`${this.API_BASE_URL}/media/${id}/original`, { responseType: 'blob' });
+  }
+
+  /**
+   * Fetches the shared original file as a Blob for download.
+   */
+  downloadSharedOriginal(id: string): Observable<Blob> {
+    return this.http.get(`${this.API_BASE_URL}/media/shared/${id}/original`, { responseType: 'blob' });
+  }
+
+  /**
+   * Fetches the public share original file as a Blob for download.
+   */
+  downloadPublicShareOriginal(token: string, mediaPath: string): Observable<Blob> {
+    const password = sessionStorage.getItem(`share_password_${token}`);
+    let url = `${this.API_BASE_URL}/public/shares/album/${token}/media/original?path=${encodeURIComponent(mediaPath)}`;
+    if (password) {
+      url += `&password=${encodeURIComponent(password)}`;
+    }
+    return this.http.get(url, { responseType: 'blob' });
+  }
+  /**
    * Fetches a shared album detail using /albums/shared/{id} endpoint.
    * This does NOT check ownership — it checks sharee access instead.
    */

@@ -67,13 +67,13 @@ import { Photo } from '../../models/photo.model';
                     >
                 </div>
               }
-              <div class="mt-3 d-flex justify-content-between align-items-start">
+              <div class="mt-3 d-flex justify-content-between align-items-start flex-wrap gap-2">
                 <div>
                   <h3 class="mb-1">{{ photo.filename }}</h3>
                   <p class="text-muted mb-0">Captured: {{ capturedDate | date:'medium' }}</p>
                 </div>
                 <div class="btn-group position-relative">
-                  <button (click)="startEditingTags()" class="btn btn-outline-success ms-2" [class.active]="isEditingTags">
+                  <button (click)="startEditingTags()" class="btn btn-outline-success" [class.active]="isEditingTags" type="button">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
                     Tag
                   </button>
@@ -92,19 +92,21 @@ import { Photo } from '../../models/photo.model';
                       </div>
                     </div>
                   }
-                  <a [href]="originalUrl()" download="{{ photo.filename }}" class="btn btn-outline-secondary">
+                  <button (click)="downloadPhoto()" class="btn btn-outline-secondary" type="button">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2 2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                     Download
-                  </a>
-                  <button (click)="sharePhoto()" class="btn btn-info ms-2">
+                  </button>
+                  <button (click)="sharePhoto()" class="btn btn-outline-info" type="button">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                     Share
                   </button>
-                  <button (click)="startPresentation()" class="btn btn-warning ms-2">
-                    🎬 Presentation Mode
+                  <button (click)="startPresentation()" class="btn btn-outline-warning" type="button">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                    Presentation
                   </button>
-                  <button (click)="goBack()" class="btn btn-primary ms-2">
-                    {{ isFromAlbum ? 'Back to Album' : 'Back to Gallery' }}
+                  <button (click)="goBack()" class="btn btn-outline-primary" type="button">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+                    {{ isFromAlbum ? 'Album' : 'Gallery' }}
                   </button>
                 </div>
               </div>
@@ -823,6 +825,67 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
   sharePhoto(): void {
     if (!this.photo) return;
     this.shareTrigger.open(this.photo.id, 'media');
+  }
+
+  /**
+   * Downloads the original file as a Blob to ensure browser initiates a download
+   * rather than opening the file inline (which browsers do for images/videos).
+   */
+  downloadPhoto(): void {
+    if (!this.photo) return;
+
+    // Determine the correct download URL based on shared/owned context
+    let downloadUrl: string;
+    const isShared = this.route.snapshot.queryParams['source'] === 'shared';
+    const shareToken = this.route.snapshot.queryParams['shareToken'];
+
+    if (isShared && shareToken) {
+      // Use public share original endpoint
+      const mediaPath = this.route.snapshot.queryParams['mediaPath'] || '';
+      downloadUrl = this.photoService.getPublicShareOriginalUrl(shareToken, mediaPath);
+    } else if (isShared && this.photo.id) {
+      // Use authenticated shared media original endpoint
+      downloadUrl = `${this.photoService['API_BASE_URL']}/media/shared/${this.photo.id}/original`;
+    } else {
+      downloadUrl = this.photo.path;
+    }
+
+    // Fetch the file as a Blob
+    let downloadObs: any;
+    if (isShared && shareToken) {
+      const mediaPath = this.route.snapshot.queryParams['mediaPath'] || '';
+      downloadObs = this.photoService.downloadPublicShareOriginal(shareToken, mediaPath);
+    } else if (isShared && this.photo.id) {
+      downloadObs = this.photoService.downloadSharedOriginal(this.photo.id);
+    } else {
+      downloadObs = this.photoService.downloadOriginal(this.photo.id);
+    }
+
+    downloadObs.subscribe({
+      next: (blob: Blob) => {
+        // Create a Blob URL
+        const blobUrl = URL.createObjectURL(blob);
+
+        // Create a temporary anchor element with the download attribute
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = this.photo?.filename || 'download';
+
+        // Click it programmatically to trigger the download
+        document.body.appendChild(link);
+        link.click();
+
+        // Clean up the Blob URL after a short delay
+        setTimeout(() => {
+          URL.revokeObjectURL(blobUrl);
+          document.body.removeChild(link);
+        }, 100);
+      },
+      error: (err: any) => {
+        console.error('Error downloading file', err);
+        alert('Failed to download file.');
+      }
+    });
   }
 
   searchByTag(tag: string): void {

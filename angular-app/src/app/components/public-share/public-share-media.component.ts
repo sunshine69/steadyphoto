@@ -94,12 +94,13 @@ import { environment } from '../../../environments/environment';
                   }
                 </div>
                 <div class="btn-group">
-                  <a [href]="getMediaPath('original')" download="{{ mediaItem.filename }}" class="btn btn-outline-secondary">
+                  <button (click)="downloadMedia()" class="btn btn-outline-secondary" type="button">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2 2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                     Download
-                  </a>
-                  <button (click)="goBack()" class="btn btn-primary ms-2">
-                    Back to Gallery
+                  </button>
+                  <button (click)="goBack()" class="btn btn-outline-primary" type="button">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-1"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+                    Gallery
                   </button>
                 </div>
               </div>
@@ -395,6 +396,51 @@ export class PublicShareMediaComponent implements OnInit {
     return `${kb.toFixed(2)} KB`;
   }
 
+
+  /**
+   * Downloads the original file as a Blob to ensure browser initiates a download
+   * rather than opening the file inline (which browsers do for images/videos).
+   */
+  downloadMedia(): void {
+    if (!this.mediaItem) return;
+
+    const token = this.route.snapshot.paramMap.get('token');
+    if (!token) return;
+
+    // Fetch the file as a Blob
+    const url = `${environment.apiBaseUrl}/public/shares/media/${token}/original`;
+    const password = sessionStorage.getItem(`share_password_${token}`);
+    let downloadUrl = url;
+    if (password) {
+      downloadUrl += `?password=${encodeURIComponent(password)}`;
+    }
+
+    this.http.get(downloadUrl, { responseType: 'blob' }).subscribe({
+      next: (blob: Blob) => {
+        // Create a Blob URL
+        const blobUrl = URL.createObjectURL(blob);
+
+        // Create a temporary anchor element with the download attribute
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = this.mediaItem?.filename || 'download';
+
+        // Click it programmatically to trigger the download
+        document.body.appendChild(link);
+        link.click();
+
+        // Clean up the Blob URL after a short delay
+        setTimeout(() => {
+          URL.revokeObjectURL(blobUrl);
+          document.body.removeChild(link);
+        }, 100);
+      },
+      error: (err: any) => {
+        console.error('Error downloading file', err);
+        alert('Failed to download file.');
+      }
+    });
+  }
   goBack(): void {
     window.history.back();
   }

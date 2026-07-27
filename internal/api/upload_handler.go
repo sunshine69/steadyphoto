@@ -330,7 +330,7 @@ func (h *MediaUploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		// Determine CapturedAt: prefer VideoMetadata.CreatedAt (for videos), then EXIF DateTimeOriginal (for images), then filename heuristic, fall back to upload time
+		// Determine CapturedAt: prefer VideoMetadata.CreatedAt (for videos), then EXIF DateTimeOriginal (for images), then filename heuristic, then filesystem mtime (fileCreatedAt from client), fall back to upload time
 		meta.CapturedAt = time.Now() // default fallback
 		if !capturedAt.IsZero() {
 			meta.CapturedAt = capturedAt
@@ -343,8 +343,12 @@ func (h *MediaUploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 			if fnDate, _, _ := processor.ExtractDateFromString(header.Filename); !fnDate.IsZero() {
 				meta.CapturedAt = fnDate
 				mlog.Info("[INFO] UploadHandler: Filename heuristic date parsed for '%s': %s", header.Filename, fnDate.Format(time.RFC3339))
+			} else if meta.FileCreatedAt != nil && !meta.FileCreatedAt.IsZero() {
+				// Filesystem mtime from the client (sent as fileCreatedAt in the form)
+				meta.CapturedAt = *meta.FileCreatedAt
+				mlog.Info("[INFO] UploadHandler: Filesystem mtime (fileCreatedAt) used for '%s': %s", header.Filename, meta.FileCreatedAt.Format(time.RFC3339))
 			} else {
-				mlog.Info("[INFO] UploadHandler: No EXIF/Video/Filename date found for '%s', using upload time: %s", header.Filename, meta.CapturedAt.Format(time.RFC3339))
+				mlog.Info("[INFO] UploadHandler: No EXIF/Video/Filename/date found for '%s', using upload time: %s", header.Filename, meta.CapturedAt.Format(time.RFC3339))
 			}
 		}
 		mlog.Info("[DEBUG] UploadHandler: Inserting record into DB for '%s'...", meta.ID)
