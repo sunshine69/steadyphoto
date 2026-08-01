@@ -27,7 +27,7 @@ type MediaRecord struct {
 	CapturedAt    time.Time      `db:"captured_at"`
 	Filename      string         `db:"filename"`
 	FileCreatedAt *time.Time     `db:"file_created_at"`
-	CreatedAt     time.Time      `db:"created_at"`
+	UpdatedAt     time.Time      `db:"updated_at"`
 }
 
 func main() {
@@ -61,8 +61,8 @@ func main() {
 
 	ctx := context.Background()
 
-	// Query all media records including file_created_at and created_at
-	query := `SELECT id, metadata, captured_at, filename, file_created_at, created_at FROM media WHERE deleted_at IS NULL`
+	// Query all media records including file_created_at and updated_at
+	query := `SELECT id, metadata, captured_at, filename, file_created_at, updated_at FROM media WHERE deleted_at IS NULL`
 	var records []MediaRecord
 	err = db.SelectContext(ctx, &records, query)
 	if err != nil {
@@ -84,17 +84,17 @@ func main() {
 		var metadataMap map[string]string
 		if record.Metadata.Valid {
 			if err := json.Unmarshal([]byte(record.Metadata.String), &metadataMap); err != nil {
-				mlog.Info("Failed to parse metadata for %s: %v", record.ID, err)
-				errors++
-				continue
-			}
-
-			// Try EXIF date tags in priority order
-			for _, key := range []string{"DateTimeOriginal", "DateTimeDigitized", "DateTime", "DateCaptured"} {
-				if val, ok := metadataMap[key]; ok && val != "" {
-					dateStr = val
-					source = "EXIF:" + key
-					break
+				mlog.Info("No date found for %s: metadata parse failed, falling through", record.ID)
+				// Don't continue — try filename fallback next
+			} else {
+				// Try EXIF date tags in priority order
+				for _, key := range []string{"DateTimeOriginal", "DateTimeDigitized", "DateTime", "DateCaptured"} {
+					if val, ok := metadataMap[key]; ok && val != "" {
+						dateStr = val
+						source = "EXIF:" + key
+						mlog.Info("No date found for %s: EXIF source=%s", record.ID, source)
+						break
+					}
 				}
 			}
 		}
@@ -104,6 +104,7 @@ func main() {
 			if fnDate, _, err := processor.ExtractDateFromString(record.Filename); err == nil && !fnDate.IsZero() {
 				dateStr = fnDate.Format("2006:01:02 15:04:05")
 				source = "filename"
+				mlog.Info("No date found for %s: filename source=%s", record.ID, source)
 			}
 		}
 
@@ -111,19 +112,21 @@ func main() {
 		if dateStr == "" && record.FileCreatedAt != nil && !record.FileCreatedAt.IsZero() {
 			dateStr = record.FileCreatedAt.Format("2006:01:02 15:04:05")
 			source = "file_created_at"
+			mlog.Info("No date found for %s: file_created_at source=%s", record.ID, source)
 		}
 
-		// Priority 4: Last fallback — use created_at
-		if dateStr == "" && !record.CreatedAt.IsZero() {
-			dateStr = record.CreatedAt.Format("2006:01:02 15:04:05")
-			source = "created_at"
+		// Priority 4: Last fallback — use updated_at if file_created_at is null or empty
+		if dateStr == "" && !record.UpdatedAt.IsZero() {
+			dateStr = record.UpdatedAt.Format("2006:01:02 15:04:05")
+			source = "updated_at"
+			mlog.Info("No date found for %s: updated_at source=%s", record.ID, source)
 		}
 
 		// If no date found at all, skip this record
 		if dateStr == "" {
-			mlog.Info("No date found for %s (metadata=%v, filename=%q, file_created_at=%v, created_at=%v)",
+			mlog.Info("No date found for %s (metadata=%v, filename=%q, file_created_at=%v, updated_at=%v)",
 				record.ID, record.Metadata.Valid, record.Filename,
-				record.FileCreatedAt, record.CreatedAt)
+				record.FileCreatedAt, record.UpdatedAt)
 			skipped++
 			continue
 		}
@@ -169,8 +172,6 @@ func main() {
 }
 
 func parseDate(dateStr string) (time.Time, error) {
-	dateStr = fmt.Sprintf("%s 00:00:00", dateStr)
-
 	formats := []string{
 		"2006:01:02 15:04:05",
 		"2006/01/02 15:04:05",
