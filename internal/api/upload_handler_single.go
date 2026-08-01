@@ -379,9 +379,11 @@ func (h *MediaUploadHandlerSingle) HandleSingleFileUpload(w http.ResponseWriter,
 		mlog.Info("[INFO] UploadHandlerSingle: Duplicate detected for '%s' (Hash matches ID=%s)", fileName, existingMedia.ID.String())
 		response := map[string]interface{}{
 			"uploaded": []interface{}{},
-			"skipped_duplicates": []map[string]string{{
-				"filename": fileName,
-				"id":       existingMedia.ID.String(),
+			"skipped_duplicates": []interface{}{map[string]interface{}{
+				"filename":        fileName,
+				"id":              existingMedia.ID.String(),
+				"captured_at":     existingMedia.CapturedAt.Format(time.RFC3339),
+				"file_created_at": existingMedia.FileCreatedAt,
 			}},
 			"errors": []interface{}{},
 		}
@@ -869,12 +871,14 @@ func (h *MediaUploadHandlerSingle) HandleComplete(w http.ResponseWriter, r *http
 	if existingMedia != nil && existingMedia.ID != uuid.Nil {
 		mlog.Info("[INFO] UploadHandlerComplete: Duplicate detected for '%s' (Hash matches ID=%s)", session.Filename, existingMedia.ID.String())
 		response := map[string]interface{}{
-			"uploaded":           []interface{}{},
-			"skipped_duplicates": []map[string]string{{
-				"filename": session.Filename,
-				"id":       existingMedia.ID.String(),
+			"uploaded": []interface{}{},
+			"skipped_duplicates": []interface{}{map[string]interface{}{
+				"filename":        session.Filename,
+				"id":              existingMedia.ID.String(),
+				"captured_at":     existingMedia.CapturedAt.Format(time.RFC3339),
+				"file_created_at": existingMedia.FileCreatedAt,
 			}},
-			"errors":             []interface{}{},
+			"errors": []interface{}{},
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(response)

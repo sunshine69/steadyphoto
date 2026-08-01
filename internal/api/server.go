@@ -167,6 +167,7 @@ func (s *Server) routes() {
 				r.Get("/original", s.handleGetOriginal)
 				r.Get("/thumb", s.handleGetThumbnail)
 				r.Patch("/tags", s.handleUpdateTags)
+				r.Patch("/timestamps", s.handleUpdateMediaTimestamps)
 			})
 			albumH := NewAlbumHandler(s.albumRepo, s.mediaRepo)
 			// Album endpoints

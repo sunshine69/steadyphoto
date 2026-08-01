@@ -17,20 +17,16 @@ func ParseDateFromFilename(filename string) time.Time {
 }
 
 // isValidDate checks if a parsed date falls within a reasonable range for media captures.
-// This prevents false positives from numeric IDs or timestamps being misinterpreted
-// as dates (e.g., year 9364 from "received_936410131344710.jpeg").
-// It also rejects any date that is in the future to prevent clock skew issues.
+// Rejects: dates before 1980, dates in the future, or dates outside valid month/day ranges.
 func isValidDate(t time.Time) bool {
 	year := t.Year()
 
-	// Reject years outside the historical range (anything before Unix epoch).
-	if year < 1970 {
+	// Reject anything before 1980 — no realistic media predates this era
+	if year < 1980 {
 		return false
 	}
 
-	// Reject any date that is in the future to prevent clock skew / misconfigured systems.
-	// We compare without time components to avoid false rejections during the
-	// midnight transition. The time.Parse above uses UTC, so we compare in UTC too.
+	// Reject any date that is in the future (clock skew protection).
 	nowUTC := time.Now().UTC()
 	nowYMD := time.Date(nowUTC.Year(), nowUTC.Month(), nowUTC.Day(), 0, 0, 0, 0, time.UTC)
 	tYMD := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
@@ -43,10 +39,8 @@ func isValidDate(t time.Time) bool {
 
 // ExtractDateFromString extracts a date from input.
 // Returns parsed time, remaining string (with date removed), and error.
-// Tries each date pattern in order. For each match, extracts capture groups,
-// builds a canonical date string, then tries Go time.Parse with each layout.
-// If a date parses successfully but the date is outside the valid range,
-// it continues trying other patterns instead of returning the invalid date.
+// Only tries very obvious date patterns. If the date parses but is outside valid range,
+// it returns an error instead of a zero time (so the caller falls back to the next method).
 func ExtractDateFromString(input string) (time.Time, string, error) {
 	for _, dp := range datePatterns {
 		loc := dp.re.FindStringIndex(input)
@@ -63,10 +57,10 @@ func ExtractDateFromString(input string) (time.Time, string, error) {
 		for _, layout := range dp.layouts {
 			t, err := time.Parse(layout, canonical)
 			if err == nil {
-				// Validate the date is in a reasonable range to avoid false positives
-				// and reject dates in the future (clock skew protection).
+				// Validate the date is in a reasonable range.
+				// If invalid, return error so caller can fall back.
 				if !isValidDate(t) {
-					continue // Try the next layout or pattern
+					return time.Time{}, input, fmt.Errorf("date %s (from %s in %q) is outside valid range (1980 to now)", canonical, matched, input)
 				}
 				remaining := input[:loc[0]] + input[loc[1]:]
 				return t, remaining, nil
@@ -98,44 +92,31 @@ type datePattern struct {
 	canonSepIdxs []int // 1-based group indices that are separators
 }
 
-// datePatterns: try each in order.
+// datePatterns: only VERY obvious date patterns, in order of strictness.
 var datePatterns = []datePattern{
 	{
-		name: "YYYY sep XX sep YY (YYYY-MM-DD or YYYY-DD-MM)",
-		re: regexp.MustCompile(`(\d{4})([-_./\s:;.])(\d{1,2})([-_./\s:;.])(\d{1,2})`),
+		name: "YYYY sep XX sep YY (YYYY-MM-DD)",
+		re: regexp.MustCompile(`(\d{4})([-_])(\d{2})([-_])(\d{2})`),
 		layouts: []string{
 			"2006-01-02",
-			"2006-02-01",
-			"2006/01/02",
-			"2006/02/01",
-			"2006.01.02",
-			"2006.02.01",
 			"2006_01_02",
-			"2006_02_01",
 		},
 		canonSepIdxs: []int{2, 4},
 	},
 	{
-		name: "XX sep YY sep YYYY (DD-MM-YYYY or MM-DD-YYYY)",
-		re: regexp.MustCompile(`(\d{1,2})([-_./\s:;.])(\d{1,2})([-_./\s:;.])(\d{4})`),
+		name: "YYYY/MM/DD",
+		re: regexp.MustCompile(`(\d{4})/(\d{2})/(\d{2})`),
 		layouts: []string{
-			"02-01-2006",
-			"01-02-2006",
-			"02/01/2006",
-			"01/02/2006",
-			"02.01.2006",
-			"01.02.2006",
+			"2006/01/02",
 		},
 		canonSepIdxs: []int{2, 4},
 	},
 	{
-		name: "YYYYMMDD",
-		re:   regexp.MustCompile(`(\d{4})(\d{2})(\d{2})`),
-		layouts: []string{"20060102"},
-	},
-	{
-		name: "DDMMYYYY",
-		re:   regexp.MustCompile(`(\d{2})(\d{2})(\d{4})`),
-		layouts: []string{"02012006"},
+		name: "YYYY.MM.DD",
+		re: regexp.MustCompile(`(\d{4})\.(\d{2})\.(\d{2})`),
+		layouts: []string{
+			"2006.01.02",
+		},
+		canonSepIdxs: []int{2, 4},
 	},
 }

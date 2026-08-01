@@ -223,8 +223,10 @@ func (h *MediaUploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		if existingMedia != nil && existingMedia.ID != uuid.Nil {
 			mlog.Info("[INFO] UploadHandler: Duplicate detected for '%s' (Hash matches ID=%s)", header.Filename, existingMedia.ID.String())
 			skippedDuplicates = append(skippedDuplicates, map[string]interface{}{
-				"filename": header.Filename,
-				"id":       existingMedia.ID.String(),
+				"filename":        header.Filename,
+				"id":              existingMedia.ID.String(),
+				"captured_at":     existingMedia.CapturedAt.Format(time.RFC3339),
+				"file_created_at": existingMedia.FileCreatedAt,
 			})
 			os.Remove(tempFile.Name())
 			continue

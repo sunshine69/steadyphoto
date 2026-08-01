@@ -348,7 +348,7 @@ class UploadManager(
     /**
      * Compare client timestamps with server timestamps from duplicate response.
      * Returns true if timestamps differ and need updating.
-     * Client timestamps are Long (milliseconds since epoch), server timestamps are RFC3339 strings.
+     * Client timestamps are Long (milliseconds since epoch), server timestamps are "2006/01/02 15:04:05" strings.
      */
     private fun shouldUpdateTimestamps(item: com.steadyphoto.sync.data.local.entity.MediaItemEntity, skipped: com.steadyphoto.sync.data.remote.dto.SkippedDuplicateItem): Boolean {
         // If client has timestamp info that server lacks, we need to update
@@ -360,12 +360,11 @@ class UploadManager(
         }
         
         // If both have timestamp info but they differ, we need to update
-        // Convert client milliseconds to RFC3339 for comparison
+        // Convert client milliseconds to "2006/01/02 15:04:05" for comparison
         if (item.captureTime != null && skipped.capturedAt != null) {
             try {
-                val clientTimestamp = java.time.Instant.ofEpochMilli(item.captureTime!!)
-                val clientRfc3339 = java.time.format.DateTimeFormatter.ISO_INSTANT.format(clientTimestamp)
-                if (clientRfc3339 != skipped.capturedAt) {
+                val clientFormatted = formatTimestampForApi(item.captureTime!!)
+                if (clientFormatted != skipped.capturedAt) {
                     return true
                 }
             } catch (e: Exception) {
@@ -374,9 +373,8 @@ class UploadManager(
         }
         if (item.fileCreatedAt != null && skipped.fileCreatedAt != null) {
             try {
-                val clientTimestamp = java.time.Instant.ofEpochMilli(item.fileCreatedAt!!)
-                val clientRfc3339 = java.time.format.DateTimeFormatter.ISO_INSTANT.format(clientTimestamp)
-                if (clientRfc3339 != skipped.fileCreatedAt) {
+                val clientFormatted = formatTimestampForApi(item.fileCreatedAt!!)
+                if (clientFormatted != skipped.fileCreatedAt) {
                     return true
                 }
             } catch (e: Exception) {
@@ -388,13 +386,17 @@ class UploadManager(
     }
     
     /**
-     * Convert client timestamp (Long, milliseconds since epoch) to RFC3339 string for API request.
+     * Convert client timestamp (Long, milliseconds since epoch) to Go time format "2006/01/02 15:04:05" for API request.
      */
     private fun formatTimestampForApi(timestampMillis: Long?): String? {
         return timestampMillis?.let { millis ->
             try {
-                // Convert milliseconds to seconds (epoch seconds) for the Go server
-                (millis / 1000).toString()
+                // Go uses "2006/01/02 15:04:05" format (yyyy/mm/dd HH:MM:SS)
+                val instant = java.time.Instant.ofEpochMilli(millis)
+                val formatter = java.time.format.DateTimeFormatter
+                    .ofPattern("yyyy/MM/dd HH:mm:ss")
+                    .withZone(java.time.ZoneId.systemDefault())
+                formatter.format(instant)
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to format timestamp for API: ${e.message}")
                 null

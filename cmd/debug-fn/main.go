@@ -3,48 +3,22 @@ package main
 import (
 	"fmt"
 	"os"
-	"regexp"
-	"strings"
 	"steadyphoto/internal/processor"
 )
 
 func main() {
-	filename := "FontHouse-20250224.jpeg"
-	base := filename
-	if dotIdx := strings.LastIndex(base, "."); dotIdx > 0 {
-		base = base[:dotIdx]
+	if len(os.Args) < 2 {
+		fmt.Println("Usage: go run ./cmd/debug-fn/main.go <filename>")
+		fmt.Println("  go run ./cmd/debug-fn/main.go 59e4a97ccf3143c190a05727b121250c.jpg")
+		fmt.Println("  go run ./cmd/debug-fn/main.go received_2459394844477772.jpeg")
+		return
 	}
 
-	// Pattern 2: YYYYMMDD (date only)
-	re := regexp.MustCompile(`\b(\d{4})(\d{2})(\d{2})\b`)
-	m := re.FindStringSubmatch(base)
-	fmt.Printf("Base: %q, Match: %v\n", base, m)
+	filename := os.Args[1]
 
-	fnDate := processor.ParseDateFromFilename(filename)
-	fmt.Printf("ParseDateFromFilename(%q) = %v, IsZero: %v\n", filename, fnDate, fnDate.IsZero())
-
-	// Also check EXIF reader
-	if len(os.Args) > 1 {
-		f, err := os.Open(os.Args[1])
-		if err != nil {
-			fmt.Printf("Open error: %v\n", err)
-			return
-		}
-		defer f.Close()
-		reader := processor.NewExifReader()
-		info, err := reader.ReadExif(f)
-		if err != nil {
-			fmt.Printf("ReadExif error: %v\n", err)
-			return
-		}
-		if info == nil {
-			fmt.Println("Exif: nil info")
-			return
-		}
-		fmt.Printf("Exif: CapturedAt=%v, Orientation=%d\n", info.CapturedAt, info.Orientation)
-		fmt.Printf("Exif tags: %d\n", len(info.Tags))
-		for _, tag := range info.Tags {
-			fmt.Printf("  tag: %s = %s\n", tag.Tag, tag.Value)
-		}
-	}
+	t, remaining, err := processor.ExtractDateFromString(filename)
+	fmt.Printf("Filename: %s\n", filename)
+	fmt.Printf("  Parsed date: %v, IsZero: %v\n", t, t.IsZero())
+	fmt.Printf("  Remaining: %s\n", remaining)
+	fmt.Printf("  Error: %v\n", err)
 }
