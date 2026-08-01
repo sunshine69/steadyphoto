@@ -12,6 +12,8 @@ import retrofit2.http.Field
 import retrofit2.http.FormUrlEncoded
 import retrofit2.http.GET
 import retrofit2.http.Header
+import retrofit2.http.Path
+import retrofit2.http.PATCH
 import retrofit2.http.Multipart
 import retrofit2.http.POST
 import retrofit2.http.Part
@@ -67,7 +69,8 @@ interface ApiService {
         @Part("mimeType") mimeType: RequestBody,
         @Part("fileSize") fileSize: RequestBody,
         @Part("uploadId") uploadId: RequestBody? = null,
-        @Part("fileCreatedAt") fileCreatedAt: RequestBody? = null
+        @Part("fileCreatedAt") fileCreatedAt: RequestBody? = null,
+        @Part("captureTime") captureTime: RequestBody? = null
     ): com.steadyphoto.sync.data.remote.dto.UploadResponse
 
     /**
@@ -92,12 +95,38 @@ interface ApiService {
     ): com.steadyphoto.sync.data.remote.dto.SyncStatusResponse
 
     /**
+     * Update media timestamps (capturedAt, fileCreatedAt).
+     */
+    @HTTP(method = "PATCH", path = "/api/v1/media/{mediaId}/timestamps", hasBody = true)
+    suspend fun updateMediaTimestamps(
+        @Path("mediaId") mediaId: String,
+        @Body body: com.steadyphoto.sync.data.remote.dto.UpdateTimestampsRequest
+    ): com.steadyphoto.sync.data.remote.dto.TimestampsUpdateResponse
+
+    /**
+     * Update media tags (existing tags endpoint).
+     */
+    @HTTP(method = "PATCH", path = "/api/v1/media/{mediaId}/tags", hasBody = true)
+    suspend fun updateMediaTags(
+        @Path("mediaId") mediaId: String,
+        @Body body: com.steadyphoto.sync.data.remote.dto.UpdateTagsRequest
+    ): com.steadyphoto.sync.data.remote.dto.TagsUpdateResponse
+    /**
      * Delete a media item from the server.
      */
     @HTTP(method = "DELETE", path = "/api/v1/media/delete", hasBody = true)
     suspend fun deleteMedia(
         @Part("mediaId") mediaId: RequestBody
     ): com.steadyphoto.sync.data.remote.dto.DeleteResponse
+
+    /**
+     * Complete a resumable upload session (assembles all chunks).
+     */
+    @Multipart
+    @POST("/api/v1/media/upload/complete")
+    suspend fun completeUpload(
+        @Part("uploadId") uploadId: RequestBody
+    ): com.steadyphoto.sync.data.remote.dto.CompleteUploadResponse
 
     /**
      * Get upload session status for resumable uploads.

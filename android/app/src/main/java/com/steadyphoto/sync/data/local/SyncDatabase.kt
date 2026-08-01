@@ -5,16 +5,19 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import com.steadyphoto.sync.data.local.dao.MediaItemDao
+import com.steadyphoto.sync.data.local.dao.SyncStateDao
 import com.steadyphoto.sync.data.local.entity.MediaItemEntity
+import com.steadyphoto.sync.data.local.entity.SyncStateEntity
 
 @Database(
-    entities = [MediaItemEntity::class],
-    version = 1,
+    entities = [MediaItemEntity::class, SyncStateEntity::class],
+    version = 2,
     exportSchema = false
 )
 abstract class SyncDatabase : RoomDatabase() {
 
     abstract fun mediaItemDao(): MediaItemDao
+    abstract fun syncStateDao(): SyncStateDao
 
     companion object {
         @Volatile

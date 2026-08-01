@@ -27,7 +27,9 @@ data class MainUiState(
     val recentItems: List<MediaItemEntity> = emptyList(),
     val errorMessage: String? = null,
     val showPermissionRationale: Boolean = false,
-    val isBackgroundSyncRunning: Boolean = false
+    val isBackgroundSyncRunning: Boolean = false,
+    val currentUploadItem: String? = null,
+    val currentUploadProgress: Float = 0f
 )
 
 class MainViewModel(
@@ -190,7 +192,7 @@ class MainViewModel(
             _uiState.value = _uiState.value.copy(syncState = SyncUiState.Scanning)
 
             // Trigger media scan using MediaStore
-            val scanResult = container.repository.scanNewMedia()
+            val scanResult = container.repository.scanNewMedia(forceFullScan = true)
 
             when (scanResult) {
                 is ScanResult.Success -> {
@@ -297,7 +299,17 @@ class MainViewModel(
                 // Use UploadManager for consistent, streaming uploads (fixes OOM on large files)
                 val result = container.uploadManager.uploadMedia(pendingItems, object : com.steadyphoto.sync.data.repository.UploadProgressCallback {
                     override suspend fun onProgressUpdated(progress: com.steadyphoto.sync.data.repository.UploadSessionProgress) {
-                        // Optional: could update UI with progress here if needed
+                        viewModelScope.launch {
+                            val currentUploadItem = progress.currentUpload?.fileName
+                            val currentUploadProgress = if (progress.currentUpload?.totalBytes ?: 0L > 0) {
+                                progress.currentUpload!!.bytesUploaded.toFloat() / progress.currentUpload!!.totalBytes.toFloat() * 100f
+                            } else 0f
+                            
+                            _uiState.value = _uiState.value.copy(
+                                currentUploadItem = currentUploadItem,
+                                currentUploadProgress = currentUploadProgress
+                            )
+                        }
                     }
 
                     override suspend fun onUploadComplete(successCount: Int, failureCount: Int) {

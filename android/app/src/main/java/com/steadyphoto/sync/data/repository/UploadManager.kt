@@ -197,7 +197,12 @@ class UploadManager(
             // Update local status based on result
             when (result) {
                 is UploadItemResult.Success -> {
-                    mediaItemDao.updateStatus(item.id, UploadStatus.UPLOADED)
+                    val serverId = result.mediaId
+                    if (serverId != null && serverId.isNotEmpty() && !serverId.startsWith("uploaded_")) {
+                        mediaItemDao.updateStatusWithServerId(item.id, UploadStatus.UPLOADED, serverId)
+                    } else {
+                        mediaItemDao.updateStatus(item.id, UploadStatus.UPLOADED)
+                    }
                 }
                 is UploadItemResult.Failed -> {
                     mediaItemDao.updateStatus(item.id, UploadStatus.FAILED, result.message)
@@ -252,13 +257,62 @@ class UploadManager(
                 val filePart = okhttp3.MultipartBody.Part.createFormData("file", item.fileName, requestFile)
                 val apiService = apiClient.apiService
                 
-                apiService.uploadSingleFile(
+                // Convert milliseconds to seconds for the Go server (time.Unix expects seconds)
+                val fileCreatedAtSeconds = item.fileCreatedAt?.let { (it / 1000).toString() }?.toRequestBody("text/plain".toMediaType())
+                val captureTimeSeconds = item.captureTime?.let { (it / 1000).toString() }?.toRequestBody("text/plain".toMediaType())
+                
+                val response = apiService.uploadSingleFile(
                     file = filePart,
                     fileName = item.fileName.toRequestBody("text/plain".toMediaType()),
                     mimeType = item.mimeType.toRequestBody("text/plain".toMediaType()),
                     fileSize = item.fileSize.toString().toRequestBody("text/plain".toMediaType()),
-                    fileCreatedAt = (item.fileCreatedAt?.toString() ?: "").toRequestBody("text/plain".toMediaType())
+                    fileCreatedAt = fileCreatedAtSeconds,
+                    captureTime = captureTimeSeconds
                 )
+
+                // Check if the server reported this as a duplicate
+                if (response.skippedDuplicates.isNotEmpty()) {
+                    val skipped = response.skippedDuplicates[0]
+                    Log.d(TAG, "Server reported '${item.fileName}' as duplicate (ID=${skipped.id})")
+                    
+                    // Update local status with server ID
+                    mediaItemDao.updateStatusWithServerId(item.id, UploadStatus.SKIPPED_DUPLICATE, skipped.id)
+
+                    _uploadProgress.update { current ->
+                        current?.copy(
+                            currentUpload = UploadProgress(
+                                itemId = item.id,
+                                fileName = item.fileName,
+                                bytesUploaded = item.fileSize,
+                                totalBytes = item.fileSize,
+                                status = UploadStatus.SKIPPED_DUPLICATE,
+                                serverId = skipped.id
+                            )
+                        )
+                    }
+
+                    callback?.onProgressUpdated(_uploadProgress.value!!)
+
+                    // Compare timestamps and update if they differ
+                    val needsTimestampUpdate = shouldUpdateTimestamps(item, skipped)
+                    if (needsTimestampUpdate) {
+                        try {
+                            apiService.updateMediaTimestamps(skipped.id, 
+                                com.steadyphoto.sync.data.remote.dto.UpdateTimestampsRequest(
+                                    capturedAt = formatTimestampForApi(item.captureTime),
+                                    fileCreatedAt = formatTimestampForApi(item.fileCreatedAt)
+                                )
+                            )
+                            Log.d(TAG, "Updated timestamps for duplicate '${item.fileName}' (ID=${skipped.id})")
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed to update timestamps for duplicate '${item.fileName}': ${e.message}")
+                        }
+                    } else {
+                        Log.d(TAG, "Timestamps already match for duplicate '${item.fileName}' (ID=${skipped.id})")
+                    }
+
+                    return UploadItemResult.Success(mediaId = skipped.id)
+                }
 
                 _uploadProgress.update { current ->
                     current?.copy(
@@ -267,12 +321,13 @@ class UploadManager(
                             fileName = item.fileName,
                             bytesUploaded = item.fileSize,
                             totalBytes = item.fileSize,
-                            status = UploadStatus.UPLOADED
+                            status = UploadStatus.UPLOADED,
+                            serverId = response.uploaded.firstOrNull()?.id
                         )
                     )
                 }
 
-                return UploadItemResult.Success(mediaId = "uploaded_${item.id}")
+                return UploadItemResult.Success(mediaId = response.uploaded.firstOrNull()?.id)
 
             } catch (e: Exception) {
                 lastError = e
@@ -290,6 +345,62 @@ class UploadManager(
      * Perform chunked upload for large files.
      * FIXED: No longer reads entire file into memory. Reads chunks sequentially from InputStream.
      */
+    /**
+     * Compare client timestamps with server timestamps from duplicate response.
+     * Returns true if timestamps differ and need updating.
+     * Client timestamps are Long (milliseconds since epoch), server timestamps are RFC3339 strings.
+     */
+    private fun shouldUpdateTimestamps(item: com.steadyphoto.sync.data.local.entity.MediaItemEntity, skipped: com.steadyphoto.sync.data.remote.dto.SkippedDuplicateItem): Boolean {
+        // If client has timestamp info that server lacks, we need to update
+        if (item.captureTime != null && skipped.capturedAt == null) {
+            return true
+        }
+        if (item.fileCreatedAt != null && skipped.fileCreatedAt == null) {
+            return true
+        }
+        
+        // If both have timestamp info but they differ, we need to update
+        // Convert client milliseconds to RFC3339 for comparison
+        if (item.captureTime != null && skipped.capturedAt != null) {
+            try {
+                val clientTimestamp = java.time.Instant.ofEpochMilli(item.captureTime!!)
+                val clientRfc3339 = java.time.format.DateTimeFormatter.ISO_INSTANT.format(clientTimestamp)
+                if (clientRfc3339 != skipped.capturedAt) {
+                    return true
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to convert capturedAt for comparison: ${e.message}")
+            }
+        }
+        if (item.fileCreatedAt != null && skipped.fileCreatedAt != null) {
+            try {
+                val clientTimestamp = java.time.Instant.ofEpochMilli(item.fileCreatedAt!!)
+                val clientRfc3339 = java.time.format.DateTimeFormatter.ISO_INSTANT.format(clientTimestamp)
+                if (clientRfc3339 != skipped.fileCreatedAt) {
+                    return true
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to convert fileCreatedAt for comparison: ${e.message}")
+            }
+        }
+        
+        return false
+    }
+    
+    /**
+     * Convert client timestamp (Long, milliseconds since epoch) to RFC3339 string for API request.
+     */
+    private fun formatTimestampForApi(timestampMillis: Long?): String? {
+        return timestampMillis?.let { millis ->
+            try {
+                // Convert milliseconds to seconds (epoch seconds) for the Go server
+                (millis / 1000).toString()
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to format timestamp for API: ${e.message}")
+                null
+            }
+        }
+    }
     private suspend fun performChunkedUpload(
         item: com.steadyphoto.sync.data.local.entity.MediaItemEntity,
         token: String,
@@ -324,7 +435,121 @@ class UploadManager(
             }
         }
 
-        return UploadItemResult.Success(mediaId = uploadId)
+        // All chunks uploaded, now complete the upload (assembles file, checks duplicates)
+        val completeResult = completeUpload(item, uploadId, token)
+        
+        if (completeResult != null) {
+            // Check if the server reported this as a duplicate
+            if (completeResult.skippedDuplicates.isNotEmpty()) {
+                val skipped = completeResult.skippedDuplicates[0]
+                Log.d(TAG, "Server reported '${item.fileName}' as duplicate during chunked upload (ID=${skipped.id})")
+                mediaItemDao.updateStatusWithServerId(item.id, UploadStatus.SKIPPED_DUPLICATE, skipped.id)
+
+                _uploadProgress.update { current ->
+                    current?.copy(
+                        currentUpload = UploadProgress(
+                            itemId = item.id,
+                            fileName = item.fileName,
+                            bytesUploaded = item.fileSize,
+                            totalBytes = item.fileSize,
+                            status = UploadStatus.SKIPPED_DUPLICATE,
+                            serverId = skipped.id
+                        )
+                    )
+                }
+
+                callback?.onProgressUpdated(_uploadProgress.value!!)
+
+                // Compare timestamps and update if they differ
+                val needsTimestampUpdate = shouldUpdateTimestamps(item, skipped)
+                if (needsTimestampUpdate) {
+                    try {
+                        val apiService = apiClient.apiService
+                        apiService.updateMediaTimestamps(skipped.id, 
+                            com.steadyphoto.sync.data.remote.dto.UpdateTimestampsRequest(
+                                capturedAt = formatTimestampForApi(item.captureTime),
+                                fileCreatedAt = formatTimestampForApi(item.fileCreatedAt)
+                            )
+                        )
+                        Log.d(TAG, "Updated timestamps for duplicate during chunked upload '${item.fileName}' (ID=${skipped.id})")
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to update timestamps for duplicate during chunked upload '${item.fileName}': ${e.message}")
+                    }
+                } else {
+                    Log.d(TAG, "Timestamps already match for duplicate during chunked upload '${item.fileName}' (ID=${skipped.id})")
+                }
+
+                return UploadItemResult.Success(mediaId = skipped.id)
+            }
+
+            // Successfully uploaded
+            _uploadProgress.update { current ->
+                current?.copy(
+                    currentUpload = UploadProgress(
+                        itemId = item.id,
+                        fileName = item.fileName,
+                        bytesUploaded = item.fileSize,
+                        totalBytes = item.fileSize,
+                        status = UploadStatus.UPLOADED,
+                        serverId = completeResult.uploaded.firstOrNull()?.id
+                    )
+                )
+            }
+
+            callback?.onProgressUpdated(_uploadProgress.value!!)
+
+            return UploadItemResult.Success(mediaId = completeResult.uploaded.firstOrNull()?.id)
+        }
+
+        // Complete upload returned null (error), abort the session
+        try {
+            apiClient.apiService.abortUpload(
+                uploadId = uploadId.toRequestBody("text/plain".toMediaType())
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to abort upload session for '${item.fileName}': ${e.message}")
+        }
+        
+        return UploadItemResult.Failed(message = "Failed to complete upload")
+    }
+
+    /**
+     * Complete a resumable upload session by calling the /complete endpoint.
+     */
+    private suspend fun completeUpload(
+        item: com.steadyphoto.sync.data.local.entity.MediaItemEntity,
+        uploadId: String,
+        token: String
+    ): com.steadyphoto.sync.data.remote.dto.CompleteUploadResponse? {
+        var lastError: Exception? = null
+
+        for (attempt in 1..currentConfig.maxRetries) {
+            try {
+                Log.d(TAG, "Completing upload session $uploadId for ${item.fileName} - attempt $attempt")
+                
+                val apiService = apiClient.apiService
+                val response = apiService.completeUpload(
+                    uploadId = uploadId.toRequestBody("text/plain".toMediaType())
+                )
+
+                if (response.success) {
+                    Log.d(TAG, "Upload session $uploadId completed successfully")
+                    return response
+                }
+
+                lastError = Exception("Server returned failure for complete request")
+
+            } catch (e: Exception) {
+                lastError = e
+                Log.w(TAG, "Complete upload attempt $attempt failed: ${e.message}")
+                if (attempt < currentConfig.maxRetries) {
+                    delay(INITIAL_RETRY_DELAY_MS * attempt)
+                }
+            }
+        }
+
+        Log.e(TAG, "Complete upload failed after all retries: ${lastError?.message}")
+        return null
     }
 
     /**
@@ -407,15 +632,23 @@ class UploadManager(
         var successCount = 0
         var failureCount = 0
 
+        // Limit concurrency to prevent battery/CPU drain from too many simultaneous uploads.
+        // The maxConcurrentUploads config is respected here (default is 3).
+        val concurrency = currentConfig.maxConcurrentUploads.coerceAtLeast(1)
+        
         coroutineScope {
-            items.map { item ->
-                async(Dispatchers.IO) {
-                    val result = uploadSingleItem(item, callback)
-                    synchronized(this@UploadManager) {
-                        if (result.isSuccess) successCount++ else failureCount++
+            // Process items in batches of maxConcurrentUploads
+            for (chunk in items.chunked(concurrency)) {
+                val results = chunk.map { item ->
+                    async(Dispatchers.IO) {
+                        val result = uploadSingleItem(item, callback)
+                        synchronized(this@UploadManager) {
+                            if (result.isSuccess) successCount++ else failureCount++
+                        }
                     }
                 }
-            }.awaitAll()
+                results.awaitAll()
+            }
         }
         return BatchResult(successCount, failureCount)
     }
@@ -439,7 +672,7 @@ class UploadManager(
 data class BatchResult(val success: Int, val failure: Int)
 
 sealed class UploadItemResult {
-    data class Success(val mediaId: String, val retryCount: Int = 0) : UploadItemResult()
+    data class Success(val mediaId: String?, val retryCount: Int = 0) : UploadItemResult()
     data class Failed(val message: String, val retryCount: Int = 0) : UploadItemResult()
 }
 

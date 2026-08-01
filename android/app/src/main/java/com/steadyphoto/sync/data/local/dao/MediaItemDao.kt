@@ -50,6 +50,10 @@ interface MediaItemDao {
     @Query("DELETE FROM media_items WHERE id IN (:idsToDelete)")
     suspend fun deleteByMediaIds(idsToDelete: List<Long>): Int
 
-    @Query("SELECT MAX(createdAt) FROM media_items")
-    suspend fun getMaxCreatedAt(): Long?
+    /**
+     * Get the maximum fileCreatedAt (MediaStore DATE_ADDED) across all items.
+     * Used for incremental scanning to skip already-processed files.
+     */
+    @Query("SELECT MAX(fileCreatedAt) FROM media_items")
+    suspend fun getMaxFileCreatedAt(): Long?
 }

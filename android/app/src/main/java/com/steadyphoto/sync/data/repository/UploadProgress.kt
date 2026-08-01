@@ -14,7 +14,8 @@ data class UploadProgress(
     val errorMessage: String? = null,
     val retryCount: Int = 0,
     val chunkIndex: Int? = null, // For chunked uploads
-    val totalChunks: Int? = null  // For chunked uploads
+    val totalChunks: Int? = null, // For chunked uploads
+    val serverId: String? = null // Server-assigned media ID (set after upload/duplicate detection)
 )
 
 /**

@@ -134,7 +134,31 @@ fun HomeScreen(
                     when (val state = uiState.syncState) {
                         is SyncUiState.Idle -> Text("Ready - Tap Start to begin")
                         is SyncUiState.Scanning -> Text("Scanning media...")
-                        is SyncUiState.Uploading -> Text("Uploading...")
+                        is SyncUiState.Uploading -> {
+                            Column {
+                                Text("Uploading...")
+                                if (uiState.currentUploadItem != null) {
+                                    Column(modifier = Modifier.padding(top = 8.dp)) {
+                                        Text(
+                                            text = uiState.currentUploadItem!!,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                            maxLines = 1
+                                        )
+                                        LinearProgressIndicator(
+                                            progress = uiState.currentUploadProgress / 100f,
+                                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                                        )
+                                        Text(
+                                            text = "${String.format("%.0f", uiState.currentUploadProgress)}%",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                            modifier = Modifier.padding(top = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
                         is SyncUiState.Success -> Text("Successfully synced ${state.count} items!")
                         is SyncUiState.Error -> {
                             Column {

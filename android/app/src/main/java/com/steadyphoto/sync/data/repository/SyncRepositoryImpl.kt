@@ -31,23 +31,17 @@ class SyncRepositoryImpl(
     override suspend fun scanNewMedia(forceFullScan: Boolean): ScanResult {
         val scanner = MediaScanner(context.contentResolver, mediaItemDao)
         
-        // Clean up deleted files first
+        // Clean up deleted files first (now a no-op for battery reasons)
         scanner.cleanupDeletedFiles()
         
-        // Perform the actual scan - we'll pass 0L for lastSyncTimestamp by default in interface if needed,
-        // but here we want to handle it based on what was changed in MediaScanner.kt
-        // However, SyncRepository interface might need updating too.
-        // For now, I'll try to use the new signature of scanForNewMedia from MediaScanner. 
-        // Wait, ScanResult is returned by scanNewMedia. 
-        // Let's see if we can get lastSyncTimestamp from somewhere or just pass it through.
+        // Get the last file timestamp from the database to enable incremental scanning.
+        // This avoids computing SHA-256 hashes for ALL files on every scan.
+        // Using fileCreatedAt (MediaStore DATE_ADDED) instead of createdAt (DB insertion time)
+        // so we properly skip files that were added before our last scan.
+        val lastSyncTimestamp = mediaItemDao.getMaxFileCreatedAt() ?: 0L
         
-        // Actually, for a simple implementation without updating interface yet:
-        // I will use the scanner with forceFullScan = true/false but I need to provide lastSyncTimestamp.
-        // Since I don't have access to 'lastSyncTimestamp' here easily (it would be in DB), 
-        // let's assume we might want to add it to scanNewMedia signature or get it from MediaItemDao?
-        // A better way: the scanner can find the max DATE_ADDED in its own database.
-
-        val scanResult = scanner.scanForNewMedia(forceFullScan, 0L) // placeholder for now
+        // For forceFullScan, we still do a full scan; otherwise, use incremental scanning
+        val scanResult = scanner.scanForNewMedia(forceFullScan, lastSyncTimestamp)
 
         // Count all items that need processing (Pending, Failed, or stuck Uploading)
         val pendingItems = mediaItemDao.getPendingAndFailedItems(

@@ -36,6 +36,11 @@ import org.koin.core.component.inject
  * Uses DirectoryFileObserver (filesystem-level) for real-time detection of new files,
  * combined with ContentObserver as a secondary mechanism to catch MediaStore-indexed changes.
  * Periodic sync is used as an additional fallback.
+ * 
+ * Battery optimization:
+ * - Debounces FileObserver/ContentObserver events (min 2s between triggers)
+ * - Prevents concurrent sync operations (mutex)
+ * - UploadManager limits concurrency to maxConcurrentUploads (default 3)
  */
 class SyncService : Service(), KoinComponent {
 
@@ -59,6 +64,11 @@ class SyncService : Service(), KoinComponent {
 
         // Max consecutive failed upload attempts before giving up and stopping the service.
         private const val MAX_CONSECUTIVE_UPLOAD_FAILURES = 3
+        
+        // Debounce interval for FileObserver/ContentObserver events.
+        // If multiple files are created at once (e.g., user copies 100 photos),
+        // FileObserver fires 100 times rapidly. We only trigger a sync every 2 seconds.
+        private const val SYNC_DEBOUNCE_MS = 2_000L
 
         fun newIntent(context: Context): Intent {
             return Intent(context, SyncService::class.java)
@@ -67,6 +77,15 @@ class SyncService : Service(), KoinComponent {
 
     // Track consecutive upload failures to prevent infinite retries
     private var consecutiveUploadFailures = 0
+    
+    // Timestamp of the last FileObserver/ContentObserver-triggered sync.
+    // Used for debouncing: skip sync if less than SYNC_DEBOUNCE_MS since last.
+    private var lastSyncTriggerTime = 0L
+    
+    // Mutex flag to prevent concurrent sync operations.
+    // If a sync is already running and a FileObserver event fires,
+    // we defer and let the current sync pick up new items.
+    private var isSyncInProgress = false
     
     // Flag to track whether Stop was explicitly requested. Prevents START_STICKY from 
     // restarting the service after a manual stop. Android may restart killed services,
@@ -89,10 +108,17 @@ class SyncService : Service(), KoinComponent {
         val observers = DirectoryFileObserver.MONITORED_DIRS.mapNotNull { dir ->
             try {
                 DirectoryFileObserver(dir) { file ->
-                    Log.d("SyncService", "New media file via FileObserver: ${file.absolutePath}")
-                    // Trigger sync when new files are detected at filesystem level
-                    serviceScope.launch {
-                        performSync()
+                    // Debounce: only trigger sync if last trigger was > SYNC_DEBOUNCE_MS ago.
+                    // This prevents a burst of 100 FileObserver events from triggering 100 syncs.
+                    val now = System.currentTimeMillis()
+                    if (now - lastSyncTriggerTime >= SYNC_DEBOUNCE_MS) {
+                        lastSyncTriggerTime = now
+                        Log.d("SyncService", "New media file via FileObserver: ${file.absolutePath}")
+                        serviceScope.launch {
+                            performSync()
+                        }
+                    } else {
+                        Log.d("SyncService", "FileObserver event suppressed (debounce): ${file.absolutePath}")
                     }
                 }.also { it.startWatching() }
             } catch (e: Exception) {
@@ -113,7 +139,17 @@ class SyncService : Service(), KoinComponent {
         val contentResolver = applicationContext.contentResolver
         
         mediaContentObserver = MediaContentObserver(Handler(android.os.Looper.getMainLooper()), serviceScope) {
-            performSync()
+            // Debounce: only trigger sync if last trigger was > SYNC_DEBOUNCE_MS ago.
+            val now = System.currentTimeMillis()
+            if (now - lastSyncTriggerTime >= SYNC_DEBOUNCE_MS) {
+                lastSyncTriggerTime = now
+                Log.d("SyncService", "ContentObserver triggered (debounced)")
+                serviceScope.launch {
+                    performSync()
+                }
+            } else {
+                Log.d("SyncService", "ContentObserver event suppressed (debounce)")
+            }
         }
         
         // Register on BOTH images and videos URIs with notifyForDescendants=true
@@ -239,6 +275,8 @@ class SyncService : Service(), KoinComponent {
                             )
                         } else {
                             // Use UploadManager for consistent upload handling with progress tracking
+                            // UploadManager.uploadBatch limits concurrency to maxConcurrentUploads (default 3)
+                            // to prevent battery/CPU drain from too many simultaneous uploads
                             val result = container.uploadManager.uploadMedia(pendingAndFailed)
                             
                             when {
@@ -341,9 +379,21 @@ class SyncService : Service(), KoinComponent {
     /**
      * Performs the full synchronization cycle.
      * This is a convenience wrapper for FileObserver/ContentObserver callbacks.
+     * Uses mutex to prevent concurrent sync operations.
      */
     private suspend fun performSync() {
-        performSyncAndCheckForMore()  // Ignore return value — observers keep service alive
+        // Mutex: prevent concurrent sync operations
+        if (isSyncInProgress) {
+            Log.d("SyncService", "Sync already in progress — skipping (another sync is running)")
+            return
+        }
+        isSyncInProgress = true
+        try {
+            performSyncAndCheckForMore()
+        } finally {
+            isSyncInProgress = false
+        }
+        // Ignore return value — observers keep service alive
     }
 
     private fun createNotificationChannel() {

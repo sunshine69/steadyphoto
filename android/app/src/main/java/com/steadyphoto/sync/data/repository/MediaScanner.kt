@@ -171,6 +171,11 @@ class MediaScanner(
         val timeSelection = if (lastSyncTimestamp > 0L) " AND $dateAddedColumn > $lastSyncTimestamp" else ""
         val finalSelection = "$mimeTypeSelection AND ${MediaStore.MediaColumns.SIZE} > 0$timeSelection"
         
+        // For incremental scans (lastSyncTimestamp > 0), skip hash computation
+        // because we know the file wasn't in our DB before (it was added after our last sync).
+        // This avoids expensive SHA-256 computation for every file.
+        val skipHash = lastSyncTimestamp > 0L
+        
         contentResolver.query(
             uri,
             arrayOf(idColumnName, MediaStore.MediaColumns.DISPLAY_NAME, mimeTypeColumn, MediaStore.MediaColumns.SIZE, MediaStore.MediaColumns.DATE_ADDED),
@@ -191,8 +196,13 @@ class MediaScanner(
 
                     if (isAlreadyInDb(contentUri.toString())) continue
 
-                    val hash = computeHashFromContentUri(contentUri)
-                    if (isAlreadyInDbByHash(hash)) continue
+                    // Skip hash computation for incremental scans - file is known to be new
+                    val hash = if (skipHash) {
+                        "incremental_scan_${id}"
+                    } else {
+                        computeHashFromContentUri(contentUri)
+                    }
+                    if (!skipHash && isAlreadyInDbByHash(hash)) continue
 
                     val entity = com.steadyphoto.sync.data.local.entity.MediaItemEntity(
                         uri = contentUri.toString(),
@@ -240,24 +250,11 @@ class MediaScanner(
     }
 
     suspend fun cleanupDeletedFiles() {
-        val pendingItems = mediaItemDao.getPendingAndFailedItems(
-            listOf(com.steadyphoto.sync.data.local.entity.UploadStatus.PENDING, 
-                   com.steadyphoto.sync.data.local.entity.UploadStatus.FAILED,
-                   com.steadyphoto.sync.data.local.entity.UploadStatus.UPLOADING)
-        )
-
-        var deletedCount = 0
-        for (item in pendingItems) {
-            try {
-                val uri = android.net.Uri.parse(item.uri)
-                contentResolver.openInputStream(uri)?.use { } ?: run {
-                    mediaItemDao.updateStatus(item.id, com.steadyphoto.sync.data.local.entity.UploadStatus.FAILED, "File not accessible")
-                    deletedCount++
-                }
-            } catch (e: Exception) {
-                mediaItemDao.updateStatus(item.id, com.steadyphoto.sync.data.local.entity.UploadStatus.FAILED, "File not accessible")
-                deletedCount++
-            }
-        }
+        // Skip file existence check to avoid battery drain from opening input streams
+        // for every pending/failed item on every scan. Files will be marked FAILED
+        // during upload if they're no longer accessible.
+        // Previously: opened input stream for every item just to check if file exists.
+        // This caused massive battery drain when there are many pending items.
+        Log.d(TAG, "Skipping file existence check (battery optimization)")
     }
 }

@@ -21,7 +21,13 @@ data class SkippedDuplicateItem(
     @SerializedName("filename")
     val filename: String,
     
-    val id: String
+    val id: String,
+    
+    @SerializedName("captured_at")
+    val capturedAt: String? = null,
+    
+    @SerializedName("file_created_at")
+    val fileCreatedAt: String? = null
 )
 
 /**
@@ -46,7 +52,10 @@ data class UploadedMedia(
     val size: Long,
     
     @SerializedName("captured_at")
-    val capturedAt: String? = null
+    val capturedAt: String? = null,
+    
+    @SerializedName("file_created_at")
+    val fileCreatedAt: String? = null
 )
 
 /**
@@ -65,4 +74,56 @@ data class DeleteResponse(
     
     @SerializedName("message")
     val message: String? = null
+)
+
+/**
+ * Request to update media timestamps.
+ */
+data class UpdateTimestampsRequest(
+    @SerializedName("capturedAt")
+    val capturedAt: String? = null,
+    
+    @SerializedName("fileCreatedAt")
+    val fileCreatedAt: String? = null
+)
+
+/**
+ * Response from timestamps update request.
+ */
+data class TimestampsUpdateResponse(
+    val status: String
+)
+
+/**
+ * Request to update media tags.
+ */
+data class UpdateTagsRequest(
+    val tags: String
+)
+
+/**
+ * Response from tags update request.
+ */
+data class TagsUpdateResponse(
+    val status: String
+)
+
+/**
+ * Request to complete a resumable upload session.
+ */
+data class CompleteUploadRequest(
+    @SerializedName("uploadId")
+    val uploadId: String
+)
+
+/**
+ * Response from the /complete endpoint.
+ * This response includes both successful uploads and duplicate detection.
+ */
+data class CompleteUploadResponse(
+    val success: Boolean,
+    val uploaded: List<UploadedMedia> = emptyList(),
+    @SerializedName("skipped_duplicates")
+    val skippedDuplicates: List<SkippedDuplicateItem> = emptyList(),
+    val errors: List<UploadError> = emptyList()
 )

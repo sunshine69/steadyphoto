@@ -31,20 +31,21 @@ data class UserDto(
 
 /**
  * Response for chunk upload operations.
+ * Note: The Go server uses camelCase for all fields in the response.
  */
 data class ChunkUploadResponse(
     val success: Boolean,
     
-    @SerializedName("upload_id")
+    @SerializedName("uploadId")
     val uploadId: String?,
     
-    @SerializedName("chunk_index")
+    @SerializedName("chunkIndex")
     val chunkIndex: Int,
     
-    @SerializedName("total_chunks")
+    @SerializedName("totalChunks")
     val totalChunks: Int,
     
-    @SerializedName("bytes_received")
+    @SerializedName("bytesReceived")
     val bytesReceived: Long,
     
     val message: String? = null
@@ -52,27 +53,28 @@ data class ChunkUploadResponse(
 
 /**
  * Response for upload session status.
+ * Note: The Go server uses camelCase for all fields in the response.
  */
 data class UploadSessionResponse(
-    @SerializedName("upload_id")
+    @SerializedName("uploadId")
     val uploadId: String,
     
-    @SerializedName("file_name")
+    @SerializedName("fileName")
     val fileName: String,
     
-    @SerializedName("file_size")
+    @SerializedName("fileSize")
     val fileSize: Long,
     
-    @SerializedName("uploaded_chunks")
+    @SerializedName("uploadedChunks")
     val uploadedChunks: List<Int> = emptyList(),
     
-    @SerializedName("total_chunks")
+    @SerializedName("totalChunks")
     val totalChunks: Int,
     
-    @SerializedName("is_complete")
+    @SerializedName("isComplete")
     val isComplete: Boolean,
     
-    @SerializedName("created_at")
+    @SerializedName("createdAt")
     val createdAt: String? = null
 )
 

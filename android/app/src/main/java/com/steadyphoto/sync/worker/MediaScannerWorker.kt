@@ -30,8 +30,8 @@ class MediaScannerWorker(
             // 1. Force a MediaStore scan of the common camera directories.
             scanCameraDirectories()
 
-            // 2. Perform the database scan
-            val scanResult = container.repository.scanNewMedia(forceFullScan = true)
+            // 2. Perform the database scan (incremental, not forceFullScan)
+            val scanResult = container.repository.scanNewMedia(forceFullScan = false)
 
             when (scanResult) {
                 is com.steadyphoto.sync.data.repository.ScanResult.Success -> {

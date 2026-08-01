@@ -184,225 +184,386 @@ func UploadSingleFile(filePath string, uploadURL string, authToken string) (*Upl
 
 // CreateChunkedUploadSession creates a new chunked upload session on the server.
 func CreateChunkedUploadSession(uploadURL string, authToken string, fileName string, fileSize int64, totalChunks int) (*ChunkUploadStatus, error) {
-	var bodyBuffer bytes.Buffer
+	var lastErr error
 
-	// Build form data for creating the session
-	writer := multipart.NewWriter(&bodyBuffer)
+	for attempt := 1; attempt <= 3; attempt++ {
+		if attempt > 1 {
+			time.Sleep(time.Duration(attempt) * time.Second) // Exponential backoff: 1s, 2s, then continue
+		}
 
-	err := writer.WriteField("fileName", fileName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to write fileName field: %v", err)
+		var bodyBuffer bytes.Buffer
+
+		// Build form data for creating the session
+		writer := multipart.NewWriter(&bodyBuffer)
+
+		err := writer.WriteField("fileName", fileName)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to write fileName field: %v", err)
+			continue
+		}
+
+		err = writer.WriteField("fileSize", fmt.Sprintf("%d", fileSize))
+		if err != nil {
+			lastErr = fmt.Errorf("failed to write fileSize field: %v", err)
+			continue
+		}
+
+		err = writer.WriteField("totalChunks", fmt.Sprintf("%d", totalChunks))
+		if err != nil {
+			lastErr = fmt.Errorf("failed to write totalChunks field: %v", err)
+			continue
+		}
+
+		writer.Close()
+
+		req, err := http.NewRequest("POST", uploadURL+"/api/v1/media/upload/chunked", &bodyBuffer)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to create request: %v", err)
+			continue
+		}
+
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+		req.Header.Set("User-Agent", userAgent)
+		if authToken != "" {
+			req.Header.Set("Authorization", "Bearer "+authToken)
+		}
+
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to create session on attempt %d: %v", attempt, err)
+
+			// Check if error is due to network interruption
+			if strings.Contains(err.Error(), "connection reset by peer") ||
+				strings.Contains(err.Error(), "broken pipe") ||
+				strings.Contains(err.Error(), "stream closed") {
+				// These are retryable errors - Go handles them better than OkHttp
+				continue
+			}
+
+			return nil, lastErr
+		}
+
+		// Don't defer close here - we need to read the response body first
+		bodyBytes, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			lastErr = fmt.Errorf("failed to read response on attempt %d: %v", attempt, err)
+			if strings.Contains(err.Error(), "connection reset by peer") ||
+				strings.Contains(err.Error(), "broken pipe") ||
+				strings.Contains(err.Error(), "stream closed") {
+				// These are retryable errors
+				continue
+			}
+			return nil, lastErr
+		}
+
+		if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated {
+			var result map[string]interface{}
+			err = json.Unmarshal(bodyBytes, &result)
+			if err != nil {
+				lastErr = fmt.Errorf("failed to parse response: %v", err)
+				continue
+			}
+
+			sessionID, ok := result["uploadId"].(string)
+			if !ok || sessionID == "" {
+				lastErr = fmt.Errorf("no upload ID returned from server")
+				continue
+			}
+
+			return &ChunkUploadStatus{
+				SessionID:   sessionID,
+				Filename:    fileName,
+				FileSize:    fileSize,
+				TotalChunks: totalChunks,
+			}, nil
+		} else if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+			lastErr = fmt.Errorf("authentication failed (HTTP %d)", resp.StatusCode)
+			return nil, lastErr
+		}
+
+		// For other error codes, try retrying if it's a server-side issue
+		if attempt < 3 && (resp.StatusCode == http.StatusServiceUnavailable ||
+			resp.StatusCode == http.StatusBadGateway ||
+			resp.StatusCode >= 500) {
+			lastErr = fmt.Errorf("server error %d on attempt %d", resp.StatusCode, attempt)
+			continue
+		}
+
+		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 
-	err = writer.WriteField("fileSize", fmt.Sprintf("%d", fileSize))
-	if err != nil {
-		return nil, fmt.Errorf("failed to write fileSize field: %v", err)
-	}
-
-	err = writer.WriteField("totalChunks", fmt.Sprintf("%d", totalChunks))
-	if err != nil {
-		return nil, fmt.Errorf("failed to write totalChunks field: %v", err)
-	}
-
-	writer.Close()
-
-	req, err := http.NewRequest("POST", uploadURL+"/api/v1/media/upload/chunked", &bodyBuffer)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %v", err)
-	}
-
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-	req.Header.Set("User-Agent", userAgent)
-	if authToken != "" {
-		req.Header.Set("Authorization", "Bearer "+authToken)
-	}
-
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create session: %v", err)
-	}
-	defer resp.Body.Close()
-
-	var result map[string]interface{}
-	bodyBytes, _ := io.ReadAll(resp.Body)
-
-	err = json.Unmarshal(bodyBytes, &result)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse response: %v", err)
-	}
-
-	sessionID, ok := result["uploadId"].(string)
-	if !ok || sessionID == "" {
-		return nil, fmt.Errorf("no upload ID returned from server")
-	}
-
-	return &ChunkUploadStatus{
-		SessionID:   sessionID,
-		Filename:    fileName,
-		FileSize:    fileSize,
-		TotalChunks: totalChunks,
-	}, nil
+	lastErr = fmt.Errorf("failed after 3 attempts")
+	return nil, lastErr
 }
 
 // UploadChunk uploads a single chunk of a file.
 func UploadChunk(chunkData []byte, uploadURL string, authToken string, sessionID string, chunkIndex int, fileName string) (*UploadResult, error) {
-	var bodyBuffer bytes.Buffer
-	writer := multipart.NewWriter(&bodyBuffer)
+	var lastErr error
 
-	// Add metadata fields
-	err := writer.WriteField("uploadId", sessionID)
-	if err != nil {
-		return &UploadResult{Success: false}, fmt.Errorf("failed to write uploadId field: %v", err)
+	for attempt := 1; attempt <= 3; attempt++ {
+		if attempt > 1 {
+			time.Sleep(time.Duration(attempt) * time.Second) // Exponential backoff: 1s, 2s, then continue
+		}
+
+		var bodyBuffer bytes.Buffer
+		writer := multipart.NewWriter(&bodyBuffer)
+
+		// Add metadata fields
+		err := writer.WriteField("uploadId", sessionID)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to write uploadId field: %v", err)
+			continue
+		}
+
+		err = writer.WriteField("chunkIndex", fmt.Sprintf("%d", chunkIndex))
+		if err != nil {
+			lastErr = fmt.Errorf("failed to write chunkIndex field: %v", err)
+			continue
+		}
+
+		err = writer.WriteField("fileName", fileName)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to write fileName field: %v", err)
+			continue
+		}
+
+		// Add the chunk data as a form file part
+		part, err := writer.CreateFormFile("chunk", fmt.Sprintf("chunk_%d_%s", chunkIndex, filepath.Base(fileName)))
+		if err != nil {
+			lastErr = fmt.Errorf("failed to create form file part: %v", err)
+			continue
+		}
+
+		_, err = io.Copy(part, bytes.NewReader(chunkData))
+		if err != nil {
+			lastErr = fmt.Errorf("failed to write chunk data: %v", err)
+			continue
+		}
+
+		writer.Close()
+
+		req, err := http.NewRequest("POST", uploadURL+"/api/v1/media/upload/chunk", &bodyBuffer)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to create request: %v", err)
+			continue
+		}
+
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+		req.Header.Set("User-Agent", userAgent)
+		if authToken != "" {
+			req.Header.Set("Authorization", "Bearer "+authToken)
+		}
+
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("chunk upload failed on attempt %d: %v", attempt, err)
+
+			// Check if error is due to network interruption
+			if strings.Contains(err.Error(), "connection reset by peer") ||
+				strings.Contains(err.Error(), "broken pipe") ||
+				strings.Contains(err.Error(), "stream closed") {
+				// These are retryable errors - Go handles them better than OkHttp
+				continue
+			}
+
+			return &UploadResult{Success: false}, lastErr
+		}
+
+		// Don't defer close here - we need to read the response body first
+		bodyBytes, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			lastErr = fmt.Errorf("failed to read response on attempt %d: %v", attempt, err)
+			if strings.Contains(err.Error(), "connection reset by peer") ||
+				strings.Contains(err.Error(), "broken pipe") ||
+				strings.Contains(err.Error(), "stream closed") {
+				// These are retryable errors
+				continue
+			}
+			return &UploadResult{Success: false}, lastErr
+		}
+
+		var result map[string]interface{}
+		err = json.Unmarshal(bodyBytes, &result)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to parse response: %v", err)
+			continue
+		}
+
+		success, ok := result["success"].(bool)
+		if !ok || !success {
+			message, _ := result["message"].(string)
+			return &UploadResult{Success: false, Message: message}, fmt.Errorf("chunk upload failed")
+		}
+
+		return &UploadResult{Success: true}, nil
 	}
 
-	err = writer.WriteField("chunkIndex", fmt.Sprintf("%d", chunkIndex))
-	if err != nil {
-		return &UploadResult{Success: false}, fmt.Errorf("failed to write chunkIndex field: %v", err)
-	}
-
-	err = writer.WriteField("fileName", fileName)
-	if err != nil {
-		return &UploadResult{Success: false}, fmt.Errorf("failed to write fileName field: %v", err)
-	}
-
-	// Add the chunk data as a form file part
-	part, err := writer.CreateFormFile("chunk", fmt.Sprintf("chunk_%d_%s", chunkIndex, filepath.Base(fileName)))
-	if err != nil {
-		return &UploadResult{Success: false}, fmt.Errorf("failed to create form file part: %v", err)
-	}
-
-	_, err = io.Copy(part, bytes.NewReader(chunkData))
-	if err != nil {
-		return &UploadResult{Success: false}, fmt.Errorf("failed to write chunk data: %v", err)
-	}
-
-	writer.Close()
-
-	req, err := http.NewRequest("POST", uploadURL+"/api/v1/media/upload/chunk", &bodyBuffer)
-	if err != nil {
-		return &UploadResult{Success: false}, fmt.Errorf("failed to create request: %v", err)
-	}
-
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-	req.Header.Set("User-Agent", userAgent)
-	if authToken != "" {
-		req.Header.Set("Authorization", "Bearer "+authToken)
-	}
-
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return &UploadResult{Success: false}, fmt.Errorf("chunk upload failed: %v", err)
-	}
-	defer resp.Body.Close()
-
-	var result map[string]interface{}
-	bodyBytes, _ := io.ReadAll(resp.Body)
-
-	err = json.Unmarshal(bodyBytes, &result)
-	if err != nil {
-		return &UploadResult{Success: false}, fmt.Errorf("failed to parse response: %v", err)
-	}
-
-	success, ok := result["success"].(bool)
-	if !ok || !success {
-		message, _ := result["message"].(string)
-		return &UploadResult{Success: false, Message: message}, fmt.Errorf("chunk upload failed")
-	}
-
-	return &UploadResult{Success: true}, nil
+	lastErr = fmt.Errorf("failed after 3 attempts")
+	return &UploadResult{Success: false}, lastErr
 }
 
 // GetChunkedUploadStatus checks the status of a chunked upload session.
 func GetChunkedUploadStatus(uploadURL string, authToken string, sessionID string) (*ChunkUploadStatus, error) {
-	req, err := http.NewRequest("GET", fmt.Sprintf("%s/api/v1/media/upload/status?uploadId=%s", uploadURL, sessionID), nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %v", err)
-	}
+	var lastErr error
 
-	req.Header.Set("User-Agent", userAgent)
-	req.Header.Set("Authorization", "Bearer "+authToken)
-
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("status check failed: %v", err)
-	}
-	defer resp.Body.Close()
-
-	var result map[string]interface{}
-	bodyBytes, _ := io.ReadAll(resp.Body)
-
-	err = json.Unmarshal(bodyBytes, &result)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse response: %v", err)
-	}
-
-	chunks, ok := result["uploadedChunks"].([]interface{})
-	var uploadedIdxStr string
-	if ok {
-		parts := make([]string, 0, len(chunks))
-		for _, chunk := range chunks {
-			if idx, isInt := chunk.(float64); isInt {
-				parts = append(parts, fmt.Sprintf("%d", int(idx)))
-			}
+	for attempt := 1; attempt <= 3; attempt++ {
+		if attempt > 1 {
+			time.Sleep(time.Duration(attempt) * time.Second) // Exponential backoff: 1s, 2s, then continue
 		}
-		uploadedIdxStr = strings.Join(parts, ",")
+
+		req, err := http.NewRequest("GET", fmt.Sprintf("%s/api/v1/media/upload/status?uploadId=%s", uploadURL, sessionID), nil)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to create request: %v", err)
+			continue
+		}
+
+		req.Header.Set("User-Agent", userAgent)
+		req.Header.Set("Authorization", "Bearer "+authToken)
+
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("status check failed on attempt %d: %v", attempt, err)
+
+			// Check if error is due to network interruption
+			if strings.Contains(err.Error(), "connection reset by peer") ||
+				strings.Contains(err.Error(), "broken pipe") ||
+				strings.Contains(err.Error(), "stream closed") {
+				// These are retryable errors - Go handles them better than OkHttp
+				continue
+			}
+
+			return nil, lastErr
+		}
+
+		// Don't defer close here - we need to read the response body first
+		bodyBytes, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			lastErr = fmt.Errorf("failed to read response on attempt %d: %v", attempt, err)
+			if strings.Contains(err.Error(), "connection reset by peer") ||
+				strings.Contains(err.Error(), "broken pipe") ||
+				strings.Contains(err.Error(), "stream closed") {
+				// These are retryable errors
+				continue
+			}
+			return nil, lastErr
+		}
+
+		var result map[string]interface{}
+		err = json.Unmarshal(bodyBytes, &result)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to parse response: %v", err)
+			continue
+		}
+
+		chunks, ok := result["uploadedChunks"].([]interface{})
+		var uploadedIdxStr string
+		if ok {
+			parts := make([]string, 0, len(chunks))
+			for _, chunk := range chunks {
+				if idx, isInt := chunk.(float64); isInt {
+					parts = append(parts, fmt.Sprintf("%d", int(idx)))
+				}
+			}
+			uploadedIdxStr = strings.Join(parts, ",")
+		}
+
+		totalChunks, _ := result["totalChunks"].(float64)
+		fileSize, _ := result["fileSize"].(float64)
+		isComplete, _ := result["isComplete"].(bool)
+
+		return &ChunkUploadStatus{
+			SessionID:   sessionID,
+			TotalChunks: int(totalChunks),
+			FileSize:    int64(fileSize),
+			UploadedIdx: uploadedIdxStr,
+			IsComplete:  isComplete,
+		}, nil
 	}
 
-	totalChunks, _ := result["totalChunks"].(float64)
-	fileSize, _ := result["fileSize"].(float64)
-	isComplete, _ := result["isComplete"].(bool)
-
-	return &ChunkUploadStatus{
-		SessionID:   sessionID,
-		TotalChunks: int(totalChunks),
-		FileSize:    int64(fileSize),
-		UploadedIdx: uploadedIdxStr,
-		IsComplete:  isComplete,
-	}, nil
+	lastErr = fmt.Errorf("failed after 3 attempts")
+	return nil, lastErr
 }
 
 // CompleteChunkedUpload signals the server to assemble all chunks into the final file.
 func CompleteChunkedUpload(uploadURL string, authToken string, sessionID string) (*UploadResult, error) {
-	var bodyBuffer bytes.Buffer
-	writer := multipart.NewWriter(&bodyBuffer)
+	var lastErr error
 
-	err := writer.WriteField("uploadId", sessionID)
-	if err != nil {
-		return &UploadResult{Success: false}, fmt.Errorf("failed to write uploadId field: %v", err)
+	for attempt := 1; attempt <= 3; attempt++ {
+		if attempt > 1 {
+			time.Sleep(time.Duration(attempt) * time.Second) // Exponential backoff: 1s, 2s, then continue
+		}
+
+		var bodyBuffer bytes.Buffer
+		writer := multipart.NewWriter(&bodyBuffer)
+
+		err := writer.WriteField("uploadId", sessionID)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to write uploadId field: %v", err)
+			continue
+		}
+
+		writer.Close()
+
+		req, err := http.NewRequest("POST", uploadURL+"/api/v1/media/upload/complete", &bodyBuffer)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to create request: %v", err)
+			continue
+		}
+
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+		req.Header.Set("User-Agent", userAgent)
+		if authToken != "" {
+			req.Header.Set("Authorization", "Bearer "+authToken)
+		}
+
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("complete upload failed on attempt %d: %v", attempt, err)
+
+			// Check if error is due to network interruption
+			if strings.Contains(err.Error(), "connection reset by peer") ||
+				strings.Contains(err.Error(), "broken pipe") ||
+				strings.Contains(err.Error(), "stream closed") {
+				// These are retryable errors - Go handles them better than OkHttp
+				continue
+			}
+
+			return &UploadResult{Success: false}, lastErr
+		}
+
+		// Don't defer close here - we need to read the response body first
+		bodyBytes, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			lastErr = fmt.Errorf("failed to read response on attempt %d: %v", attempt, err)
+			if strings.Contains(err.Error(), "connection reset by peer") ||
+				strings.Contains(err.Error(), "broken pipe") ||
+				strings.Contains(err.Error(), "stream closed") {
+				// These are retryable errors
+				continue
+			}
+			return &UploadResult{Success: false}, lastErr
+		}
+
+		var result map[string]interface{}
+		err = json.Unmarshal(bodyBytes, &result)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to parse response: %v", err)
+			continue
+		}
+
+		success, ok := result["success"].(bool)
+		if !ok || !success {
+			message, _ := result["message"].(string)
+			return &UploadResult{Success: false, Message: message}, fmt.Errorf("complete upload failed")
+		}
+
+		return &UploadResult{Success: true}, nil
 	}
 
-	writer.Close()
-
-	req, err := http.NewRequest("POST", uploadURL+"/api/v1/media/upload/complete", &bodyBuffer)
-	if err != nil {
-		return &UploadResult{Success: false}, fmt.Errorf("failed to create request: %v", err)
-	}
-
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-	req.Header.Set("User-Agent", userAgent)
-	if authToken != "" {
-		req.Header.Set("Authorization", "Bearer "+authToken)
-	}
-
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return &UploadResult{Success: false}, fmt.Errorf("complete upload failed: %v", err)
-	}
-	defer resp.Body.Close()
-
-	var result map[string]interface{}
-	bodyBytes, _ := io.ReadAll(resp.Body)
-
-	err = json.Unmarshal(bodyBytes, &result)
-	if err != nil {
-		return &UploadResult{Success: false}, fmt.Errorf("failed to parse response: %v", err)
-	}
-
-	success, ok := result["success"].(bool)
-	if !ok || !success {
-		message, _ := result["message"].(string)
-		return &UploadResult{Success: false, Message: message}, fmt.Errorf("complete upload failed")
-	}
-
-	return &UploadResult{Success: true}, nil
+	lastErr = fmt.Errorf("failed after 3 attempts")
+	return &UploadResult{Success: false}, lastErr
 }
