@@ -6,14 +6,14 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/jbrodriguez/mlog"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
+
+	"github.com/jbrodriguez/mlog"
 	"steadyphoto/internal/processor"
 )
 
@@ -22,10 +22,12 @@ func init() {
 }
 
 type MediaRecord struct {
-	ID         string         `db:"id"`
-	Metadata   sql.NullString `db:"metadata"`
-	CapturedAt time.Time      `db:"captured_at"`
-	Filename   string         `db:"filename"`
+	ID            string         `db:"id"`
+	Metadata      sql.NullString `db:"metadata"`
+	CapturedAt    time.Time      `db:"captured_at"`
+	Filename      string         `db:"filename"`
+	FileCreatedAt *time.Time     `db:"file_created_at"`
+	CreatedAt     time.Time      `db:"created_at"`
 }
 
 func main() {
@@ -59,8 +61,8 @@ func main() {
 
 	ctx := context.Background()
 
-	// Query all media records
-	query := `SELECT id, metadata, captured_at, filename FROM media WHERE deleted_at IS NULL`
+	// Query all media records including file_created_at and created_at
+	query := `SELECT id, metadata, captured_at, filename, file_created_at, created_at FROM media WHERE deleted_at IS NULL`
 	var records []MediaRecord
 	err = db.SelectContext(ctx, &records, query)
 	if err != nil {
@@ -71,36 +73,59 @@ func main() {
 
 	updated := 0
 	errors := 0
+	skipped := 0
 
 	for _, record := range records {
-		// Parse metadata JSONB
-		var metadata map[string]string
-		if !record.Metadata.Valid {
-			continue
-		}
-		if err := json.Unmarshal([]byte(record.Metadata.String), &metadata); err != nil {
-			mlog.Info("Failed to parse metadata for %s: %v", record.ID, err)
-			errors++
-			continue
-		}
+		// Determine the source label for logging
+		source := ""
 
-		// Look for DateTimeOriginal in metadata
+		// Priority 1: Try EXIF metadata (DateTimeOriginal first, then fallback tags)
 		dateStr := ""
-		for _, key := range []string{"DateTimeOriginal", "DateTimeDigitized", "DateTime", "DateCaptured"} {
-			if val, ok := metadata[key]; ok && val != "" {
-				dateStr = val
-				break
-			}
-		}
-
-		if dateStr == "" {
-			// Fallback: try to parse date from filename
-			if fnDate, _, _ := processor.ExtractDateFromString(record.Filename); !fnDate.IsZero() {
-				dateStr = fnDate.Format("2006:01:02 15:04:05")
-				mlog.Info("[FILENAME] Using filename heuristic for %s: %s", record.ID, record.Filename)
-			} else {
+		var metadataMap map[string]string
+		if record.Metadata.Valid {
+			if err := json.Unmarshal([]byte(record.Metadata.String), &metadataMap); err != nil {
+				mlog.Info("Failed to parse metadata for %s: %v", record.ID, err)
+				errors++
 				continue
 			}
+
+			// Try EXIF date tags in priority order
+			for _, key := range []string{"DateTimeOriginal", "DateTimeDigitized", "DateTime", "DateCaptured"} {
+				if val, ok := metadataMap[key]; ok && val != "" {
+					dateStr = val
+					source = "EXIF:" + key
+					break
+				}
+			}
+		}
+
+		// Priority 2: If no EXIF date, try filename heuristic
+		if dateStr == "" {
+			if fnDate, _, err := processor.ExtractDateFromString(record.Filename); err == nil && !fnDate.IsZero() {
+				dateStr = fnDate.Format("2006:01:02 15:04:05")
+				source = "filename"
+			}
+		}
+
+		// Priority 3: If no date from EXIF or filename, use file_created_at
+		if dateStr == "" && record.FileCreatedAt != nil && !record.FileCreatedAt.IsZero() {
+			dateStr = record.FileCreatedAt.Format("2006:01:02 15:04:05")
+			source = "file_created_at"
+		}
+
+		// Priority 4: Last fallback — use created_at
+		if dateStr == "" && !record.CreatedAt.IsZero() {
+			dateStr = record.CreatedAt.Format("2006:01:02 15:04:05")
+			source = "created_at"
+		}
+
+		// If no date found at all, skip this record
+		if dateStr == "" {
+			mlog.Info("No date found for %s (metadata=%v, filename=%q, file_created_at=%v, created_at=%v)",
+				record.ID, record.Metadata.Valid, record.Filename,
+				record.FileCreatedAt, record.CreatedAt)
+			skipped++
+			continue
 		}
 
 		// Parse the date string
@@ -111,29 +136,40 @@ func main() {
 			continue
 		}
 
-		// Update captured_at if the date is different from current value
-		if !record.CapturedAt.IsZero() && record.CapturedAt == parsedDate {
-			continue
-		}
+		// Update captured_at only if different from current value
+		if record.CapturedAt.IsZero() || record.CapturedAt.Unix() != parsedDate.Unix() {
+			// Update the database
+			updateQuery := `UPDATE media SET captured_at = $1 WHERE id = $2`
+			_, err = db.ExecContext(ctx, updateQuery, parsedDate, record.ID)
+			if err != nil {
+				mlog.Info("Failed to update captured_at for %s: %v", record.ID, err)
+				errors++
+				continue
+			}
 
-		// Update the database
-		updateQuery := `UPDATE media SET captured_at = $1 WHERE id = $2`
-		_, err = db.ExecContext(ctx, updateQuery, parsedDate, record.ID)
-		if err != nil {
-			mlog.Info("Failed to update captured_at for %s: %v", record.ID, err)
-			errors++
-			continue
+			updated++
+			mlog.Info("Updated %s: %s -> %s (source: %s)",
+				record.ID,
+				record.CapturedAt.Format(time.RFC3339),
+				parsedDate.Format(time.RFC3339),
+				source)
+		} else {
+			mlog.Info("Skipping %s: captured_at already %s (source: %s)",
+				record.ID,
+				record.CapturedAt.Format(time.RFC3339),
+				source)
 		}
-
-		updated++
-		mlog.Info("Updated %s: %s -> %s", record.ID, record.CapturedAt.Format(time.RFC3339), parsedDate.Format(time.RFC3339))
 	}
 
-	mlog.Info("Done! Updated: %d, Errors: %d", updated, errors)
+	mlog.Info("\n=== EXIF Update Complete ===")
+	mlog.Info("Total records: %d", len(records))
+	mlog.Info("Updated: %d", updated)
+	mlog.Info("Skipped (no date): %d", skipped)
+	mlog.Info("Errors: %d", errors)
 }
 
 func parseDate(dateStr string) (time.Time, error) {
-	dateStr = strings.TrimSpace(dateStr)
+	dateStr = fmt.Sprintf("%s 00:00:00", dateStr)
 
 	formats := []string{
 		"2006:01:02 15:04:05",

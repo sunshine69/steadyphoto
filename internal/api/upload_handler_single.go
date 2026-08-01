@@ -948,15 +948,21 @@ func (h *MediaUploadHandlerSingle) HandleComplete(w http.ResponseWriter, r *http
 		CapturedAt: time.Now(),
 	}
 
+	// Parse file creation date from client (filesystem DATE_ADDED)
+	if fileCreatedAtStr := r.FormValue("fileCreatedAt"); fileCreatedAtStr != "" {
+		if fcTime, err := time.Parse("2006/01/02 15:04:05", fileCreatedAtStr); err == nil {
+			meta.FileCreatedAt = &fcTime
+			mlog.Info("[INFO] UploadHandlerComplete: file creation date from client for '%s': %s", session.Filename, fcTime.Format(time.RFC3339))
+		}
+	}
+
 	var capturedAt time.Time
 	var exifErr error
-	meta.Metadata, capturedAt, exifErr = extractExif(absTargetPath)
+	var exifMeta domain.Metadata
+	exifMeta, capturedAt, exifErr = extractExif(absTargetPath)
+	meta.Metadata = exifMeta
 	if exifErr != nil {
 		mlog.Info("[WARN] UploadHandlerComplete: extractExif failed for '%s': %v", session.Filename, exifErr)
-	}
-	if !capturedAt.IsZero() {
-		meta.CapturedAt = capturedAt
-		mlog.Info("[INFO] UploadHandlerComplete: EXIF DateTimeOriginal found for '%s': %s", session.Filename, capturedAt.Format(time.RFC3339))
 	}
 
 	// Extract video metadata if this is a video file
@@ -972,6 +978,27 @@ func (h *MediaUploadHandlerSingle) HandleComplete(w http.ResponseWriter, r *http
 		}
 	}
 
+	// Determine CapturedAt: prefer VideoMetadata.CreatedAt (for videos), then EXIF DateTimeOriginal (for images), then filename heuristic, then filesystem mtime (fileCreatedAt from client), fall back to upload time
+	if !capturedAt.IsZero() {
+		meta.CapturedAt = capturedAt
+		mlog.Info("[INFO] UploadHandlerComplete: EXIF DateTimeOriginal found for '%s': %s", session.Filename, capturedAt.Format(time.RFC3339))
+	} else if meta.VideoMetadata.CreatedAt != (time.Time{}) {
+		meta.CapturedAt = meta.VideoMetadata.CreatedAt
+		mlog.Info("[INFO] UploadHandlerComplete: VideoMetadata.CreatedAt found for '%s': %s", session.Filename, meta.VideoMetadata.CreatedAt.Format(time.RFC3339))
+	} else {
+		// Heuristic fallback: try to parse date from filename
+		if fnDate, _, _ := processor.ExtractDateFromString(session.Filename); !fnDate.IsZero() {
+			meta.CapturedAt = fnDate
+			mlog.Info("[INFO] UploadHandlerComplete: Filename heuristic date parsed for '%s': %s", session.Filename, fnDate.Format(time.RFC3339))
+		} else if meta.FileCreatedAt != nil && !meta.FileCreatedAt.IsZero() {
+			// Filesystem mtime from the client (sent as fileCreatedAt in the form)
+			meta.CapturedAt = *meta.FileCreatedAt
+			mlog.Info("[INFO] UploadHandlerComplete: Filesystem mtime (fileCreatedAt) used for '%s': %s", session.Filename, meta.FileCreatedAt.Format(time.RFC3339))
+		} else {
+			mlog.Info("[INFO] UploadHandlerComplete: No EXIF/Video/Filename/date found for '%s', using upload time: %s", session.Filename, meta.CapturedAt.Format(time.RFC3339))
+		}
+	}
+
 	if err := h.mediaRepo.Create(dbCtx, meta); err != nil {
 		mlog.Info("[ERROR] UploadHandlerComplete: Failed to insert media %s (hash=%s): %v", newFilename, hash[:8]+"...", err)
 		w.Header().Set("Content-Type", "application/json")
@@ -983,12 +1010,13 @@ func (h *MediaUploadHandlerSingle) HandleComplete(w http.ResponseWriter, r *http
 	}
 
 	uploadedMedia := map[string]interface{}{
-		"id":          meta.ID.String(),
-		"filename":    session.Filename,
-		"mediaType":   string(meta.MediaType),
-		"path":        relPathFromRoot,
-		"size":        assembledFileSize.Size(),
-		"captured_at": time.Now().Format(time.RFC3339),
+		"id":              meta.ID.String(),
+		"filename":        session.Filename,
+		"mediaType":       string(meta.MediaType),
+		"path":            relPathFromRoot,
+		"size":            assembledFileSize.Size(),
+		"captured_at":     meta.CapturedAt.Format(time.RFC3339),
+		"file_created_at": meta.FileCreatedAt,
 	}
 
 	response := map[string]interface{}{
