@@ -1,8 +1,10 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -35,7 +37,10 @@ func (s *Server) handleUpdateMediaTimestamps(w http.ResponseWriter, r *http.Requ
 		CapturedAt    *string `json:"capturedAt"`
 		FileCreatedAt *string `json:"fileCreatedAt"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+	// Read raw body for debug logging
+	bodyBytes, _ := io.ReadAll(r.Body)
+	r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+	if err := json.Unmarshal(bodyBytes, &request); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
@@ -46,6 +51,10 @@ func (s *Server) handleUpdateMediaTimestamps(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "media not found", http.StatusNotFound)
 		return
 	}
+
+	// DEBUG: Log the PATCH request details - full record and raw request
+	rawBodyStr := string(bodyBytes)
+	mlog.Info("[DEBUG] PATCH /api/v1/media/%s/timestamps - mediaID=%s userID=%s, raw_body=%s, parsed_request={capturedAt=%v fileCreatedAt=%v}, existing_record: capturedAt=%v fileCreatedAt=%v", idStr, existingMedia.ID.String(), userID, rawBodyStr, request.CapturedAt, request.FileCreatedAt, existingMedia.CapturedAt, existingMedia.FileCreatedAt)
 
 	// Parse capturedAt if provided
 	if request.CapturedAt != nil && *request.CapturedAt != "" {
@@ -82,6 +91,9 @@ func (s *Server) handleUpdateMediaTimestamps(w http.ResponseWriter, r *http.Requ
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	// DEBUG: Log after update to confirm what was written
+	mlog.Info("[DEBUG] PATCH /api/v1/media/%s/timestamps - UPDATE OK - new capturedAt=%v fileCreatedAt=%v", existingMedia.ID.String(), existingMedia.CapturedAt, existingMedia.FileCreatedAt)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "success"})

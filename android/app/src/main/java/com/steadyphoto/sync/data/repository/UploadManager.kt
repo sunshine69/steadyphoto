@@ -81,8 +81,9 @@ class UploadManager(
 
             // Check current network settings against user preferences (WiFi-only, metered)
             val settings = settingsRepository.networkSettingsFlow.first()
+            val currentType = networkMonitor.getCurrentNetworkType()?.name ?: "unknown"
+            Log.d(TAG, "Upload network check: current=$currentType, wifiOnlyEnabled=${settings.wifiOnlyEnabled}")
             if (!networkMonitor.isNetworkAcceptableForUpload(settings)) {
-                val currentType = networkMonitor.getCurrentNetworkType()?.name ?: "unknown"
                 Log.w(TAG, "Current network ($currentType) doesn't meet preferences - skipping upload")
                 callback?.onUploadError(Exception("Network type not acceptable: $currentType"))
                 return Result.failure(Exception("Network type not acceptable for current settings"))
@@ -296,11 +297,14 @@ class UploadManager(
                     // Compare timestamps and update if they differ
                     val needsTimestampUpdate = shouldUpdateTimestamps(item, skipped)
                     if (needsTimestampUpdate) {
+                        val clientCapturedAt = formatTimestampForApi(item.captureTime)
+                        val clientFileCreatedAt = formatTimestampForApi(item.fileCreatedAt)
+                        Log.d(TAG, "PATCH timestamps for duplicate '${item.fileName}' - capturedAt=${clientCapturedAt} fileCreatedAt=${clientFileCreatedAt} (raw captureTime=${item.captureTime}, raw fileCreatedAt=${item.fileCreatedAt})")
                         try {
                             apiService.updateMediaTimestamps(skipped.id, 
                                 com.steadyphoto.sync.data.remote.dto.UpdateTimestampsRequest(
-                                    capturedAt = formatTimestampForApi(item.captureTime),
-                                    fileCreatedAt = formatTimestampForApi(item.fileCreatedAt)
+                                    capturedAt = clientCapturedAt,
+                                    fileCreatedAt = clientFileCreatedAt
                                 )
                             )
                             Log.d(TAG, "Updated timestamps for duplicate '${item.fileName}' (ID=${skipped.id})")
@@ -386,13 +390,14 @@ class UploadManager(
     }
     
     /**
-     * Convert client timestamp (Long, milliseconds since epoch) to Go time format "2006/01/02 15:04:05" for API request.
+     * Convert client timestamp (Long, epoch seconds since epoch) to Go time format "2006/01/02 15:04:05" for API request.
+     * Note: MediaStore DATE_ADDED is in seconds, not milliseconds.
      */
-    private fun formatTimestampForApi(timestampMillis: Long?): String? {
-        return timestampMillis?.let { millis ->
+    private fun formatTimestampForApi(timestampSeconds: Long?): String? {
+        return timestampSeconds?.let { seconds ->
             try {
                 // Go uses "2006/01/02 15:04:05" format (yyyy/mm/dd HH:MM:SS)
-                val instant = java.time.Instant.ofEpochMilli(millis)
+                val instant = java.time.Instant.ofEpochSecond(seconds)
                 val formatter = java.time.format.DateTimeFormatter
                     .ofPattern("yyyy/MM/dd HH:mm:ss")
                     .withZone(java.time.ZoneId.systemDefault())
@@ -408,6 +413,17 @@ class UploadManager(
         token: String,
         callback: UploadProgressCallback? = null
     ): UploadItemResult {
+        // Check WiFi-only setting before starting chunked upload
+        val settings = settingsRepository.networkSettingsFlow.first()
+        val currentType = networkMonitor.getCurrentNetworkType()?.name ?: "unknown"
+        Log.d(TAG, "Chunked upload network check: current=$currentType, wifiOnlyEnabled=${settings.wifiOnlyEnabled}")
+        if (!networkMonitor.isNetworkAcceptableForUpload(settings)) {
+            val errorMsg = "Current network ($currentType) doesn't meet preferences - skipping chunked upload"
+            Log.w(TAG, errorMsg)
+            callback?.onUploadError(Exception("Network type not acceptable for current settings"))
+            return UploadItemResult.Failed(message = errorMsg)
+        }
+
         val fileSize = item.fileSize
         val uploadId = "${item.id}_${System.currentTimeMillis()}"
         val totalChunks = ((fileSize + CHUNK_SIZE - 1) / CHUNK_SIZE).toInt()
@@ -465,12 +481,15 @@ class UploadManager(
                 // Compare timestamps and update if they differ
                 val needsTimestampUpdate = shouldUpdateTimestamps(item, skipped)
                 if (needsTimestampUpdate) {
+                    val clientCapturedAt = formatTimestampForApi(item.captureTime)
+                    val clientFileCreatedAt = formatTimestampForApi(item.fileCreatedAt)
+                    Log.d(TAG, "PATCH timestamps for chunked duplicate '${item.fileName}' - capturedAt=${clientCapturedAt} fileCreatedAt=${clientFileCreatedAt} (raw captureTime=${item.captureTime}, raw fileCreatedAt=${item.fileCreatedAt})")
                     try {
                         val apiService = apiClient.apiService
                         apiService.updateMediaTimestamps(skipped.id, 
                             com.steadyphoto.sync.data.remote.dto.UpdateTimestampsRequest(
-                                capturedAt = formatTimestampForApi(item.captureTime),
-                                fileCreatedAt = formatTimestampForApi(item.fileCreatedAt)
+                                capturedAt = clientCapturedAt,
+                                fileCreatedAt = clientFileCreatedAt
                             )
                         )
                         Log.d(TAG, "Updated timestamps for duplicate during chunked upload '${item.fileName}' (ID=${skipped.id})")

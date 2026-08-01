@@ -120,13 +120,25 @@ class NetworkConnectivityMonitor(private val context: Context) {
     
     /**
      * Gets the type of the currently active network.
+     * IMPORTANT: Prefer WiFi when available, even if cellular is the "active" network.
+     * On Android, when both WiFi and cellular are connected, the active network might be cellular
+     * even though WiFi is the preferred connection for large transfers.
      */
     fun getCurrentNetworkType(): NetworkType? {
+        // First check if WiFi is available on ANY network (not just the active one)
+        val networks = connectivityManager.allNetworks ?: return null
+        for (network in networks) {
+            val capabilities = connectivityManager.getNetworkCapabilities(network) ?: continue
+            if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
+                return NetworkType.WIFI
+            }
+        }
+        
+        // If no WiFi found, check the active network for cellular/ethernet
         val activeNetwork = connectivityManager.activeNetwork ?: return null
         val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return null
         
         return when {
-            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> NetworkType.WIFI
             capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> NetworkType.CELLULAR
             capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> NetworkType.ETHERNET
             else -> null
