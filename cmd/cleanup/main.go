@@ -21,6 +21,10 @@ type Session struct {
 }
 
 func main() {
+	// Initialize mlog logger for standalone tool (not the server)
+	os.MkdirAll("logs", 0755) // ignore errors - just use stdout
+	mlog.Start(mlog.LevelInfo, "logs/cleanup.log")
+	
 	storageRoot := "./storage"
 	uploadTempDir := filepath.Join(storageRoot, ".upload-temp")
 

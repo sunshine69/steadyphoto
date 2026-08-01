@@ -183,6 +183,17 @@ class UploadManager(
                 return Result.failure(Exception("No network connection"))
             }
 
+            // Check WiFi-only setting before uploading (single-file uploads too!)
+            val settings = settingsRepository.networkSettingsFlow.first()
+            val currentType = networkMonitor.getCurrentNetworkType()?.name ?: "unknown"
+            Log.d(TAG, "Single item upload network check: item=${item.fileName}, current=$currentType, wifiOnlyEnabled=${settings.wifiOnlyEnabled}, fileSize=${item.fileSize}")
+            if (!networkMonitor.isNetworkAcceptableForUpload(settings)) {
+                val errorMsg = "Current network ($currentType) doesn't meet preferences - skipping single upload of '${item.fileName}'"
+                Log.w(TAG, errorMsg)
+                mediaItemDao.updateStatus(item.id, UploadStatus.FAILED, errorMsg)
+                return Result.failure(Exception(errorMsg))
+            }
+
             // Update status to uploading
             mediaItemDao.updateStatus(item.id, UploadStatus.UPLOADING)
 
