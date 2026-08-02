@@ -125,7 +125,8 @@ interface ApiService {
     @Multipart
     @POST("/api/v1/media/upload/complete")
     suspend fun completeUpload(
-        @Part("uploadId") uploadId: RequestBody
+        @Part("uploadId") uploadId: RequestBody,
+        @Part("fileCreatedAt") fileCreatedAt: RequestBody? = null
     ): com.steadyphoto.sync.data.remote.dto.CompleteUploadResponse
 
     /**

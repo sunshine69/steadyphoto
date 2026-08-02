@@ -87,6 +87,14 @@ func UploadSingleFile(filePath string, uploadURL string, authToken string) (*Upl
 		return &UploadResult{Success: false, Message: fmt.Sprintf("Failed to write fileSize field: %v", err)}, err
 	}
 
+	// Always send file creation timestamp (filesystem mtime) from file.Stat().ModTime()
+	// This ensures file_created_at is set on the server even when EXIF data is missing
+	fileModTime := info.ModTime()
+	err = writer.WriteField("fileCreatedAt", fileModTime.Format("2006/01/02 15:04:05"))
+	if err != nil {
+		return &UploadResult{Success: false, Message: fmt.Sprintf("Failed to write fileCreatedAt field: %v", err)}, err
+	}
+
 	// Create a part for the file itself with streaming upload
 	part, err := writer.CreateFormFile("file", fileName)
 	if err != nil {
@@ -183,7 +191,7 @@ func UploadSingleFile(filePath string, uploadURL string, authToken string) (*Upl
 }
 
 // CreateChunkedUploadSession creates a new chunked upload session on the server.
-func CreateChunkedUploadSession(uploadURL string, authToken string, fileName string, fileSize int64, totalChunks int) (*ChunkUploadStatus, error) {
+func CreateChunkedUploadSession(uploadURL string, authToken string, fileName string, fileSize int64, totalChunks int, modTimeStr string) (*ChunkUploadStatus, error) {
 	var lastErr error
 
 	for attempt := 1; attempt <= 3; attempt++ {
@@ -205,6 +213,13 @@ func CreateChunkedUploadSession(uploadURL string, authToken string, fileName str
 		err = writer.WriteField("fileSize", fmt.Sprintf("%d", fileSize))
 		if err != nil {
 			lastErr = fmt.Errorf("failed to write fileSize field: %v", err)
+			continue
+		}
+
+		// Always send file creation timestamp (filesystem mtime) from file.Stat().ModTime()
+		err = writer.WriteField("fileCreatedAt", modTimeStr)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to write fileCreatedAt field: %v", err)
 			continue
 		}
 
@@ -488,7 +503,7 @@ func GetChunkedUploadStatus(uploadURL string, authToken string, sessionID string
 }
 
 // CompleteChunkedUpload signals the server to assemble all chunks into the final file.
-func CompleteChunkedUpload(uploadURL string, authToken string, sessionID string) (*UploadResult, error) {
+func CompleteChunkedUpload(uploadURL string, authToken string, sessionID string, modTimeStr string) (*UploadResult, error) {
 	var lastErr error
 
 	for attempt := 1; attempt <= 3; attempt++ {
@@ -502,6 +517,13 @@ func CompleteChunkedUpload(uploadURL string, authToken string, sessionID string)
 		err := writer.WriteField("uploadId", sessionID)
 		if err != nil {
 			lastErr = fmt.Errorf("failed to write uploadId field: %v", err)
+			continue
+		}
+
+		// Always send file creation timestamp (filesystem mtime) from file.Stat().ModTime()
+		err = writer.WriteField("fileCreatedAt", modTimeStr)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to write fileCreatedAt field: %v", err)
 			continue
 		}
 

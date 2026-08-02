@@ -269,17 +269,17 @@ class UploadManager(
                 val filePart = okhttp3.MultipartBody.Part.createFormData("file", item.fileName, requestFile)
                 val apiService = apiClient.apiService
                 
-                // Convert milliseconds to seconds for the Go server (time.Unix expects seconds)
-                val fileCreatedAtSeconds = item.fileCreatedAt?.let { (it / 1000).toString() }?.toRequestBody("text/plain".toMediaType())
-                val captureTimeSeconds = item.captureTime?.let { (it / 1000).toString() }?.toRequestBody("text/plain".toMediaType())
+                // Format fileCreatedAt as Go time format "2006/01/02 15:04:05" for the server
+                val fileCreatedAtFormatted = item.fileCreatedAt?.let { formatTimestampForApi(it) }?.toRequestBody("text/plain".toMediaType())
+                val captureTimeFormatted = item.captureTime?.let { formatTimestampForApi(it) }?.toRequestBody("text/plain".toMediaType())
                 
                 val response = apiService.uploadSingleFile(
                     file = filePart,
                     fileName = item.fileName.toRequestBody("text/plain".toMediaType()),
                     mimeType = item.mimeType.toRequestBody("text/plain".toMediaType()),
                     fileSize = item.fileSize.toString().toRequestBody("text/plain".toMediaType()),
-                    fileCreatedAt = fileCreatedAtSeconds,
-                    captureTime = captureTimeSeconds
+                    fileCreatedAt = fileCreatedAtFormatted,
+                    captureTime = captureTimeFormatted
                 )
 
                 // Check if the server reported this as a duplicate
@@ -560,8 +560,11 @@ class UploadManager(
                 Log.d(TAG, "Completing upload session $uploadId for ${item.fileName} - attempt $attempt")
                 
                 val apiService = apiClient.apiService
+                // Format fileCreatedAt as Go time format "2006/01/02 15:04:05" for the server
+                val fileCreatedAtFormatted = item.fileCreatedAt?.let { formatTimestampForApi(it) }?.toRequestBody("text/plain".toMediaType())
                 val response = apiService.completeUpload(
-                    uploadId = uploadId.toRequestBody("text/plain".toMediaType())
+                    uploadId = uploadId.toRequestBody("text/plain".toMediaType()),
+                    fileCreatedAt = fileCreatedAtFormatted
                 )
 
                 if (response.success) {
