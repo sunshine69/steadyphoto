@@ -78,23 +78,42 @@ func (m *UploadSessionManager) loadSessions() {
 	defer m.mu.Unlock()
 
 	for id, session := range sessions {
-		// Verify the temp directory still exists and has all chunk files
+		// Verify the temp directory still exists and has all chunk files.
+		// Also rebuild UploadedChunks from disk state so IsComplete() and HandleComplete work correctly.
 		tempDir := m.storageService.GetUploadTempDir()
 		allChunksExist := true
-		for i := 0; i < session.TotalChunks && session.TotalChunks > 1; i++ {
+		recoveredChunks := make([]int, 0)
+
+		for i := 0; i < session.TotalChunks; i++ {
 			chunkPath := filepath.Join(tempDir, id+fmt.Sprintf("_%d.tmp", i))
 			if _, err := os.Stat(chunkPath); os.IsNotExist(err) {
 				allChunksExist = false
-				mlog.Info("[WARN] UploadSessionManager: Missing chunk %d for session %s. Marking as incomplete.", i, id)
+				mlog.Info("[WARN] UploadSessionManager: Missing chunk %d for session %s.", i, id)
 				break
+			} else {
+				// Chunk exists on disk — record it in the session for recovery.
+				recoveredChunks = append(recoveredChunks, i)
 			}
 		}
 
+		// Update UploadedChunks to reflect what actually exists on disk.
+		// This ensures IsComplete() and HandleComplete work correctly after restart.
+		if len(recoveredChunks) > 0 {
+			session.UploadedChunks = recoveredChunks
+			mlog.Info("[INFO] UploadSessionManager: Recovered %d chunks from disk for session %s", len(recoveredChunks), id)
+		}
+
 		m.sessions[id] = session
-		if !allChunksExist {
+
+		if allChunksExist {
+			// All chunks exist on disk — the server crashed after all chunks were uploaded.
+			// Mark the session as complete so HandleComplete will work after restart.
+			session.IsComplete = true
+			mlog.Info("[INFO] UploadSessionManager: Recovered complete session %s (all %d chunks on disk)", id, session.TotalChunks)
+		} else {
 			session.IsComplete = false // Force incomplete if chunks are missing
 		}
-		mlog.Info("[INFO] UploadSessionManager: Recovered session %s (%d/%d chunks uploaded)", id, len(session.UploadedChunks), session.TotalChunks)
+		mlog.Info("[INFO] UploadSessionManager: Recovered session %s (%d/%d chunks on disk)", id, len(recoveredChunks), session.TotalChunks)
 	}
 
 	mlog.Info("[INFO] UploadSessionManager: Loaded %d sessions from disk", len(m.sessions))
