@@ -647,16 +647,21 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
     const buildMediaItems = (photos: (Photo | null)[], sourceContext: string): MediaItem[] => {
       return photos
         .filter((p): p is Photo => p !== null)
-        .map(p => ({
-          id: p.id,
-          path: (isSharedMedia && shareToken)
+        .map(p => {
+          const mediaUrl = (isSharedMedia && shareToken)
             ? this.photoService.getPublicShareOriginalUrl(shareToken, p.path || '')
             : isSharedMedia && !shareToken
             ? `${this.photoService['API_BASE_URL']}/media/shared/${p.id}/original`
-            : `${this.photoService['API_BASE_URL']}/media/${p.id}/original`,
-          filename: p.filename || '',
-          mediaType: p.mediaType || 'photo'
-        }));
+            : `${this.photoService['API_BASE_URL']}/media/${p.id}/original`;
+          const capturedAt = p.captured_at ? String(new Date(p.captured_at).getTime()) : '';
+          return {
+            id: p.id,
+            path: mediaUrl,
+            filename: p.filename || '',
+            mediaType: p.mediaType || 'photo',
+            capturedAt
+          };
+        });
     };
 
     const startPresentationWithItems = (items: MediaItem[], navigateOpts: any) => {
@@ -782,8 +787,9 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
       });
     } else {
       // No search or album context - fetch gallery items around the current page
+      // Include captured_at for proper date sorting in presentation mode
       const galleryPage = this.galleryState.getCurrentPage() || 1;
-      const limit = 20;  // Same as gallery component
+      const limit = 20;
       const offset = (galleryPage - 1) * limit;
       
       this.photoService.listMedia(200, offset).subscribe({
@@ -791,8 +797,9 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
           mediaItems = response.photos.map((p: any) => ({
             id: p.id,
             path: `${this.photoService['API_BASE_URL']}/media/${p.id}/original`,
-            filename: p.filename,
-            mediaType: p.mediaType || 'photo'
+            filename: p.filename || '',
+            mediaType: p.mediaType || 'photo',
+            capturedAt: p.captured_at ? String(new Date(p.captured_at).getTime()) : ''
           }));
           startPresentationWithItems(mediaItems, {});
         },

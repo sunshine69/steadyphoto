@@ -129,6 +129,10 @@ type MediaShareRepository interface {
 
 	// Get media in a shared album for a user (incoming shares)
 	ListMediaInSharedAlbum(ctx context.Context, albumID uuid.UUID, shareeUserID uuid.UUID, limit int, offset int) ([]*MediaWithSharerInfo, int, error)
+	// Cursor-based pagination for presentation mode - older items (before timestamp)
+	ListMediaInSharedAlbumBefore(ctx context.Context, albumID uuid.UUID, shareeUserID uuid.UUID, limit int, beforeTimestamp string) ([]*MediaWithSharerInfo, int, error)
+	// Cursor-based pagination for presentation mode - newer items (after timestamp)
+	ListMediaInSharedAlbumAfter(ctx context.Context, albumID uuid.UUID, shareeUserID uuid.UUID, limit int, afterTimestamp string) ([]*MediaWithSharerInfo, int, error)
 
 	// Get media by ID that may be in a shared album (for individual media detail/thumb requests)
 	GetSharedMediaFromAlbum(ctx context.Context, mediaID uuid.UUID, shareeUserID uuid.UUID) (*MediaWithSharerInfo, error)

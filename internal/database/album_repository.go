@@ -134,7 +134,7 @@ func (r *PostgresAlbumRepository) GetMedia(ctx context.Context, albumID uuid.UUI
 		JOIN album_photos ap ON m.id = ap.media_id
 		JOIN albums a ON a.id = ap.album_id
 		WHERE ap.album_id = $1 AND a.user_id = $2
-		ORDER BY ap.position ASC, m.captured_at DESC
+		ORDER BY ap.position ASC, m.captured_at ASC
 	`
 	err := r.db.SelectContext(ctx, &mediaList, query, albumID, userID)
 	if err != nil {
@@ -157,10 +157,80 @@ func (r *PostgresAlbumRepository) GetMediaPaginated(ctx context.Context, albumID
 		JOIN album_photos ap ON m.id = ap.media_id
 		JOIN albums a ON a.id = ap.album_id
 		WHERE ap.album_id = $1 AND a.user_id = $2
-		ORDER BY ap.position ASC, m.captured_at DESC
+		ORDER BY ap.position ASC, m.captured_at ASC
 		LIMIT $3 OFFSET $4
 	`
 	err = r.db.SelectContext(ctx, &mediaList, query, albumID, userID, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return mediaList, totalItems, nil
+}
+
+// GetMediaPaginatedBefore returns media items OLDER than the given timestamp (for presentation mode loading previous page)
+// Items are returned oldest-first (ascending by captured_at)
+func (r *PostgresAlbumRepository) GetMediaPaginatedBefore(ctx context.Context, albumID uuid.UUID, userID uuid.UUID, limit int, beforeTimestamp string) ([]*domain.Media, int, error) {
+	// Parse the timestamp to ensure it's valid
+	if beforeTimestamp == "" {
+		return nil, 0, fmt.Errorf("before timestamp is required")
+	}
+
+	// First, get the total count for albums the user has access to
+	var totalItems int
+	countQuery := `SELECT COUNT(*) FROM album_photos ap JOIN albums a ON a.id = ap.album_id WHERE ap.album_id = $1 AND a.user_id = $2`
+	err := r.db.GetContext(ctx, &totalItems, countQuery, albumID, userID)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	var mediaList []*domain.Media
+	// Query items OLDER than the given timestamp, ordered oldest-first
+	// We use m.captured_at < $4 to find items older than the cursor
+	query := `
+		SELECT m.* FROM media m
+		JOIN album_photos ap ON m.id = ap.media_id
+		JOIN albums a ON a.id = ap.album_id
+		WHERE ap.album_id = $1 AND a.user_id = $2 AND m.captured_at < to_timestamp($4::double precision / 1000.0)
+		ORDER BY m.captured_at ASC, m.id ASC
+		LIMIT $3
+	`
+	err = r.db.SelectContext(ctx, &mediaList, query, albumID, userID, limit, beforeTimestamp)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return mediaList, totalItems, nil
+}
+
+// GetMediaPaginatedAfter returns media items NEWER than the given timestamp (for presentation mode loading next page)
+// Items are returned oldest-first (ascending by captured_at)
+func (r *PostgresAlbumRepository) GetMediaPaginatedAfter(ctx context.Context, albumID uuid.UUID, userID uuid.UUID, limit int, afterTimestamp string) ([]*domain.Media, int, error) {
+	// Parse the timestamp to ensure it's valid
+	if afterTimestamp == "" {
+		return nil, 0, fmt.Errorf("after timestamp is required")
+	}
+
+	// First, get the total count for albums the user has access to
+	var totalItems int
+	countQuery := `SELECT COUNT(*) FROM album_photos ap JOIN albums a ON a.id = ap.album_id WHERE ap.album_id = $1 AND a.user_id = $2`
+	err := r.db.GetContext(ctx, &totalItems, countQuery, albumID, userID)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	var mediaList []*domain.Media
+	// Query items NEWER than the given timestamp, ordered oldest-first
+	// We use m.captured_at > $4 to find items newer than the cursor
+	query := `
+		SELECT m.* FROM media m
+		JOIN album_photos ap ON m.id = ap.media_id
+		JOIN albums a ON a.id = ap.album_id
+		WHERE ap.album_id = $1 AND a.user_id = $2 AND m.captured_at > to_timestamp($4::double precision / 1000.0)
+		ORDER BY m.captured_at ASC, m.id ASC
+		LIMIT $3
+	`
+	err = r.db.SelectContext(ctx, &mediaList, query, albumID, userID, limit, afterTimestamp)
 	if err != nil {
 		return nil, 0, err
 	}

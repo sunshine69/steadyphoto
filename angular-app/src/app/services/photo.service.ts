@@ -333,8 +333,11 @@ export class PhotoService {
   /**
    * Fetches media items belonging to a shared album.
    */
-  getSharedAlbumMedia(albumId: string, limit = 50, offset = 0): Observable<any> {
-    return this.http.get<any>(`${this.API_BASE_URL}/albums/shared/${albumId}/media?limit=${limit}&offset=${offset}`)
+  getSharedAlbumMedia(albumId: string, limit = 50, offset = 0, afterTimestamp?: string, beforeTimestamp?: string): Observable<any> {
+    let params = `limit=${limit}&offset=${offset}`;
+    if (afterTimestamp) params += `&after=${afterTimestamp}`;
+    if (beforeTimestamp) params += `&before=${beforeTimestamp}`;
+    return this.http.get<any>(`${this.API_BASE_URL}/albums/shared/${albumId}/media?${params}`)
       .pipe(
         map(response => response),
         catchError(this.handleError)

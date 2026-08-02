@@ -359,7 +359,10 @@ func (h *AlbumHandler) BulkRemoveMediaFromAlbum(w http.ResponseWriter, r *http.R
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// GetAlbumMedia handles GET /api/v1/albums/{id}/media with optional pagination (limit, offset)
+// GetAlbumMedia handles GET /api/v1/albums/{id}/media with optional pagination (limit, offset, before, after)
+// The endpoint supports two pagination modes:
+// - Offset-based: limit + offset (default, returns items oldest-first by captured_at)
+// - Cursor-based: limit + before (returns items OLDER than the given timestamp) or limit + after (returns items NEWER than the given timestamp)
 func (h *AlbumHandler) GetAlbumMedia(w http.ResponseWriter, r *http.Request) {
 	mlog.Info("[DEBUG] AlbumHandler:GetAlbumMedia starting")
 	ctx := r.Context()
@@ -391,6 +394,8 @@ func (h *AlbumHandler) GetAlbumMedia(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 	limitStr := query.Get("limit")
 	offsetStr := query.Get("offset")
+	beforeStr := query.Get("before")
+	afterStr := query.Get("after")
 
 	var limit int = 20 // Default page size
 	var offset int = 0
@@ -413,25 +418,74 @@ func (h *AlbumHandler) GetAlbumMedia(w http.ResponseWriter, r *http.Request) {
 		offset = 0
 	}
 
-	mlog.Info("[DEBUG] AlbumHandler:GetAlbumMedia - pagination: limit=%d, offset=%d", limit, offset)
+	// If "before" parameter is provided, use timestamp-based pagination for items OLDER than the given timestamp
+	// If "after" parameter is provided, use timestamp-based pagination for items NEWER than the given timestamp
+	// Otherwise, use offset-based pagination (default)
+	if beforeStr != "" && afterStr == "" {
+		// Load items OLDER than the given timestamp
+		mlog.Info("[DEBUG] AlbumHandler:GetAlbumMedia - pagination: limit=%d, before=%s", limit, beforeStr)
+		mediaList, totalItems, err := h.albumRepo.GetMediaPaginatedBefore(ctx, albumID, userID, limit, beforeStr)
+		if err != nil {
+			mlog.Info("[ERROR] AlbumHandler:GetAlbumMedia - repository get error for ID %s: %v", albumID, err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 
-	mediaList, totalItems, err := h.albumRepo.GetMediaPaginated(ctx, albumID, userID, limit, offset)
-	if err != nil {
-		mlog.Info("[ERROR] AlbumHandler:GetAlbumMedia - repository get error for ID %s: %v", albumID, err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		w.Header().Set("Content-Type", "application/json")
+		response := map[string]interface{}{
+			"media":      mediaList,
+			"totalItems": totalItems,
+			"limit":      limit,
+			"before":     beforeStr,
+		}
+
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			mlog.Info("[ERROR] AlbumHandler:GetAlbumMedia - encode response error: %v", err)
+		}
 		return
-	}
+	} else if afterStr != "" && beforeStr == "" {
+		// Load items NEWER than the given timestamp
+		mlog.Info("[DEBUG] AlbumHandler:GetAlbumMedia - pagination: limit=%d, after=%s", limit, afterStr)
+		mediaList, totalItems, err := h.albumRepo.GetMediaPaginatedAfter(ctx, albumID, userID, limit, afterStr)
+		if err != nil {
+			mlog.Info("[ERROR] AlbumHandler:GetAlbumMedia - repository get error for ID %s: %v", albumID, err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 
-	// Construct response with pagination metadata
-	w.Header().Set("Content-Type", "application/json")
-	response := map[string]interface{}{
-		"media":      mediaList,
-		"totalItems": totalItems,
-		"limit":      limit,
-		"offset":     offset,
-	}
+		w.Header().Set("Content-Type", "application/json")
+		response := map[string]interface{}{
+			"media":      mediaList,
+			"totalItems": totalItems,
+			"limit":      limit,
+			"after":      afterStr,
+		}
 
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		mlog.Info("[ERROR] AlbumHandler:GetAlbumMedia - encode response error: %v", err)
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			mlog.Info("[ERROR] AlbumHandler:GetAlbumMedia - encode response error: %v", err)
+		}
+		return
+	} else {
+		// Offset-based pagination (default)
+		mlog.Info("[DEBUG] AlbumHandler:GetAlbumMedia - pagination: limit=%d, offset=%d", limit, offset)
+		mediaList, totalItems, err := h.albumRepo.GetMediaPaginated(ctx, albumID, userID, limit, offset)
+		if err != nil {
+			mlog.Info("[ERROR] AlbumHandler:GetAlbumMedia - repository get error for ID %s: %v", albumID, err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		// Construct response with pagination metadata
+		w.Header().Set("Content-Type", "application/json")
+		response := map[string]interface{}{
+			"media":      mediaList,
+			"totalItems": totalItems,
+			"limit":      limit,
+			"offset":     offset,
+		}
+
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			mlog.Info("[ERROR] AlbumHandler:GetAlbumMedia - encode response error: %v", err)
+		}
 	}
 }

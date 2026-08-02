@@ -5,6 +5,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
 import { PhotoService } from '../../services/photo.service';
+import { PresentationService } from '../../services/presentation.service';
 import { environment } from '../../../environments/environment';
 import { PhotoCardComponent } from '../photo-card/photo-card.component';
 
@@ -186,6 +187,7 @@ export class PublicShareAlbumComponent implements OnInit {
   private router = inject(Router);
   private http = inject(HttpClient);
   private photoService = inject(PhotoService);
+  private presentationService = inject(PresentationService);
 
   albumData: any = null;
   albumName: string = 'Loading...';
@@ -471,6 +473,14 @@ export class PublicShareAlbumComponent implements OnInit {
     const path = this.photos.find(p => p.id === id)?.path || '';
     const ids = this.photos.map(p => p.id).join(',');
     const paths = this.photos.map(p => p.path || '').join(',');
+    
+    // Set album context for auto-fetch in presentation mode
+    this.presentationService.setAlbumContext({
+      albumIds: ids,
+      source: token ? 'shared' : undefined,
+      shareToken: token || undefined,
+      isSharedAlbumView: !!token
+    });
     
     if (token && path) {
       this.router.navigate(['/photos', id], { 

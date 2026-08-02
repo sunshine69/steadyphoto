@@ -311,6 +311,116 @@ func (r *PostgresMediaShareRepository) ListMediaInSharedAlbum(ctx context.Contex
 	return items, totalItems, nil
 }
 
+// ListMediaInSharedAlbumBefore returns media items OLDER than the given timestamp (for presentation mode loading previous page)
+// Items are returned oldest-first (ascending by captured_at)
+func (r *PostgresMediaShareRepository) ListMediaInSharedAlbumBefore(ctx context.Context, albumID uuid.UUID, shareeUserID uuid.UUID, limit int, beforeTimestamp string) ([]*domain.MediaWithSharerInfo, int, error) {
+	// Parse the timestamp to ensure it's valid
+	if beforeTimestamp == "" {
+		return nil, 0, fmt.Errorf("before timestamp is required")
+	}
+
+	// First, get the total count for albums the user has access to
+	var totalItems int
+	countQuery := `
+		SELECT COUNT(*) FROM album_photos ap
+		JOIN albums a ON a.id = ap.album_id
+		JOIN media m ON m.id = ap.media_id AND m.deleted_at IS NULL
+		JOIN album_shares albs ON albs.album_id = a.id
+		JOIN shares s ON albs.share_id = s.id
+		WHERE ap.album_id = $1 AND s.sharee_user_id = $2
+	`
+	err := r.db.GetContext(ctx, &totalItems, countQuery, albumID, shareeUserID)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to count media in shared album: %w", err)
+	}
+
+	query := `
+		SELECT m.*
+		FROM album_photos ap
+		JOIN albums a ON a.id = ap.album_id
+		JOIN media m ON m.id = ap.media_id AND m.deleted_at IS NULL
+		JOIN album_shares albs ON albs.album_id = a.id
+		JOIN shares s ON albs.share_id = s.id
+		WHERE ap.album_id = $1 AND s.sharee_user_id = $2 AND m.captured_at < to_timestamp($4::double precision / 1000.0)
+		ORDER BY m.captured_at ASC, m.id ASC
+		LIMIT $3
+	`
+
+	var results []struct {
+		domain.Media `db:",inline"`
+	}
+
+	err = r.db.SelectContext(ctx, &results, query, albumID, shareeUserID, limit, beforeTimestamp)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to list media in shared album: %w", err)
+	}
+
+	items := make([]*domain.MediaWithSharerInfo, len(results))
+	for i, r := range results {
+		items[i] = &domain.MediaWithSharerInfo{
+			Media:        &r.Media,
+			SharerUserID: uuid.Nil, // Not applicable for album media - sharer is the album owner
+		}
+	}
+
+	return items, totalItems, nil
+}
+
+// ListMediaInSharedAlbumAfter returns media items NEWER than the given timestamp (for presentation mode loading next page)
+// Items are returned oldest-first (ascending by captured_at)
+func (r *PostgresMediaShareRepository) ListMediaInSharedAlbumAfter(ctx context.Context, albumID uuid.UUID, shareeUserID uuid.UUID, limit int, afterTimestamp string) ([]*domain.MediaWithSharerInfo, int, error) {
+	// Parse the timestamp to ensure it's valid
+	if afterTimestamp == "" {
+		return nil, 0, fmt.Errorf("after timestamp is required")
+	}
+
+	// First, get the total count for albums the user has access to
+	var totalItems int
+	countQuery := `
+		SELECT COUNT(*) FROM album_photos ap
+		JOIN albums a ON a.id = ap.album_id
+		JOIN media m ON m.id = ap.media_id AND m.deleted_at IS NULL
+		JOIN album_shares albs ON albs.album_id = a.id
+		JOIN shares s ON albs.share_id = s.id
+		WHERE ap.album_id = $1 AND s.sharee_user_id = $2
+	`
+	err := r.db.GetContext(ctx, &totalItems, countQuery, albumID, shareeUserID)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to count media in shared album: %w", err)
+	}
+
+	query := `
+		SELECT m.*
+		FROM album_photos ap
+		JOIN albums a ON a.id = ap.album_id
+		JOIN media m ON m.id = ap.media_id AND m.deleted_at IS NULL
+		JOIN album_shares albs ON albs.album_id = a.id
+		JOIN shares s ON albs.share_id = s.id
+		WHERE ap.album_id = $1 AND s.sharee_user_id = $2 AND m.captured_at > to_timestamp($4::double precision / 1000.0)
+		ORDER BY m.captured_at ASC, m.id ASC
+		LIMIT $3
+	`
+
+	var results []struct {
+		domain.Media `db:",inline"`
+	}
+
+	err = r.db.SelectContext(ctx, &results, query, albumID, shareeUserID, limit, afterTimestamp)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to list media in shared album: %w", err)
+	}
+
+	items := make([]*domain.MediaWithSharerInfo, len(results))
+	for i, r := range results {
+		items[i] = &domain.MediaWithSharerInfo{
+			Media:        &r.Media,
+			SharerUserID: uuid.Nil, // Not applicable for album media - sharer is the album owner
+		}
+	}
+
+	return items, totalItems, nil
+}
+
 // GetSharedMediaFromAlbum returns a single media item that is in a shared album for the given user.
 // This is used as a fallback when GetSharedMediaByID fails because the media is shared via an album,
 // not directly as a media share.

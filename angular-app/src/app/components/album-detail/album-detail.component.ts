@@ -4,7 +4,7 @@ import { ActivatedRoute, RouterModule, Router } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { AlbumService } from '../../services/album.service';
 import { PhotoService } from '../../services/photo.service';
-import { PresentationService, MediaItem } from '../../services/presentation.service';
+import { PresentationService, MediaItem, AlbumContext } from '../../services/presentation.service';
 import { Photo, ListPhotosResponse } from '../../models/photo.model';
 import { Album } from '../../models/album.model';
 import { ShareTriggerService } from '../../services/share-trigger.service';
@@ -556,24 +556,7 @@ export class AlbumDetailComponent implements OnInit, OnDestroy {
   }
 
   startPresentationFromAlbum(): void {
-    // === DEBUGGING: Track presentation from album detail ===
-    
-    
-    
-    
-    
-    
-    
-    // Show first 3 photo IDs to verify data integrity
-    if (this.photos.length > 0) {
-      
-      
-      
-    }
-    ;
-
     if (this.photos.length === 0 || this.loading) {
-      
       return;
     }
 
@@ -587,21 +570,21 @@ export class AlbumDetailComponent implements OnInit, OnDestroy {
         ? `${apiBaseUrl}/media/shared/${p.id}/original`  // Shared album → use shared endpoint
         : `${apiBaseUrl}/media/${p.id}/original`,          // Regular album → use regular endpoint
       filename: p.filename,
-      mediaType: p.mediaType || 'photo'
+      mediaType: p.mediaType || 'photo',
+      capturedAt: p.captured_at
     }));
 
-    console.group('🎬 FINAL ITEM CHECK');
-    
-    
-    ;
+    // Set album context so auto-fetch can work in presentation mode
+    this.presentationService.setAlbumContext({
+      albumId: this.albumId,
+      source: isSharedAlbum ? 'shared' : undefined,
+      isSharedAlbumView: isSharedAlbum
+    });
 
     if (mediaItems.length > 0) {
-      
       this.presentationService.open(mediaItems, 0);
       this.router.navigate(['/presentation']);
     } else {
-      console.error('❌ Presentation blocked - mediaItems is empty!');
-      console.error('   This should not happen if photos.length > 0');
       alert('No items available for presentation.');
     }
   }

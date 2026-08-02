@@ -369,44 +369,126 @@ func (s *Server) handleListSharedAlbumMedia(w http.ResponseWriter, r *http.Reque
 			offset = o
 		}
 	}
+	beforeStr := r.URL.Query().Get("before")
+	afterStr := r.URL.Query().Get("after")
 
-	logInfo("handleListSharedAlbumMedia - Query params", fmt.Sprintf("limit=%d, offset=%d", limit, offset), startTime)
-
-	items, totalItems, err := s.mediaShareRepo.ListMediaInSharedAlbum(ctx, id, userID, limit, offset)
-	if err != nil {
-		logError("handleListSharedAlbumMedia - ListMediaInSharedAlbum", err, startTime)
-		http.Error(w, "Failed to list shared album media: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	logInfo("handleListSharedAlbumMedia - Found items", fmt.Sprintf("%d items (total=%d)", len(items), totalItems), startTime)
-
-	respItems := make([]SharedAlbumMediaItem, 0, len(items))
-	for _, item := range items {
-		var thumbnailURL *string
-		if item.Media.ID != uuid.Nil {
-			thumbURL := "/media/shared/" + item.Media.ID.String() + "/thumb"
-			thumbnailURL = &thumbURL
+	// If "before" parameter is provided, use timestamp-based pagination for items OLDER than the given timestamp
+	if beforeStr != "" && afterStr == "" {
+		logInfo("handleListSharedAlbumMedia - Query params", fmt.Sprintf("limit=%d, before=%s", limit, beforeStr), startTime)
+		items, totalItems, err := s.mediaShareRepo.ListMediaInSharedAlbumBefore(ctx, id, userID, limit, beforeStr)
+		if err != nil {
+			logError("handleListSharedAlbumMedia - ListMediaInSharedAlbumBefore", err, startTime)
+			http.Error(w, "Failed to list shared album media: "+err.Error(), http.StatusInternalServerError)
+			return
 		}
-		respItems = append(respItems, SharedAlbumMediaItem{
-			ID:           item.Media.ID,
-			Filename:     item.Media.Filename,
-			Path:         item.Media.Path,
-			MediaType:    string(item.Media.MediaType),
-			CapturedAt:   item.Media.CapturedAt,
-			ThumbnailURL: thumbnailURL,
+
+		logInfo("handleListSharedAlbumMedia - Found items", fmt.Sprintf("%d items (total=%d)", len(items), totalItems), startTime)
+
+		respItems := make([]SharedAlbumMediaItem, 0, len(items))
+		for _, item := range items {
+			var thumbnailURL *string
+			if item.Media.ID != uuid.Nil {
+				thumbURL := "/media/shared/" + item.Media.ID.String() + "/thumb"
+				thumbnailURL = &thumbURL
+			}
+			respItems = append(respItems, SharedAlbumMediaItem{
+				ID:           item.Media.ID,
+				Filename:     item.Media.Filename,
+				Path:         item.Media.Path,
+				MediaType:    string(item.Media.MediaType),
+				CapturedAt:   item.Media.CapturedAt,
+				ThumbnailURL: thumbnailURL,
+			})
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(SharedAlbumMediaResponse{
+			Items:  respItems,
+			Total:  totalItems,
+			Limit:  limit,
+			Offset: offset,
 		})
+
+		logResponse("handleListSharedAlbumMedia", startTime)
+		return
+	} else if afterStr != "" && beforeStr == "" {
+		logInfo("handleListSharedAlbumMedia - Query params", fmt.Sprintf("limit=%d, after=%s", limit, afterStr), startTime)
+		items, totalItems, err := s.mediaShareRepo.ListMediaInSharedAlbumAfter(ctx, id, userID, limit, afterStr)
+		if err != nil {
+			logError("handleListSharedAlbumMedia - ListMediaInSharedAlbumAfter", err, startTime)
+			http.Error(w, "Failed to list shared album media: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		logInfo("handleListSharedAlbumMedia - Found items", fmt.Sprintf("%d items (total=%d)", len(items), totalItems), startTime)
+
+		respItems := make([]SharedAlbumMediaItem, 0, len(items))
+		for _, item := range items {
+			var thumbnailURL *string
+			if item.Media.ID != uuid.Nil {
+				thumbURL := "/media/shared/" + item.Media.ID.String() + "/thumb"
+				thumbnailURL = &thumbURL
+			}
+			respItems = append(respItems, SharedAlbumMediaItem{
+				ID:           item.Media.ID,
+				Filename:     item.Media.Filename,
+				Path:         item.Media.Path,
+				MediaType:    string(item.Media.MediaType),
+				CapturedAt:   item.Media.CapturedAt,
+				ThumbnailURL: thumbnailURL,
+			})
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(SharedAlbumMediaResponse{
+			Items:  respItems,
+			Total:  totalItems,
+			Limit:  limit,
+			Offset: offset,
+		})
+
+		logResponse("handleListSharedAlbumMedia", startTime)
+		return
+	} else {
+		// Offset-based pagination (default)
+		logInfo("handleListSharedAlbumMedia - Query params", fmt.Sprintf("limit=%d, offset=%d", limit, offset), startTime)
+
+		items, totalItems, err := s.mediaShareRepo.ListMediaInSharedAlbum(ctx, id, userID, limit, offset)
+		if err != nil {
+			logError("handleListSharedAlbumMedia - ListMediaInSharedAlbum", err, startTime)
+			http.Error(w, "Failed to list shared album media: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		logInfo("handleListSharedAlbumMedia - Found items", fmt.Sprintf("%d items (total=%d)", len(items), totalItems), startTime)
+
+		respItems := make([]SharedAlbumMediaItem, 0, len(items))
+		for _, item := range items {
+			var thumbnailURL *string
+			if item.Media.ID != uuid.Nil {
+				thumbURL := "/media/shared/" + item.Media.ID.String() + "/thumb"
+				thumbnailURL = &thumbURL
+			}
+			respItems = append(respItems, SharedAlbumMediaItem{
+				ID:           item.Media.ID,
+				Filename:     item.Media.Filename,
+				Path:         item.Media.Path,
+				MediaType:    string(item.Media.MediaType),
+				CapturedAt:   item.Media.CapturedAt,
+				ThumbnailURL: thumbnailURL,
+			})
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(SharedAlbumMediaResponse{
+			Items:  respItems,
+			Total:  totalItems,
+			Limit:  limit,
+			Offset: offset,
+		})
+
+		logResponse("handleListSharedAlbumMedia", startTime)
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(SharedAlbumMediaResponse{
-		Items:  respItems,
-		Total:  totalItems,
-		Limit:  limit,
-		Offset: offset,
-	})
-
-	logResponse("handleListSharedAlbumMedia", startTime)
 }
 
 // handleListSharedAlbums returns a paginated list of albums shared with the current user.

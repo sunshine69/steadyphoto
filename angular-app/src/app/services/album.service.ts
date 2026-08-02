@@ -96,6 +96,18 @@ export class AlbumService {
       .pipe(catchError(this.handleError));
   }
 
+  /**
+   * Fetches media assets belonging to a specific album with pagination.
+   * The backend supports limit/offset query params.
+   */
+  getAlbumMediaPaginated(albumId: string, limit: number = 20, offset: number = 0, afterTimestamp?: string, beforeTimestamp?: string): Observable<any> {
+    let params = `limit=${limit}&offset=${offset}`;
+    if (afterTimestamp) params += `&after=${afterTimestamp}`;
+    if (beforeTimestamp) params += `&before=${beforeTimestamp}`;
+    return this.http.get<any>(`${this.API_BASE_URL}/albums/${albumId}/media?${params}`)
+      .pipe(catchError(this.handleError));
+  }
+
   private handleError(error: any) {
     console.error('AlbumService Error:', error);
     return throwError(() => new Error(error.message || 'An error occurred with the album service'));

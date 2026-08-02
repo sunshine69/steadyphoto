@@ -3,6 +3,7 @@ import { Router, ActivatedRoute } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { PresentationService, MediaItem } from '../../services/presentation.service';
 import { PhotoService } from '../../services/photo.service';
+import { Subscription } from 'rxjs';
 
 @Component({
     selector: 'app-presentation-mode',
@@ -21,14 +22,12 @@ import { PhotoService } from '../../services/photo.service';
         <button
           class="nav-btn nav-prev"
           (click)="previousItem()"
-          [class.disabled]="currentIndex <= 0"
           aria-label="Previous item">
           ‹
         </button>
         <button
           class="nav-btn nav-next"
           (click)="nextItem()"
-          [class.disabled]="currentIndex >= totalItems - 1"
           aria-label="Next item">
           ›
         </button>
@@ -66,7 +65,7 @@ import { PhotoService } from '../../services/photo.service';
           <!-- Thumbnail Strip (optional, can be expanded later) -->
           @if (totalItems > 5) {
             <div class="thumbnail-strip">
-              @for (item of items; track item; let i = $index) {
+              @for (item of items; track item.id; let i = $index) {
                 <button
                   [class.active]="i === currentIndex"
                   (click)="goToItem(i)"
@@ -100,7 +99,6 @@ import { PhotoService } from '../../services/photo.service';
           </div>
         }
       </div>
-    } @else {
     }
     
     <!-- Close button when presentation is closed (for testing) -->
@@ -458,14 +456,19 @@ export class PresentationModeComponent implements OnInit, AfterViewInit, OnDestr
   totalItems = 0;
   currentItem?: MediaItem;
   isLoading = false;
+  
+  private subscription?: Subscription;
 
   ngOnInit(): void {
-    this.presentationService.isOpen$.subscribe((isOpen: boolean) => {
-      if (isOpen) {
-        this.loadPresentationData();
-      } else {
-        this.resetState();
-      }
+    this.loadPresentationData();
+    
+    // Subscribe to state changes to update view
+    this.subscription = this.presentationService.stateChanges$.subscribe(() => {
+      this.items = this.presentationService.getItems();
+      this.currentIndex = this.presentationService.getCurrentIndex();
+      this.totalItems = this.items.length;
+      this.currentItem = this.presentationService.getCurrentItem();
+      this.isLoading = false;
     });
   }
 
@@ -474,7 +477,22 @@ export class PresentationModeComponent implements OnInit, AfterViewInit, OnDestr
   }
 
   ngOnDestroy(): void {
+    this.subscription?.unsubscribe();
     document.removeEventListener('keydown', this.handleKeyDown);
+  }
+
+  /**
+   * Check if we're at the beginning of the loaded items
+   */
+  isAtStart(): boolean {
+    return this.presentationService.isAtStart();
+  }
+
+  /**
+   * Check if we're at the end of the loaded items
+   */
+  isAtEnd(): boolean {
+    return this.presentationService.isAtEnd();
   }
 
   private loadPresentationData(): void {
@@ -485,30 +503,56 @@ export class PresentationModeComponent implements OnInit, AfterViewInit, OnDestr
     this.isLoading = false;
   }
 
-  private resetState(): void {
-    this.items = [];
-    this.currentIndex = 0;
-    this.totalItems = 0;
-    this.currentItem = undefined;
-    this.isLoading = false;
-  }
-
-  nextItem(): boolean {
+  async nextItem(): Promise<void> {
+    console.log('[PresentationComponent] nextItem called, isAtEnd:', this.presentationService.isAtEnd(), 'currentIndex:', this.currentIndex, 'items.length:', this.items.length);
+    // If at the end, try to load more items first
+    if (this.presentationService.isAtEnd()) {
+      console.log('[PresentationComponent] nextItem - at end, calling loadNextPage');
+      const loaded = await this.presentationService.loadNextPage();
+      console.log('[PresentationComponent] nextItem - loadNextPage returned:', loaded, 'loaded.items.length:', loaded ? this.presentationService.getItems().length : 0);
+      if (loaded) {
+        // Update state after loading
+        this.items = this.presentationService.getItems();
+        this.currentIndex = this.presentationService.getCurrentIndex();
+        this.totalItems = this.items.length;
+        this.currentItem = this.presentationService.getCurrentItem();
+        console.log('[PresentationComponent] nextItem - new items loaded, new currentIndex:', this.currentIndex);
+        return; // Don't navigate further, just show the new items
+      }
+      return; // No more items to load
+    }
+    
+    // Navigate to next item normally
     if (this.presentationService.next()) {
       this.currentIndex = this.presentationService.getCurrentIndex();
       this.currentItem = this.presentationService.getCurrentItem();
-      return true;
     }
-    return false;
   }
 
-  previousItem(): boolean {
+  async previousItem(): Promise<void> {
+    console.log('[PresentationComponent] previousItem called, isAtStart:', this.presentationService.isAtStart(), 'currentIndex:', this.currentIndex, 'items.length:', this.items.length);
+    // If at the start, try to load previous items first
+    if (this.presentationService.isAtStart()) {
+      console.log('[PresentationComponent] previousItem - at start, calling loadPreviousPage');
+      const loaded = await this.presentationService.loadPreviousPage();
+      console.log('[PresentationComponent] previousItem - loadPreviousPage returned:', loaded, 'loaded.items.length:', loaded ? this.presentationService.getItems().length : 0);
+      if (loaded) {
+        // Update state after loading
+        this.items = this.presentationService.getItems();
+        this.currentIndex = this.presentationService.getCurrentIndex();
+        this.totalItems = this.items.length;
+        this.currentItem = this.presentationService.getCurrentItem();
+        console.log('[PresentationComponent] previousItem - new items loaded, new currentIndex:', this.currentIndex);
+        return; // Don't navigate further, just show the new items
+      }
+      return; // No more items to load
+    }
+    
+    // Navigate to previous item normally
     if (this.presentationService.previous()) {
       this.currentIndex = this.presentationService.getCurrentIndex();
       this.currentItem = this.presentationService.getCurrentItem();
-      return true;
     }
-    return false;
   }
 
   goToItem(index: number): void {

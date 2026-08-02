@@ -206,4 +206,8 @@ type AlbumRepository interface {
 	BulkRemoveMedia(ctx context.Context, albumID uuid.UUID, mediaIDs []uuid.UUID) error
 	GetMedia(ctx context.Context, albumID uuid.UUID, userID uuid.UUID) ([]*Media, error)
 	GetMediaPaginated(ctx context.Context, albumID uuid.UUID, userID uuid.UUID, limit int, offset int) ([]*Media, int, error)
+	// Cursor-based pagination for presentation mode - older items (before timestamp)
+	GetMediaPaginatedBefore(ctx context.Context, albumID uuid.UUID, userID uuid.UUID, limit int, beforeTimestamp string) ([]*Media, int, error)
+	// Cursor-based pagination for presentation mode - newer items (after timestamp)
+	GetMediaPaginatedAfter(ctx context.Context, albumID uuid.UUID, userID uuid.UUID, limit int, afterTimestamp string) ([]*Media, int, error)
 }
