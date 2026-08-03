@@ -47,7 +47,7 @@ class SyncManager(private val context: Context) : KoinComponent {
 
             val constraints = getNetworkConstraintsFromSettings(networkSettings)
             
-            val periodicRequest = PeriodicWorkRequestBuilder<MediaScannerWorker>(1, TimeUnit.HOURS)
+            val periodicRequest = PeriodicWorkRequestBuilder<MediaScannerWorker>(syncControlSettings.fallbackSyncIntervalMinutes.toLong(), TimeUnit.MINUTES)
                 .addTag(PERIODIC_SCAN_TAG)
                 .setConstraints(constraints)
                 .build()
@@ -57,7 +57,7 @@ class SyncManager(private val context: Context) : KoinComponent {
                 ExistingPeriodicWorkPolicy.KEEP, 
                 periodicRequest
             )
-            Log.d(TAG, "Scheduled periodic scan every 1 hour (KEEP policy).")
+            Log.d(TAG, "Scheduled periodic scan every ${syncControlSettings.fallbackSyncIntervalMinutes} minutes (KEEP policy).")
         }
     }
 

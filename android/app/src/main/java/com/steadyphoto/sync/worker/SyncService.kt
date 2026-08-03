@@ -7,11 +7,8 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.os.IBinder
 import android.os.Build
-import android.os.Handler
-import android.provider.MediaStore
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.steadyphoto.sync.R
@@ -23,9 +20,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
@@ -33,26 +27,17 @@ import org.koin.core.component.inject
 /**
  * Foreground service that handles background media scanning and synchronization.
  * 
- * Uses DirectoryFileObserver (filesystem-level) for real-time detection of new files,
- * combined with ContentObserver as a secondary mechanism to catch MediaStore-indexed changes.
- * Periodic sync is used as an additional fallback.
- * 
+ * Performs ONE sync cycle (scan + upload) and then stops itself.
+ * Called via intent from MainActivity or BroadcastReceivers.
  * Battery optimization:
- * - Debounces FileObserver/ContentObserver events (min 2s between triggers)
- * - Prevents concurrent sync operations (mutex)
  * - UploadManager limits concurrency to maxConcurrentUploads (default 3)
+ * - Max consecutive upload failures before giving up
  */
 class SyncService : Service(), KoinComponent {
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var syncJob: Job? = null
     
-    // FileObserver for real-time filesystem detection (primary mechanism)
-    private var fileObservers: List<DirectoryFileObserver> = emptyList()
-    
-    // ContentObserver as secondary mechanism  
-    private var mediaContentObserver: MediaContentObserver? = null
-
     // Inject dependencies via Koin
     private val container: AppContainer by inject()
 
@@ -64,11 +49,6 @@ class SyncService : Service(), KoinComponent {
 
         // Max consecutive failed upload attempts before giving up and stopping the service.
         private const val MAX_CONSECUTIVE_UPLOAD_FAILURES = 3
-        
-        // Debounce interval for FileObserver/ContentObserver events.
-        // If multiple files are created at once (e.g., user copies 100 photos),
-        // FileObserver fires 100 times rapidly. We only trigger a sync every 2 seconds.
-        private const val SYNC_DEBOUNCE_MS = 2_000L
 
         fun newIntent(context: Context): Intent {
             return Intent(context, SyncService::class.java)
@@ -78,99 +58,14 @@ class SyncService : Service(), KoinComponent {
     // Track consecutive upload failures to prevent infinite retries
     private var consecutiveUploadFailures = 0
     
-    // Timestamp of the last FileObserver/ContentObserver-triggered sync.
-    // Used for debouncing: skip sync if less than SYNC_DEBOUNCE_MS since last.
-    private var lastSyncTriggerTime = 0L
-    
-    // Mutex flag to prevent concurrent sync operations.
-    // If a sync is already running and a FileObserver event fires,
-    // we defer and let the current sync pick up new items.
-    private var isSyncInProgress = false
-    
     // Flag to track whether Stop was explicitly requested. Prevents START_STICKY from 
-    // restarting the service after a manual stop. Android may restart killed services,
-    // and without this flag it would start running again even though the user stopped it.
+    // restarting the service after a manual stop.
     private var stopRequested = false
 
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, createNotification())
-        
-        // Register FileObserver for real-time filesystem detection (primary mechanism)
-        registerFileObservers()
-        
-        // Also register ContentObserver as secondary mechanism for MediaStore changes
-        registerContentObserver()
-    }
-
-    private fun registerFileObservers() {
-        val observers = DirectoryFileObserver.MONITORED_DIRS.mapNotNull { dir ->
-            try {
-                DirectoryFileObserver(dir) { file ->
-                    // Debounce: only trigger sync if last trigger was > SYNC_DEBOUNCE_MS ago.
-                    // This prevents a burst of 100 FileObserver events from triggering 100 syncs.
-                    val now = System.currentTimeMillis()
-                    if (now - lastSyncTriggerTime >= SYNC_DEBOUNCE_MS) {
-                        lastSyncTriggerTime = now
-                        Log.d("SyncService", "New media file via FileObserver: ${file.absolutePath}")
-                        serviceScope.launch {
-                            performSync()
-                        }
-                    } else {
-                        Log.d("SyncService", "FileObserver event suppressed (debounce): ${file.absolutePath}")
-                    }
-                }.also { it.startWatching() }
-            } catch (e: Exception) {
-                Log.w("SyncService", "Failed to start FileObserver for $dir: ${e.message}")
-                null
-            }
-        }
-        
-        fileObservers = observers
-        if (observers.isNotEmpty()) {
-            Log.d("SyncService", "FileObserver registered for ${observers.size} directories")
-        } else {
-            Log.w("SyncService", "No FileObservers could be started - filesystem monitoring disabled")
-        }
-    }
-
-    private fun registerContentObserver() {
-        val contentResolver = applicationContext.contentResolver
-        
-        mediaContentObserver = MediaContentObserver(Handler(android.os.Looper.getMainLooper()), serviceScope) {
-            // Debounce: only trigger sync if last trigger was > SYNC_DEBOUNCE_MS ago.
-            val now = System.currentTimeMillis()
-            if (now - lastSyncTriggerTime >= SYNC_DEBOUNCE_MS) {
-                lastSyncTriggerTime = now
-                Log.d("SyncService", "ContentObserver triggered (debounced)")
-                serviceScope.launch {
-                    performSync()
-                }
-            } else {
-                Log.d("SyncService", "ContentObserver event suppressed (debounce)")
-            }
-        }
-        
-        // Register on BOTH images and videos URIs with notifyForDescendants=true
-        try {
-            contentResolver.registerContentObserver(
-                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                true,  // notifyForDescendants - catch changes in subdirectories too
-                mediaContentObserver!!
-            )
-            
-            contentResolver.registerContentObserver(
-                MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-                true,  // notifyForDescendants - catch changes in subdirectories too
-                mediaContentObserver!!
-            )
-            
-            Log.d("SyncService", "ContentObserver registered for real-time detection")
-        } catch (e: Exception) {
-            Log.w("SyncService", "Failed to register ContentObserver: ${e.message}")
-            mediaContentObserver = null
-        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -178,13 +73,11 @@ class SyncService : Service(), KoinComponent {
             ACTION_START_SYNC -> startSyncJob()
             ACTION_STOP_SYNC -> stopSyncJob()
             else -> {
-                // If Android restarts this service after it was killed (e.g., during Doze mode),
-                // check if the user had explicitly requested a stop. Don't auto-restart if so.
                 if (!stopRequested) {
                     startSyncJob()
                 } else {
                     Log.d("SyncService", "Not restarting service — user had stopped it")
-                    stopRequested = false  // Reset flag for next time the user starts sync
+                    stopRequested = false
                     stopForeground(STOP_FOREGROUND_REMOVE)
                     stopSelf()
                 }
@@ -196,41 +89,27 @@ class SyncService : Service(), KoinComponent {
     private fun startSyncJob() {
         if (syncJob == null || !syncJob!!.isActive) {
             syncJob = serviceScope.launch {
-                while (true) {
-                    try {
-                        ensureActive()
-                    } catch (_: CancellationException) {
-                        break
-                    }
-                    
-                    // Perform a single scan to check for new items, then upload if needed.
-                    // If nothing needs doing, do NOT loop again — exit the service early.
-                    val hasWork = performSyncAndCheckForMore()
-                    
-                    if (!hasWork) {
-                        Log.d("SyncService", "No more work to do — stopping sync job")
-                        break  // Exit the loop; service will stop itself via onDestroy after cleanup
-                    }
-                    
-                    // Only delay between actual work cycles. If there was work, wait and check again.
-                    val syncControl = container.settingsRepository.syncControlFlow.first()
-                    delay(syncControl.fallbackSyncIntervalMinutes * 60_000L)
+                try {
+                    performSyncAndCheckForMore()
+                } catch (e: Exception) {
+                    Log.e("SyncService", "Sync job failed", e)
+                } finally {
+                    Log.d("SyncService", "Sync job finished - stopping service")
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    stopSelf()
                 }
             }
         }
     }
 
     private fun stopSyncJob() {
-        // Mark that the user explicitly requested a stop. This prevents START_STICKY from
-        // restarting the service after it's been killed by Android (e.g., during Doze mode).
         stopRequested = true
-        
         syncJob?.cancel()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
 
-   /**
+    /**
      * Performs the full synchronization cycle and returns whether there's more work.
      * 
      * Returns true if:
@@ -243,114 +122,38 @@ class SyncService : Service(), KoinComponent {
         var hasWork = false
         
         try {
-            // Step 1: Scan for new media files - using incremental scanning if possible
+            // Step 1: Scan for new media files
             val scanResult = container.repository.scanNewMedia(forceFullScan = false)
             
             when (scanResult) {
                 is com.steadyphoto.sync.data.repository.ScanResult.Success -> {
-                    hasWork = true  // Items were found
+                    hasWork = true
                     
                     updateNotification(
                         "Scanning...", 
                         "${scanResult.totalScanned} items scanned, ${scanResult.newItemsInserted} new items found"
                     )
                     
-                    // Step 2: Upload pending/failed items using the upload manager
+                    // Step 2: Upload pending/failed items
                     val pendingAndFailed = container.mediaItemDao.getPendingAndFailedItems(
-                        listOf(com.steadyphoto.sync.data.local.entity.UploadStatus.PENDING, 
-                               com.steadyphoto.sync.data.local.entity.UploadStatus.FAILED)
+                        listOf(UploadStatus.PENDING, UploadStatus.FAILED)
                     )
                     
                     if (pendingAndFailed.isNotEmpty()) {
-                        updateNotification("Uploading...", "${pendingAndFailed.size} items to upload")
-                        
-                        // Check network settings before uploading - respect WiFi-only preference
-                        val networkSettings = container.settingsRepository.networkSettingsFlow.first()
-                        if (!container.uploadManager.networkMonitor.isNetworkAcceptableForUpload(networkSettings)) {
-                            val currentType = container.uploadManager.networkMonitor.getCurrentNetworkType()?.name ?: "unknown"
-                            Log.w("SyncService", "Skipping upload - network type ($currentType) doesn't meet preferences")
-                            updateNotification(
-                                "Waiting for Network", 
-                                "Uploading on $currentType not allowed in settings. Waiting..."
-                            )
-                        } else {
-                            // Use UploadManager for consistent upload handling with progress tracking
-                            // UploadManager.uploadBatch limits concurrency to maxConcurrentUploads (default 3)
-                            // to prevent battery/CPU drain from too many simultaneous uploads
-                            val result = container.uploadManager.uploadMedia(pendingAndFailed)
-                            
-                            when {
-                                result.isSuccess -> {
-                                    consecutiveUploadFailures = 0  // Reset failure counter on success
-                                    val uploadResult = result.getOrNull()
-                                    updateNotification(
-                                        "Upload Complete", 
-                                        "${uploadResult?.successCount ?: 0} succeeded, ${uploadResult?.failureCount ?: pendingAndFailed.size} failed"
-                                    )
-                                }
-                                else -> {
-                                    consecutiveUploadFailures++
-                                    val error = result.exceptionOrNull()?.message ?: "Unknown error"
-                                    updateNotification("Upload Failed", error)
-                                    
-                                    // Check if we've exceeded the max consecutive failure limit
-                                    if (consecutiveUploadFailures >= MAX_CONSECUTIVE_UPLOAD_FAILURES) {
-                                        Log.w("SyncService", 
-                                            "Max upload failures reached ($MAX_CONSECUTIVE_UPLOAD_FAILURES). Stopping service to prevent battery drain.")
-                                        updateNotification(
-                                            "Upload Failed", 
-                                            "Too many failed uploads. Please check network and try again later."
-                                        )
-                                        return false  // Stop the service — no more retries
-                                    }
-                                }
-                            }
-                        }
+                        uploadPendingItems(pendingAndFailed)
                     } else {
                         updateNotification("Syncing", "No items to upload")
                     }
                 }
 
                 is com.steadyphoto.sync.data.repository.ScanResult.NoNewItems -> {
-                    // No new items found, check for pending uploads anyway
                     val pendingAndFailed = container.mediaItemDao.getPendingAndFailedItems(
-                        listOf(com.steadyphoto.sync.data.local.entity.UploadStatus.PENDING, 
-                               com.steadyphoto.sync.data.local.entity.UploadStatus.FAILED)
+                        listOf(UploadStatus.PENDING, UploadStatus.FAILED)
                     )
                     
                     if (pendingAndFailed.isNotEmpty()) {
-                        hasWork = true  // Pending uploads exist — check again later
-                        
-                        updateNotification("Uploading...", "${pendingAndFailed.size} items to upload")
-                        
-                        val result = container.uploadManager.uploadMedia(pendingAndFailed)
-                        
-                        when {
-                            result.isSuccess -> {
-                                consecutiveUploadFailures = 0  // Reset failure counter on success
-                                val uploadResult = result.getOrNull()
-                                updateNotification(
-                                    "Upload Complete", 
-                                    "${uploadResult?.successCount ?: 0} succeeded, ${uploadResult?.failureCount ?: pendingAndFailed.size} failed"
-                                )
-                            }
-                            else -> {
-                                consecutiveUploadFailures++
-                                val error = result.exceptionOrNull()?.message ?: "Unknown error"
-                                updateNotification("Upload Failed", error)
-                                
-                                // Check if we've exceeded the max consecutive failure limit
-                                if (consecutiveUploadFailures >= MAX_CONSECUTIVE_UPLOAD_FAILURES) {
-                                    Log.w("SyncService", 
-                                        "Max upload failures reached ($MAX_CONSECUTIVE_UPLOAD_FAILURES). Stopping service to prevent battery drain.")
-                                    updateNotification(
-                                        "Upload Failed", 
-                                        "Too many failed uploads. Please check network and try again later."
-                                    )
-                                    return false  // Stop the service — no more retries
-                                }
-                            }
-                        }
+                        hasWork = true
+                        uploadPendingItems(pendingAndFailed)
                     } else {
                         updateNotification("Syncing", "No items to sync")
                     }
@@ -365,35 +168,51 @@ class SyncService : Service(), KoinComponent {
                 }
             }
         } catch (e: Exception) {
-            // Log the error but don't crash the service
-            android.util.Log.e("SyncService", "Error during sync cycle", e)
+            Log.e("SyncService", "Error during sync cycle", e)
             updateNotification("Sync Error", e.message ?: "Unknown error")
-            
-            // If an unexpected exception occurs, reset failure counter and stop
             consecutiveUploadFailures = 0
         }
         
         return hasWork
     }
 
-    /**
-     * Performs the full synchronization cycle.
-     * This is a convenience wrapper for FileObserver/ContentObserver callbacks.
-     * Uses mutex to prevent concurrent sync operations.
-     */
-    private suspend fun performSync() {
-        // Mutex: prevent concurrent sync operations
-        if (isSyncInProgress) {
-            Log.d("SyncService", "Sync already in progress — skipping (another sync is running)")
+    private suspend fun uploadPendingItems(pendingAndFailed: List<com.steadyphoto.sync.data.local.entity.MediaItemEntity>) {
+        updateNotification("Uploading...", "${pendingAndFailed.size} items to upload")
+        
+        // Check network settings before uploading
+        val networkSettings = container.settingsRepository.networkSettingsFlow.first()
+        if (!container.uploadManager.networkMonitor.isNetworkAcceptableForUpload(networkSettings)) {
+            val currentType = container.uploadManager.networkMonitor.getCurrentNetworkType()?.name ?: "unknown"
+            Log.w("SyncService", "Skipping upload - network type ($currentType) doesn't meet preferences")
+            updateNotification("Waiting for Network", "Uploading on $currentType not allowed in settings. Waiting...")
             return
         }
-        isSyncInProgress = true
-        try {
-            performSyncAndCheckForMore()
-        } finally {
-            isSyncInProgress = false
+        
+        val result = container.uploadManager.uploadMedia(pendingAndFailed)
+        
+        when {
+            result.isSuccess -> {
+                consecutiveUploadFailures = 0
+                updateNotification(
+                    "Upload Complete", 
+                    "${pendingAndFailed.size} items uploaded"
+                )
+            }
+            else -> {
+                consecutiveUploadFailures++
+                val error = result.exceptionOrNull()?.message ?: "Unknown error"
+                updateNotification("Upload Failed", error)
+                
+                if (consecutiveUploadFailures >= MAX_CONSECUTIVE_UPLOAD_FAILURES) {
+                    Log.w("SyncService", 
+                        "Max upload failures reached ($MAX_CONSECUTIVE_UPLOAD_FAILURES). Stopping service.")
+                    updateNotification(
+                        "Upload Failed", 
+                        "Too many failed uploads. Please check network and try again later."
+                    )
+                }
+            }
         }
-        // Ignore return value — observers keep service alive
     }
 
     private fun createNotificationChannel() {
@@ -428,9 +247,6 @@ class SyncService : Service(), KoinComponent {
             .build()
     }
 
-    /**
-     * Updates the notification content to reflect current sync status.
-     */
     private fun updateNotification(title: String, text: String) {
         val pendingIntent = PendingIntent.getActivity(
             this,
@@ -454,29 +270,6 @@ class SyncService : Service(), KoinComponent {
 
     override fun onDestroy() {
         super.onDestroy()
-        
-        // Unregister FileObservers - must be done in try-catch as it may throw if not registered
-        fileObservers.forEach { observer ->
-            try {
-                observer.stopWatching()
-            } catch (e: Exception) {
-                Log.w("SyncService", "Failed to stop FileObserver", e)
-            }
-        }
-        fileObservers = emptyList()
-        
-        // Unregister ContentObserver - must be done in try-catch as it may throw if not registered
-        mediaContentObserver?.let { observer ->
-            try {
-                applicationContext.contentResolver.unregisterContentObserver(observer)
-            } catch (e: IllegalArgumentException) {
-                Log.w("SyncService", "ContentObserver was already unregistered")
-            }
-        }
-        mediaContentObserver = null
-        
-        // Cancel sync job and coroutine scope
         syncJob?.cancel()
-        serviceScope.coroutineContext[Job]?.cancel()
     }
 }

@@ -378,7 +378,7 @@ class UploadManager(
         // Convert client milliseconds to "2006/01/02 15:04:05" for comparison
         if (item.captureTime != null && skipped.capturedAt != null) {
             try {
-                val clientFormatted = formatTimestampForApi(item.captureTime!!)
+                val clientFormatted = formatTimestampForApi(item.captureTime)
                 if (clientFormatted != skipped.capturedAt) {
                     return true
                 }
@@ -388,7 +388,7 @@ class UploadManager(
         }
         if (item.fileCreatedAt != null && skipped.fileCreatedAt != null) {
             try {
-                val clientFormatted = formatTimestampForApi(item.fileCreatedAt!!)
+                val clientFormatted = formatTimestampForApi(item.fileCreatedAt)
                 if (clientFormatted != skipped.fileCreatedAt) {
                     return true
                 }

@@ -8,7 +8,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import java.io.File
 
+@Suppress("DEPRECATION")
 class DownloadFileObserver(
+@Suppress("DEPRECATION")
     private val onNewFile: (String) -> Unit
 ) : AndroidFileObserver("/storage/emulated/0/Download/", FileObserverConstants.CREATE or FileObserverConstants.MODIFY) {
 

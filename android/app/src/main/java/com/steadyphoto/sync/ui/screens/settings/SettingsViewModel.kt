@@ -37,6 +37,13 @@ class SettingsViewModel(
             1
         )
 
+    val syncIntervalMinutesFlow: SharedFlow<Int> = 
+        settingsRepository.syncControlFlow.map { it.fallbackSyncIntervalMinutes }.shareIn(
+            viewModelScope,
+            SharingStarted.Lazily,
+            1
+        )
+
     fun updateApiUrl(url: String) {
         ApiClient.updateBaseUrl(url.trim())
     }
@@ -70,6 +77,13 @@ class SettingsViewModel(
     fun setAutoStartAtBoot(enabled: Boolean) {
         viewModelScope.launch {
             settingsRepository.setAutoStartAtBoot(enabled)
+            syncManager.rescheduleWithCurrentSettings()
+        }
+    }
+
+    fun setFallbackSyncInterval(minutes: Int) {
+        viewModelScope.launch {
+            settingsRepository.setFallbackSyncInterval(minutes)
             syncManager.rescheduleWithCurrentSettings()
         }
     }

@@ -63,7 +63,7 @@ class SettingsRepository(private val context: Context) {
         .map { preferences ->
             SyncControlSettings(
                 autoSyncEnabled = preferences[AUTO_SYNC_ENABLED_KEY] ?: true,
-                fallbackSyncIntervalMinutes = preferences[FALLBACK_SYNC_INTERVAL_KEY] ?: 30
+                fallbackSyncIntervalMinutes = preferences[FALLBACK_SYNC_INTERVAL_KEY] ?: 15
             )
         }
 
@@ -203,7 +203,7 @@ data class SyncControlSettings(
     companion object {
         fun default(): SyncControlSettings = SyncControlSettings(
             autoSyncEnabled = true,
-            fallbackSyncIntervalMinutes = 30
+            fallbackSyncIntervalMinutes = 15
         )
     }
 }

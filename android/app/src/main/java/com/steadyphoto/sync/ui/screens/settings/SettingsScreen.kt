@@ -144,6 +144,52 @@ fun SettingsScreen(
                 }
             }
 
+
+            // Sync interval selector
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Scan Interval", style = MaterialTheme.typography.titleMedium)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    var selectedInterval by remember { mutableStateOf(15) }
+                    
+                    LaunchedEffect(Unit) {
+                        viewModel.syncIntervalMinutesFlow.collect { interval ->
+                            selectedInterval = interval
+                        }
+                    }
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Background scan interval", style = MaterialTheme.typography.bodyLarge)
+                            Text("Frequency of automatic scans in background", style = MaterialTheme.typography.bodySmall)
+                        }
+                        
+                        Text(
+                            "${selectedInterval} min",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    
+                    Spacer(modifier = Modifier.height(12.dp))
+                    
+                    Slider(
+                        value = selectedInterval.toFloat(),
+                        onValueChange = { newValue ->
+                            val rounded = ((newValue + 2.5f) / 5.0f).toInt() * 5
+                            selectedInterval = rounded.toInt()
+                            viewModel.setFallbackSyncInterval(selectedInterval)
+                        },
+                        valueRange = 5f..60f,
+                        steps = 10
+                    )
+                }
+            }
             // Auto-start at boot toggle - persisted to DataStore
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {

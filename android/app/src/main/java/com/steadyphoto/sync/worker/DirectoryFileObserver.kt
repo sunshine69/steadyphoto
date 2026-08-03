@@ -4,9 +4,10 @@ import android.os.FileObserver as AndroidFileObserver
 import android.util.Log
 import java.io.File
 
+@Suppress("DEPRECATION")
 class DirectoryFileObserver(
     private val path: String,
-    private val onDirectoryChanged: (file: File) -> Unit = {}
+private val onDirectoryChanged: (file: File) -> Unit = {}
 ) : AndroidFileObserver(path, FileObserverConstants.CREATE or FileObserverConstants.MODIFY or FileObserverConstants.MOVED_FROM or FileObserverConstants.MOVED_TO) {
 
     companion object {

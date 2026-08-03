@@ -19,6 +19,41 @@ class NetworkConnectivityMonitor(private val context: Context) {
         context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
     
     /**
+     * Tracks all known networks via NetworkCallback.
+     * Used to check if WiFi is available even on non-active networks.
+     * API 26+ compatible replacement for deprecated allNetworks.
+     */
+    private val trackedNetworks = mutableSetOf<Network>()
+    
+    private val networkRequest = NetworkRequest.Builder()
+        .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        .build()
+    
+    private val networkTrackerCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            synchronized(trackedNetworks) {
+                trackedNetworks.add(network)
+            }
+        }
+        
+        override fun onLost(network: Network) {
+            synchronized(trackedNetworks) {
+                trackedNetworks.remove(network)
+            }
+        }
+    }
+    
+    init {
+        connectivityManager.registerNetworkCallback(networkRequest, networkTrackerCallback)
+    }
+    
+    fun close() {
+        try {
+            connectivityManager.unregisterNetworkCallback(networkTrackerCallback)
+        } catch (_: IllegalArgumentException) {}
+    }
+    
+    /**
      * Returns a Flow that emits the current detailed network state.
      */
     fun observeDetailedNetworkState(): Flow<DetailedNetworkState> = callbackFlow {
@@ -125,12 +160,14 @@ class NetworkConnectivityMonitor(private val context: Context) {
      * even though WiFi is the preferred connection for large transfers.
      */
     fun getCurrentNetworkType(): NetworkType? {
-        // First check if WiFi is available on ANY network (not just the active one)
-        val networks = connectivityManager.allNetworks ?: return null
-        for (network in networks) {
-            val capabilities = connectivityManager.getNetworkCapabilities(network) ?: continue
-            if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
-                return NetworkType.WIFI
+        // First check if WiFi is available on ANY known network (not just the active one)
+        // Uses tracked networks instead of deprecated allNetworks
+        synchronized(trackedNetworks) {
+            for (network in trackedNetworks) {
+                val capabilities = connectivityManager.getNetworkCapabilities(network) ?: continue
+                if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
+                    return NetworkType.WIFI
+                }
             }
         }
         
