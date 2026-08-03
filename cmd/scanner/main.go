@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"flag"
@@ -81,7 +80,7 @@ func (c *ScannerClient) login(username string, password string) error {
 		return fmt.Errorf("failed to marshal login request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, loginURL, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, loginURL, io.NopCloser(strings.NewReader(string(body))))
 	if err != nil {
 		return fmt.Errorf("failed to create login request: %w", err)
 	}
@@ -181,7 +180,8 @@ func (c *ScannerClient) ScanAndUpload(ctx context.Context, sourceDir string) err
 	return nil
 }
 
-// uploadFile sends a single file to the API for upload.
+// uploadFile sends a single file to the API for upload using streaming to avoid
+// buffering the entire file in memory. This is critical for large files (e.g. 2GB+).
 func (c *ScannerClient) uploadFile(ctx context.Context, filePath string) error {
 	mlog.Info("Uploading: %s", filePath)
 
@@ -197,33 +197,48 @@ func (c *ScannerClient) uploadFile(ctx context.Context, filePath string) error {
 		return fmt.Errorf("failed to stat file: %w", err)
 	}
 
-	// Create a multipart form body with the file data
-	body := &bytes.Buffer{}
-	formWriter := multipart.NewWriter(body)
+	// Create a pipe for streaming: one goroutine writes multipart data to the pipe writer,
+	// the HTTP client reads from the pipe reader and sends it directly to the network.
+	// This ensures the file is never fully buffered in memory.
+	pr, pw := io.Pipe()
+	formWriter := multipart.NewWriter(pw)
 
-	// Add the file field (required by the API)
-	part, err := formWriter.CreateFormFile("file", fileInfo.Name())
+	// Start a goroutine to write the multipart body to the pipe
+	go func() {
+		var writeErr error
+
+		// Add the file field (required by the API)
+		part, err := formWriter.CreateFormFile("file", fileInfo.Name())
+		if err != nil {
+			writeErr = fmt.Errorf("failed to create form file part: %w", err)
+			pw.CloseWithError(writeErr)
+			return
+		}
+		if _, err := io.Copy(part, fileHandle); err != nil {
+			writeErr = fmt.Errorf("failed to copy file to multipart body: %w", err)
+			pw.CloseWithError(writeErr)
+			return
+		}
+
+		// Add metadata fields
+		formWriter.WriteField("fileName", fileInfo.Name())
+		formWriter.WriteField("fileCreatedAt", fileInfo.ModTime().Format("2006/01/02 15:04:05"))
+
+		// Close the form writer to finalize the multipart body
+		if err := formWriter.Close(); err != nil {
+			writeErr = fmt.Errorf("failed to close multipart writer: %w", err)
+			pw.CloseWithError(writeErr)
+			return
+		}
+
+		// Signal that we're done writing
+		pw.Close()
+	}()
+
+	// Create the POST request with the pipe as the body
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/v1/media/upload/single", pr)
 	if err != nil {
-		return fmt.Errorf("failed to create form file part: %w", err)
-	}
-	if _, err := io.Copy(part, fileHandle); err != nil {
-		return fmt.Errorf("failed to write file data to multipart body: %w", err)
-	}
-
-	// Add optional fileName field (the API expects this for metadata)
-	formWriter.WriteField("fileName", fileInfo.Name())
-
-	// Add file creation date as mtime from filesystem
-	formWriter.WriteField("fileCreatedAt", fileInfo.ModTime().Format("2006/01/02 15:04:05"))
-
-	// Close the form writer to finalize the multipart body
-	if err := formWriter.Close(); err != nil {
-		return fmt.Errorf("failed to close multipart writer: %w", err)
-	}
-
-	// Create the POST request with the correct endpoint (/api/v1/media/upload/single)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/v1/media/upload/single", body)
-	if err != nil {
+		pr.Close()
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
@@ -235,6 +250,7 @@ func (c *ScannerClient) uploadFile(ctx context.Context, filePath string) error {
 
 	resp, err := c.client.Do(req)
 	if err != nil {
+		pr.Close()
 		return fmt.Errorf("failed to send request: %w", err)
 	}
 	defer resp.Body.Close()
