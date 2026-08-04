@@ -25,6 +25,8 @@ export interface AlbumContext {
   shareToken?: string;
   isSharedAlbumView?: boolean;
   galleryPage?: number;
+  pageOffset?: number; // The pagination offset when presentation was started (e.g., 40 for page 3)
+  startCapturedAt?: string; // The captured_at timestamp of the starting photo (for fetching around it)
 }
 
 @Injectable({ providedIn: 'root' })
@@ -75,12 +77,146 @@ export class PresentationService {
       return (a.filename || '').localeCompare(b.filename || '');
     });
 
-    const clampedIndex = Math.max(0, Math.min(startIndex, sortedItems.length - 1));
-    this.state.update(prev => ({ ...prev, isOpen: true, items: sortedItems, currentIndex: clampedIndex }));
+    // Calculate the local index within the current page.
+    // When startIndex >= items.length on a paginated page, calculate from offset.
+    let initialIndex: number;
+    if (ctx && ctx.pageOffset && startIndex >= items.length) {
+      // We're starting from a later page - calculate based on offset
+      // e.g., startIndex=40, pageOffset=40 → localIndex = 0 (first item of current page)
+      const calculatedLocal = startIndex - ctx.pageOffset;
+      initialIndex = Math.max(0, Math.min(calculatedLocal, sortedItems.length - 1));
+    } else {
+      initialIndex = Math.max(0, Math.min(startIndex, sortedItems.length - 1));
+    }
+    
+    this.state.update(prev => ({ ...prev, isOpen: true, items: sortedItems, currentIndex: initialIndex }));
+    
     // Store the album context so loadNextPage/loadPreviousPage can use it
     if (ctx) {
       this.setAlbumContext(ctx);
+      // Pass the RAW startIndex (not clamped) to _fetchAllAround
+      // This ensures we fetch the correct number of items before/after
+      this._fetchAllAround(startIndex).catch(e => console.error('[Presentation] fetchAllAround error:', e));
     }
+    this.notify();
+  }
+
+  /**
+   * Pre-fetch items before and after the current index so user can navigate both directions.
+   * startIndex is the GLOBAL album index (e.g., 40 for page 3 offset).
+   * When we prepend older items, we adjust currentIndex to reflect the new global position.
+   */
+  private async _fetchAllAround(startIndex: number): Promise<void> {
+    const ctx = this.albumContext();
+    if (!ctx) return;
+
+    const currentPageItems = this.state().items;
+    const pageOffset = ctx.pageOffset ?? 0;
+    
+    // startIndex is the GLOBAL album index (e.g., 40 for page 3 with offset=40).
+    // Calculate which local item in our current page corresponds to this global index.
+    // Example: If startIndex=40 and we're on page 3 (offset=40, items per page=20),
+    // then localIndex = 40 - 40 = 0 (first item of current page).
+    let localIndex: number;
+    if (pageOffset > 0) {
+      // We're on a paginated page - startIndex should equal pageOffset for the first item
+      localIndex = Math.max(0, startIndex - pageOffset);
+    } else {
+      localIndex = startIndex;
+    }
+    
+    // Clamp to valid range
+    localIndex = Math.max(0, Math.min(localIndex, currentPageItems.length - 1));
+    
+    console.log(`[Presentation] _fetchAllAround: startIndex=${startIndex}, pageOffset=${pageOffset}, localIndex=${localIndex}, items.length=${currentPageItems.length}`);
+
+    // Step 1: Fetch older items BEFORE current position
+    if (currentPageItems.length > 0 && ctx.albumId) {
+      // Use the startCapturedAt from context if available (the specific photo clicked),
+      // otherwise fall back to the first item of the current page.
+      const fetchFromCapturedAt = ctx.startCapturedAt || currentPageItems[localIndex]?.capturedAt;
+      
+      if (fetchFromCapturedAt) {
+        try {
+          // Calculate how many older items we need to fetch.
+          // startIndex is the global index where presentation should start.
+          // We want to fetch enough older items so the user can navigate backward.
+          // Fetch roughly startIndex items, but cap at a reasonable limit.
+          const limit = Math.min(50, startIndex + 10);
+          
+          console.log(`[Presentation] _fetchAllAround: fetching ${limit} older items (startIndex=${startIndex}, localIndex=${localIndex})`);
+          
+          const response = await firstValueFrom<any>(
+            this.albumService.getAlbumMediaPaginated(ctx.albumId, limit, 0, undefined, fetchFromCapturedAt)
+          );
+          const rawItems = response.media || response.items || [];
+          
+          if (rawItems.length > 0) {
+            const newItems = this.normalizeMediaItems(rawItems, ctx.isSharedAlbumView);
+            // Sort by capturedAt ascending (oldest first)
+            newItems.sort((a, b) => {
+              if (a.capturedAt && b.capturedAt) {
+                return Number(a.capturedAt) - Number(b.capturedAt);
+              }
+              return (a.filename || '').localeCompare(b.filename || '');
+            });
+
+            const prevItems = this.state().items;
+            // After prepending, the current item's new index = localIndex + newItems.length
+            const newCurrentIndex = localIndex + newItems.length;
+            console.log(`[Presentation] _fetchAllAround: prepended ${newItems.length}, newCurrentIndex=${newCurrentIndex}`);
+
+            this.state.update(prev => ({
+              ...prev,
+              items: [...newItems, ...prevItems],
+              currentIndex: newCurrentIndex
+            }));
+          }
+        } catch (e) {
+          console.error('[Presentation] _fetchAllAround prepend error:', e);
+        }
+      }
+    }
+
+    // Step 2: Fetch newer items AFTER current position
+    const limit = 40;
+    try {
+      // Use album API to get newer items after the last item in our list
+      const lastItem = currentPageItems[currentPageItems.length - 1];
+      if (!lastItem?.capturedAt || !ctx.albumId) {
+        this.notify();
+        return;
+      }
+
+      const response = await firstValueFrom<any>(
+        this.albumService.getAlbumMediaPaginated(ctx.albumId, limit, 0, lastItem.capturedAt)
+      );
+      const rawItems = response.media || response.items || [];
+      
+      if (rawItems.length > 0) {
+        const newItems = this.normalizeMediaItems(rawItems, ctx.isSharedAlbumView);
+        // Sort by capturedAt ascending
+        newItems.sort((a, b) => {
+          if (a.capturedAt && b.capturedAt) {
+            return Number(a.capturedAt) - Number(b.capturedAt);
+          }
+          return (a.filename || '').localeCompare(b.filename || '');
+        });
+
+        const prevItems = this.state().items;
+        // currentIndex stays same since we appended at end (newer items)
+        console.log(`[Presentation] _fetchAllAround: appended ${newItems.length}, total=${prevItems.length + newItems.length}`);
+        
+        this.state.update(prev => ({
+          ...prev,
+          items: [...prevItems, ...newItems],
+          currentIndex: prev.currentIndex
+        }));
+      }
+    } catch (e) {
+      console.error('[Presentation] _fetchAllAround append error:', e);
+    }
+
     this.notify();
   }
 
@@ -252,12 +388,11 @@ export class PresentationService {
         const newItems = this.normalizeMediaItems(rawItems, ctx.isSharedAlbumView);
         console.log('[PresentationService] loadNextPage - newItems.length:', newItems.length, 'newItems:', newItems.slice(0, 2));
         const prevItems = this.state().items;
-        const newCurrentIndex = this.state().currentIndex + prevItems.length; // adjust index for appended items
-        
+        // currentIndex stays the same since we appended items at the end (newer items)
         this.state.update(prev => ({
           ...prev,
           items: [...prevItems, ...newItems],
-          currentIndex: Math.min(newCurrentIndex, prevItems.length + newItems.length - 1)
+          currentIndex: prev.currentIndex
         }));
         this.notify();
         console.log('[PresentationService] loadNextPage - SUCCESS, new items appended');

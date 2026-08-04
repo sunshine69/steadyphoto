@@ -485,7 +485,7 @@ export class AlbumDetailComponent implements OnInit, OnDestroy {
       }
     }
 
-    // Normalize path to API URL endpoint instead of raw file system path
+    // Normalize path to API URL endpoint
     const apiBaseUrl = this.photoService['API_BASE_URL'];
     let normalizedPath = '';
     if (id) {
@@ -493,8 +493,8 @@ export class AlbumDetailComponent implements OnInit, OnDestroy {
         // For shared albums, construct the /original endpoint from the ID
         normalizedPath = `${apiBaseUrl}/media/shared/${id}/original`;
       } else {
-        // For regular albums, use whatever path the backend provides
-        normalizedPath = p.Path ?? p.path ?? '';
+        // For regular albums, construct the /original endpoint from the ID
+        normalizedPath = `${apiBaseUrl}/media/${id}/original`;
       }
     }
 
@@ -505,7 +505,7 @@ export class AlbumDetailComponent implements OnInit, OnDestroy {
         ? (id ? `${apiBaseUrl}/media/shared/${id}/thumb` : '')
         : (id ? `${apiBaseUrl}/media/${id}/thumb` : ''),
       filename: p.Filename ?? p.filename ?? '',
-      captured_at: p.capturedAt ?? p.capturedAt ?? '',
+      captured_at: p.CapturedAt ?? p.captured_at ?? p.capturedAt ?? '',
       width: p.Width ?? p.width,
       height: p.Height ?? p.height,
       size: p.Size ?? p.size,
@@ -544,6 +544,9 @@ export class AlbumDetailComponent implements OnInit, OnDestroy {
     // Store the real album ID separately so goBack() can navigate back correctly
     const albumId = this.route.snapshot.paramMap.get('id') || this.albumId;
     
+    // Save this photo ID for presentation mode start position
+    this.galleryState.savePresentationItem(id);
+    
     if (isSharedAlbum) {
       this.router.navigate(['/photos', id], { 
         queryParams: { albumIds: ids, source: 'shared', currentAlbumId: albumId } 
@@ -562,31 +565,56 @@ export class AlbumDetailComponent implements OnInit, OnDestroy {
 
     const isSharedAlbum = this.route.snapshot.queryParams['source'] === 'shared';
     
-    // Convert photos to MediaItem format for presentation service - use correct URL based on album type
-    const apiBaseUrl = this.photoService['API_BASE_URL'];
-    const mediaItems: MediaItem[] = this.photos.map(p => ({
+    // Check if we have a previously viewed photo to start from
+    const lastViewedId = this.galleryState.getPresentationItem();
+    let startIndex: number;
+    let startCapturedAt: string | undefined;
+    
+    if (lastViewedId) {
+      // Find the index and capturedAt of the last viewed photo in the current page
+      const currentIndex = this.photos.findIndex(p => p.id === lastViewedId);
+      if (currentIndex !== -1) {
+        const viewedPhoto = this.photos[currentIndex];
+        // Photo is on current page - use local index + offset for global position
+        startIndex = this.albumOffset + currentIndex;
+        startCapturedAt = viewedPhoto.captured_at;
+        console.log(`[Presentation] Found previously viewed photo at local index ${currentIndex}, global startIndex=${startIndex}`);
+      } else {
+        // Photo not on current page - start from beginning of current page
+        startIndex = this.albumOffset;
+        if (this.photos.length > 0) {
+          startCapturedAt = this.photos[0].captured_at;
+        }
+        console.log(`[Presentation] Previously viewed photo not on current page, starting at album offset ${startIndex}`);
+      }
+    } else {
+      // No previous view - start from beginning of current page
+      startIndex = this.albumOffset;
+      if (this.photos.length > 0) {
+        startCapturedAt = this.photos[0].captured_at;
+      }
+      console.log(`[Presentation] No previous view, starting at album offset ${startIndex}`);
+    }
+    
+    // Build MediaItem list from current page only
+    const currentPageItems: MediaItem[] = this.photos.map(p => ({
       id: p.id,
-      path: isSharedAlbum 
-        ? `${apiBaseUrl}/media/shared/${p.id}/original`  // Shared album → use shared endpoint
-        : `${apiBaseUrl}/media/${p.id}/original`,          // Regular album → use regular endpoint
+      path: p.path,
       filename: p.filename,
       mediaType: p.mediaType || 'photo',
       capturedAt: p.captured_at
     }));
 
-    // Set album context so auto-fetch can work in presentation mode
-    this.presentationService.setAlbumContext({
+    console.log(`[Presentation] Starting with ${currentPageItems.length} items at startIndex=${startIndex}, startCapturedAt=${startCapturedAt}`);
+    
+    this.presentationService.open(currentPageItems, startIndex, {
       albumId: this.albumId,
       source: isSharedAlbum ? 'shared' : undefined,
-      isSharedAlbumView: isSharedAlbum
+      isSharedAlbumView: isSharedAlbum,
+      pageOffset: this.albumOffset,
+      startCapturedAt: startCapturedAt
     });
-
-    if (mediaItems.length > 0) {
-      this.presentationService.open(mediaItems, 0);
-      this.router.navigate(['/presentation']);
-    } else {
-      alert('No items available for presentation.');
-    }
+    this.router.navigate(['/presentation']);
   }
 
   // Add Media Modal Methods - NOW PAGINATED
