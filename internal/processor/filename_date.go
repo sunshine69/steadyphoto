@@ -72,13 +72,34 @@ func ExtractDateFromString(input string) (time.Time, string, error) {
 
 // buildCanonical builds a canonical date string from regex capture groups.
 // sepIdxs: 1-based group indices that are separators (e.g. [2,4] means groups[2] and groups[4] are separators).
-// If sepIdxs is empty, groups are concatenated directly.
+// If sepIdxs is empty, groups are concatenated directly (for contiguous patterns like YYYYMMDD).
+// If only one group, return it directly.
 func buildCanonical(groups []string, sepIdxs []int) string {
 	var sb strings.Builder
+
+	if len(groups) == 2 {
+		// Single capture group (e.g. contiguous YYYYMMDD) — return it directly.
+		return groups[1]
+	}
+
+	if len(sepIdxs) == 0 {
+		// No separators specified — concatenate all groups.
+		for i := 1; i < len(groups); i++ {
+			sb.WriteString(groups[i])
+		}
+		return sb.String()
+	}
+
+	// Separator groups specified — interleave groups and separators in order.
+	sepSet := make(map[int]bool)
+	for _, idx := range sepIdxs {
+		sepSet[idx] = true
+	}
+
 	for i := 1; i < len(groups); i++ {
-		// In the current patterns, all groups are date parts (year/month/day), not separators.
-		// The separator groups are handled by being concatenated into the canonical string
-		// as part of the date string (e.g., "2006-01-02" expects hyphens at those positions).
+		if i > 1 {
+			sb.WriteByte('-') // separator placeholder
+		}
 		sb.WriteString(groups[i])
 	}
 	return sb.String()
@@ -94,6 +115,14 @@ type datePattern struct {
 
 // datePatterns: only VERY obvious date patterns, in order of strictness.
 var datePatterns = []datePattern{
+	{
+		name: "Contiguous YYYYMMDD (8 digits)",
+		re: regexp.MustCompile(`(\d{8})`),
+		layouts: []string{
+			"20060102",
+		},
+		canonSepIdxs: nil,
+	},
 	{
 		name: "YYYY sep XX sep YY (YYYY-MM-DD)",
 		re: regexp.MustCompile(`(\d{4})([-_])(\d{2})([-_])(\d{2})`),
@@ -118,5 +147,21 @@ var datePatterns = []datePattern{
 			"2006.01.02",
 		},
 		canonSepIdxs: []int{2, 4},
+	},
+	{
+		name: "MM-DD-YYYY",
+		re: regexp.MustCompile(`(\d{2})-(\d{2})-(\d{4})`),
+		layouts: []string{
+			"01022006",
+		},
+		canonSepIdxs: nil,
+	},
+	{
+		name: "DD-MM-YYYY (ambiguous)",
+		re: regexp.MustCompile(`^(\d{2})-(\d{2})-(\d{4})`),
+		layouts: []string{
+			"02012006",
+		},
+		canonSepIdxs: nil,
 	},
 }
