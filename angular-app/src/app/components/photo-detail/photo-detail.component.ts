@@ -20,24 +20,10 @@ import { Photo } from '../../models/photo.model';
     <div class="container mt-4">
       <div class="row">
         <div class="col-md-8">
-          @if (lastPresentationItem) {
-            <div class="alert alert-info d-flex justify-content-between align-items-center" style="font-size: 13px;">
-              <span>
-                <strong>Presentation returned:</strong> Last viewed item ID — {{ lastPresentationItem }}
-              </span>
-              <button class="btn btn-sm btn-outline-primary" (click)="dismissLastPresentation()">Dismiss</button>
-            </div>
-          }
+
           @if (photo) {
             <div class="photo-detail-container">
-              @if (isFromAlbum) {
-                <div class="alert alert-info d-flex justify-content-between align-items-center" style="font-size: 13px;">
-                  <span>
-                    <strong>Album View:</strong> Viewing photo from album
-                  </span>
-                  <button class="btn btn-sm btn-outline-primary" (click)="goBack()">Back to Album</button>
-                </div>
-              }
+
               <!-- Video Player for videos -->
               @if (isVideo()) {
                 <div class="video-viewer-wrapper">
@@ -337,9 +323,6 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
   // EXIF popup state
   showExifPopup = false;
 
-  /** Saved presentation item ID displayed as a banner */
-  lastPresentationItem: string | null = null;
-
   private galleryState = inject(GalleryStateService);
 
   get exifData(): any {
@@ -378,11 +361,6 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     // Read the saved presentation item ID from localStorage
-    const savedId = this.galleryState.getPresentationItem();
-    if (savedId) {
-      this.lastPresentationItem = savedId;
-    }
-
     // Subscribe to EXIF trigger service - opens EXIF popup when triggered
     this.exifTrigger.exifTrigger$.subscribe(() => {
       this.showExifPopup = true;
@@ -573,14 +551,6 @@ export class PhotoDetailComponent implements OnInit, OnDestroy {
 
   onMediaLoadStart(): void {
     // Media load started
-  }
-
-  /**
-   * Clears the saved presentation item from localStorage and hides the banner.
-   */
-  dismissLastPresentation(): void {
-    this.galleryState.clearPresentationItem();
-    this.lastPresentationItem = null;
   }
 
   goBack(): void {
