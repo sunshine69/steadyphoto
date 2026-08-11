@@ -442,6 +442,19 @@ class UploadManager(
         Log.d(TAG, "Starting memory-safe chunked upload for ${item.fileName}: $totalChunks chunks")
 
         for (chunkIndex in 0 until totalChunks) {
+            // Check WiFi-only setting before each chunk upload (uploads can take hours for large files)
+            // Re-check network type on every iteration in case user toggles WiFi
+            if (chunkIndex % 10 == 0 || chunkIndex == 0) {
+                val settingsCheck = settingsRepository.networkSettingsFlow.first()
+                val currentTypeCheck = networkMonitor.getCurrentNetworkType()?.name ?: "unknown"
+                Log.d(TAG, "Chunk upload network re-check at chunk $chunkIndex/$totalChunks: current=$currentTypeCheck, wifiOnly=${settingsCheck.wifiOnlyEnabled}")
+                if (!networkMonitor.isNetworkAcceptableForUpload(settingsCheck)) {
+                    Log.w(TAG, "Network changed or not acceptable during chunk upload - pausing at chunk $chunkIndex/$totalChunks (current=$currentTypeCheck)")
+                    // Pause the upload worker instead of aborting - let WorkManager handle retry
+                    throw Exception("Network type not acceptable: $currentTypeCheck")
+                }
+            }
+
             val success = uploadChunkSequentially(item, uploadId, chunkIndex, totalChunks)
             if (!success) {
                 return UploadItemResult.Failed(message = "Failed to upload chunk $chunkIndex")

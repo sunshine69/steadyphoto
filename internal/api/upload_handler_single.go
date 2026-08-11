@@ -161,23 +161,25 @@ func (m *UploadSessionManager) GetSession(id string) *UploadSession {
 	return m.sessions[id]
 }
 
-// CreateSession creates a new upload session and returns it.
-func (m *UploadSessionManager) CreateSession(userID uuid.UUID, filename string, fileSize int64, totalChunks int) *UploadSession {
+// CreateSession creates a new upload session using the client's upload ID as the session key.
+// The session ID MUST come from the client — never generate one server-side, or the client's
+// uploadId and the server's session key will diverge, causing all subsequent lookups to fail.
+func (m *UploadSessionManager) CreateSession(sessionID string, userID uuid.UUID, filename string, fileSize int64, totalChunks int) *UploadSession {
 	session := &UploadSession{
-		ID:           uuid.New().String(),
-		Filename:     filename,
-		FileSize:     fileSize,
-		TotalChunks:  totalChunks,
-		CreatedAt:    time.Now(),
-		UserID:       userID,
+		ID:             sessionID,
+		Filename:       filename,
+		FileSize:       fileSize,
+		TotalChunks:    totalChunks,
+		CreatedAt:      time.Now(),
+		UserID:         userID,
 		UploadedChunks: make([]int, 0),
 	}
 
 	// Create temp file for assembling chunks
-	session.tempPath = filepath.Join(m.storageService.GetUploadTempDir(), session.ID+".tmp")
+	session.tempPath = filepath.Join(m.storageService.GetUploadTempDir(), sessionID+".tmp")
 
 	m.mu.Lock()
-	m.sessions[session.ID] = session
+	m.sessions[sessionID] = session
 	m.mu.Unlock()
 
 	return session
@@ -620,14 +622,14 @@ func (h *MediaUploadHandlerSingle) HandleChunkUpload(w http.ResponseWriter, r *h
 		mlog.Info("[WARN] UploadHandlerChunk: Session %s not found for user %s. Creating new one.", uploadIDStr, userID.String())
 		fileSize := header.Size
 		fmt.Sscanf(r.FormValue("fileSize"), "%d", &fileSize)
-		session = sessionManager.CreateSession(userID, fileName, fileSize, totalChunks)
+		session = sessionManager.CreateSession(uploadIDStr, userID, fileName, fileSize, totalChunks)
 	}
 
 	if session.UserID != userID {
 		mlog.Info("[WARN] UploadHandlerChunk: Session %s belongs to different user. Creating new one.", uploadIDStr)
 		fileSize := header.Size
 		fmt.Sscanf(r.FormValue("fileSize"), "%d", &fileSize)
-		session = sessionManager.CreateSession(userID, fileName, fileSize, totalChunks)
+		session = sessionManager.CreateSession(uploadIDStr, userID, fileName, fileSize, totalChunks)
 	}
 
 	mlog.Info("[DEBUG] UploadHandlerChunk: Processing chunk %d/%d for session %s (file='%s', size=%d)", chunkIndex+1, totalChunks, uploadIDStr, header.Filename, header.Size)

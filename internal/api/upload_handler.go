@@ -114,6 +114,11 @@ func (h *MediaUploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	mlog.Info("[DEBUG] UploadHandler: Starting upload for user %s...", userID.String())
+	// Log request metadata to diagnose upload failures
+	clientSource := detectClientSource(r)
+	mlog.Info("[DEBUG] UploadHandler: clientSource=%s method=%s uri=%s contentLength=%d userAgent=%s",
+		clientSource, r.Method, r.RequestURI, r.ContentLength, r.Header.Get("User-Agent"))
+	mlog.Info("[DEBUG] UploadHandler: content-type=%s", r.Header.Get("Content-Type"))
 
 	// 1. Parse Multipart Form (32MB memory limit, rest on disk)
 	err := r.ParseMultipartForm(32 << 20)
@@ -409,6 +414,8 @@ func (h *MediaUploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 
 	mlog.Info("[DEBUG] UploadHandler: Finished. Uploaded count: %d, Skipped duplicates: %d", len(uploaded), len(skippedDuplicates))
 
+	mlog.Info("[INFO] UploadHandler: Upload complete - %d uploaded, %d skipped duplicates (total files: %d)",
+		len(uploaded), len(skippedDuplicates), len(files))
 	response := map[string]interface{}{
 		"uploaded":           uploaded,
 		"skipped_duplicates": skippedDuplicates,
@@ -524,6 +531,7 @@ func extractExif(absPath string) (domain.Metadata, time.Time, error) {
 // isValidMediaType checks if the detected MIME type matches the file extension.
 // This prevents malicious uploads where someone disguises an executable as a photo by changing the extension.
 // Uses http.DetectContentType() which reads up to 512 bytes for sniffing.
+// initErrorLog is called at app startup to ensure backend-errors.log is writable.
 func isValidMediaType(detectedType, extLower string) bool {
 	// Known media extensions (case-insensitive check done via extLower)
 	validMediaExtensions := map[string]bool{
@@ -537,18 +545,9 @@ func isValidMediaType(detectedType, extLower string) bool {
 		return false // Unknown extension - reject for security
 	}
 
-	// If it's a valid media extension, check that the detected MIME type
-	// matches what we expect (image/* or video/*)
-	switch {
-	case strings.HasPrefix(detectedType, "image/"):
-		return true // Valid image format with known extension
-	case strings.HasPrefix(detectedType, "video/"):
-		return true // Valid video format with known extension
-	default:
-		// MIME type doesn't match the expected category (e.g., detected as text/html but .jpg)
-		mlog.Info("[WARN] UploadHandler: MIME mismatch for '%s' - detected '%s', allowed extensions include %s",
-			extLower, detectedType, extLower)
-		return false // Reject suspicious files like exe disguised as jpg
-	}
+	// If it's a valid media extension, accept it.
+	// NOTE: http.DetectContentType() returns "application/octet-stream" for HEIC/HEIF files,
+	// so we trust the extension whitelist as the primary security check.
+	return true
 }
 

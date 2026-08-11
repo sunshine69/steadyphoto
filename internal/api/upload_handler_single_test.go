@@ -69,7 +69,7 @@ func TestDeleteSession_CleansUpChunkFiles(t *testing.T) {
 	manager := NewUploadSessionManager(storageSvc)
 
 	userID := uuid.New()
-	session := manager.CreateSession(userID, "video.mp4", 1024*1024, 3)
+	session := manager.CreateSession("test-upload-id", userID, "video.mp4", 1024*1024, 3)
 
 	// Create chunk files on disk (simulating uploaded chunks)
 	chunkPaths := make([]string, 0, 3)
@@ -109,7 +109,7 @@ func TestDeleteSession_CleansUpChunkFiles_WhenOnlyPartialChunksExist(t *testing.
 	manager := NewUploadSessionManager(storageSvc)
 
 	userID := uuid.New()
-	session := manager.CreateSession(userID, "video.mp4", 1024*1024, 5)
+	session := manager.CreateSession("test-upload-id", userID, "video.mp4", 1024*1024, 5)
 
 	// Only create 2 out of 5 chunk files (partial upload)
 	for i := 0; i < 2; i++ {
@@ -135,7 +135,7 @@ func TestDeleteSession_CleansUpChunkFiles_WhenNoChunksExist(t *testing.T) {
 	manager := NewUploadSessionManager(storageSvc)
 
 	userID := uuid.New()
-	session := manager.CreateSession(userID, "video.mp4", 1024*1024, 3)
+	session := manager.CreateSession("test-upload-id", userID, "video.mp4", 1024*1024, 3)
 
 	// Don't create any chunk files — session was just created
 
@@ -163,7 +163,7 @@ func TestCleanupExpiredSessions_RemovesOldSessionsAndChunks(t *testing.T) {
 	userID := uuid.New()
 
 	// Create an "old" session (manually set CreatedAt to 25 hours ago)
-	session := manager.CreateSession(userID, "old-video.mp4", 1024*1024, 2)
+	session := manager.CreateSession("test-upload-id", userID, "old-video.mp4", 1024*1024, 2)
 
 	// Manually backdate the CreatedAt
 	manager.mu.Lock()
@@ -178,7 +178,7 @@ func TestCleanupExpiredSessions_RemovesOldSessionsAndChunks(t *testing.T) {
 	}
 
 	// Create a "new" session that should NOT be cleaned up
-	newSession := manager.CreateSession(userID, "new-video.mp4", 512*1024, 1)
+	newSession := manager.CreateSession("test-upload-id", userID, "new-video.mp4", 512*1024, 1)
 	// Create a chunk for the new session too
 	chunkPath := filepath.Join(dir, ".upload-temp", newSession.ID+fmt.Sprintf("_0.tmp"))
 	err := os.WriteFile(chunkPath, []byte("chunk-0"), 0644)
@@ -216,7 +216,7 @@ func TestCleanupExpiredSessions_NewSessions_NotRemoved(t *testing.T) {
 	userID := uuid.New()
 
 	// Create a fresh session
-	session := manager.CreateSession(userID, "recent.mp4", 1024*1024, 2)
+	session := manager.CreateSession("test-upload-id", userID, "recent.mp4", 1024*1024, 2)
 
 	// Create chunk files
 	for i := 0; i < 2; i++ {
@@ -247,7 +247,7 @@ func TestHandleAbort_CleansUpChunkFiles(t *testing.T) {
 	handler := NewMediaUploadHandlerSingle(mediaRepo, jobRepo, storageSvc, sessionManager)
 
 	userID := uuid.New()
-	session := sessionManager.CreateSession(userID, "abort-test.mp4", 1024*1024, 3)
+	session := sessionManager.CreateSession("test-upload-id", userID, "abort-test.mp4", 1024*1024, 3)
 
 	// Create chunk files
 	chunkPaths := make([]string, 0, 3)
@@ -298,7 +298,7 @@ func TestHandleComplete_SuccessPath_CleansUpChunkFiles(t *testing.T) {
 	handler := NewMediaUploadHandlerSingle(mediaRepo, jobRepo, storageSvc, sessionManager)
 
 	userID := uuid.New()
-	session := sessionManager.CreateSession(userID, "complete-test.mp4", 1024*1024, 2)
+	session := sessionManager.CreateSession("test-upload-id", userID, "complete-test.mp4", 1024*1024, 2)
 
 	// Mark session as complete (all chunks uploaded)
 	sessionManager.AddChunk(session.ID, 0)
