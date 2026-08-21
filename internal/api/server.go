@@ -644,6 +644,7 @@ func (s *Server) handleUpdateMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	mlog.Info("[INFO] SUCCESS UPDATE-MEDIA | id=%s", id)
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 }
@@ -694,6 +695,7 @@ func (s *Server) handlePatchMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	mlog.Info("[INFO] SUCCESS PATCH-MEDIA | id=%s", id)
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 }
@@ -743,6 +745,7 @@ func (s *Server) handleUpdateTags(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to update media: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	mlog.Info("[INFO] SUCCESS PATCH-TAGS | id=%s", id)
 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
@@ -773,6 +776,7 @@ func (s *Server) handleDeleteMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	mlog.Info("[INFO] SUCCESS DELETE-MEDIA | id=%s", id)
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"status": "deleted"})
 }
@@ -1007,6 +1011,7 @@ func (s *Server) handleRestoreMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	mlog.Info("[INFO] SUCCESS RESTORE-MEDIA | id=%s", id)
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"status": "restored"})
 }
@@ -1056,6 +1061,7 @@ func (s *Server) handlePermanentDeleteMedia(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	mlog.Info("[INFO] SUCCESS PERMANENTLY-DELETE-MEDIA | id=%s", id)
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"status": "permanently_deleted"})
 }

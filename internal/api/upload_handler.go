@@ -409,6 +409,7 @@ func (h *MediaUploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 			"file_created_at": meta.FileCreatedAt,
 		})
 
+		mlog.Info("[INFO] SUCCESS UPLOAD | id=%s | file=%s | size=%d | client=%s", meta.ID, header.Filename, n, clientSource)
 		mlog.Info("[INFO] UploadHandler: Successfully processed '%s' (ID=%s)", header.Filename, meta.ID)
 	}
 

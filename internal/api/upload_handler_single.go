@@ -569,6 +569,7 @@ func (h *MediaUploadHandlerSingle) HandleSingleFileUpload(w http.ResponseWriter,
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
+	mlog.Info("[INFO] SUCCESS UPLOAD-SINGLE | id=%s | file=%s | size=%d", meta.ID, fileName, n)
 	mlog.Info("[INFO] UploadHandlerSingle: Successfully uploaded '%s' (ID=%s, jobID=%s)", fileName, meta.ID, jobID)
 }
 
@@ -1069,6 +1070,7 @@ func (h *MediaUploadHandlerSingle) HandleComplete(w http.ResponseWriter, r *http
 	json.NewEncoder(w).Encode(response)
 
 	h.sessionManager.DeleteSession(uploadID)
+	mlog.Info("[INFO] SUCCESS UPLOAD-COMPLETE | id=%s | file=%s | size=%d", meta.ID, session.Filename, assembledFileSize.Size())
 
 	mlog.Info("[INFO] UploadHandlerComplete: Successfully assembled '%s' (ID=%s, jobID=%s)", session.Filename, meta.ID, jobID)
 }

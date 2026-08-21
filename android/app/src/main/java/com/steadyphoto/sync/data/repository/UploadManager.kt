@@ -44,7 +44,7 @@ class UploadManager(
         // Upload configuration
         data class UploadConfig(
             val batchSize: Int = 10,
-            val maxConcurrentUploads: Int = 3,
+            val maxConcurrentUploads: Int = 1, // Serial uploads only
             val enableChunkedUpload: Boolean = true,
             val chunkSize: Long = CHUNK_SIZE,
             val enableRetry: Boolean = true,

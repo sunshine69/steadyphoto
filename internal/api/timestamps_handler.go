@@ -96,6 +96,7 @@ func (s *Server) handleUpdateMediaTimestamps(w http.ResponseWriter, r *http.Requ
 	mlog.Info("[DEBUG] PATCH /api/v1/media/%s/timestamps - UPDATE OK - new capturedAt=%v fileCreatedAt=%v", existingMedia.ID.String(), existingMedia.CapturedAt, existingMedia.FileCreatedAt)
 
 	w.Header().Set("Content-Type", "application/json")
+	mlog.Info("[INFO] SUCCESS UPDATE-TIMESTAMPS | id=%s", existingMedia.ID.String())
 	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 }
 
