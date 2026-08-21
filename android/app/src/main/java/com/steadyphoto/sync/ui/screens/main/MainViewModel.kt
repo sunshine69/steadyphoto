@@ -221,6 +221,65 @@ class MainViewModel(
     /**
      * Start background sync - this starts the periodic WorkManager jobs.
      */
+    /**
+     * Force Upload: wipe the entire local DB, re-scan the whole device, then
+     * upload everything from scratch. Used when the server state is uncertain
+     * and a clean full re-sync is needed (e.g. after a URL/config change).
+     */
+    fun forceUpload() {
+        viewModelScope.launch {
+            if (!hasMediaPermissions()) {
+                _uiState.value = _uiState.value.copy(
+                    showPermissionRationale = true,
+                    errorMessage = null  // Clear error so Start button becomes enabled again for retrying
+                )
+                return@launch
+            }
+
+            _uiState.value = _uiState.value.copy(syncState = SyncUiState.Scanning)
+
+            // 1. Wipe the entire local DB so nothing is carried over from a bad prior state.
+            val deletedCount = try {
+                container.mediaItemDao.deleteAllMedia()
+            } catch (e: Exception) {
+                android.util.Log.e("MainViewModel", "Error clearing DB for force upload", e)
+                _uiState.value = _uiState.value.copy(
+                    syncState = SyncUiState.Error(e.message ?: "Failed to clear local database"),
+                    errorMessage = e.message
+                )
+                return@launch
+            }
+
+            android.util.Log.d("MainViewModel", "Force Upload: wiped $deletedCount local media items, re-scanning...")
+
+            // 2. Force a full re-scan of the entire device. With an empty DB, hash dedup
+            //    naturally starts from scratch and every file on the device is re-processed.
+            val scanResult = container.repository.scanNewMedia(forceFullScan = true)
+
+            when (scanResult) {
+                is ScanResult.Success -> proceedToUpload(scanResult.totalScanned, scanResult.duplicatesSkipped)
+                is ScanResult.NoNewItems -> {
+                    _uiState.value = _uiState.value.copy(
+                        syncState = SyncUiState.Success(0),
+                        errorMessage = "Local database cleared. No media found to upload."
+                    )
+                    refreshCounts()
+                }
+                is ScanResult.PermissionDenied -> {
+                    _uiState.value = _uiState.value.copy(
+                        syncState = SyncUiState.Error("Permission denied"),
+                        errorMessage = "Storage permission is required to scan your photos and videos."
+                    )
+                }
+                is ScanResult.Error -> {
+                    _uiState.value = _uiState.value.copy(
+                        syncState = SyncUiState.Error(scanResult.message),
+                        errorMessage = scanResult.message
+                    )
+                }
+            }
+        }
+    }
     fun startBackgroundSync() {
         viewModelScope.launch {
             try {

@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.StopCircle
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.*
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.Alignment
@@ -30,6 +31,7 @@ fun HomeScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current as ComponentActivity
+    var showForceUploadConfirm by remember { mutableStateOf(false) }
 
     // Create an ActivityResultLauncher for requesting permissions
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -245,6 +247,48 @@ fun HomeScreen(
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Sync Now")
                 }
+
+                // Force Upload button - resets all items and re-uploads everything
+                OutlinedButton(
+                    onClick = { showForceUploadConfirm = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Icon(Icons.Default.StopCircle, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Force Upload")
+                }
+            }
+
+            // Force Upload confirmation dialog
+            if (showForceUploadConfirm) {
+                AlertDialog(
+                    onDismissRequest = { showForceUploadConfirm = false },
+                    title = { Text("Force Upload") },
+                    text = {
+                        Text("This will delete ALL local media items, re-scan your device, and re-upload everything from scratch. Are you sure?")
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                showForceUploadConfirm = false
+                                viewModel.forceUpload()
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.error
+                            )
+                        ) {
+                            Text("Confirm")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showForceUploadConfirm = false }) {
+                            Text("Cancel")
+                        }
+                    }
+                )
             }
 
             // Permission error message if shown
