@@ -134,7 +134,13 @@ fun HomeScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     when (val state = uiState.syncState) {
-                        is SyncUiState.Idle -> Text("Ready - Tap Start to begin")
+                        is SyncUiState.Idle -> {
+                            if (uiState.isStartDisabledAfterStop) {
+                                Text("Stopped - Tap Restart to begin")
+                            } else {
+                                Text("Ready - Tap Start to begin")
+                            }
+                        }
                         is SyncUiState.Scanning -> Text("Scanning media...")
                         is SyncUiState.Uploading -> {
                             Column {
@@ -194,9 +200,11 @@ fun HomeScreen(
                             android.util.Log.w("HomeScreen", "Failed to start SyncService", e)
                         }
                     },
-                    // Enabled if NOT currently syncing (scanning or uploading) and no error present
+                    // Enabled only when idle, no errors, not background syncing, and not after Stop
                     enabled = uiState.syncState is SyncUiState.Idle && 
-                             uiState.errorMessage == null,
+                             uiState.errorMessage == null && 
+                             !uiState.isBackgroundSyncRunning &&
+                             !uiState.isStartDisabledAfterStop,
                     modifier = Modifier.weight(1f)
                 ) {
                     Icon(Icons.Default.CloudUpload, contentDescription = null)
@@ -218,10 +226,8 @@ fun HomeScreen(
                             android.util.Log.w("HomeScreen", "Failed to stop SyncService", e)
                         }
                     },
-                    // Enabled if currently syncing or uploading OR background sync is running
-                    enabled = uiState.syncState is SyncUiState.Uploading || 
-                             uiState.syncState is SyncUiState.Scanning ||
-                             uiState.isBackgroundSyncRunning,
+                    // Enabled only when background syncing
+                    enabled = uiState.isBackgroundSyncRunning,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.errorContainer,
                         contentColor = MaterialTheme.colorScheme.onErrorContainer
@@ -231,6 +237,33 @@ fun HomeScreen(
                     Icon(Icons.Default.StopCircle, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Stop")
+                }
+
+                Button(
+                    onClick = { 
+                        viewModel.restartBackgroundSync()
+                        
+                        // Send START intent to the foreground service so it starts its real-time detection loop
+                        val syncIntent = com.steadyphoto.sync.worker.SyncService.newIntent(context).apply {
+                            action = com.steadyphoto.sync.worker.SyncService.ACTION_START_SYNC
+                        }
+                        try {
+                            context.startForegroundService(syncIntent)
+                        } catch (e: Exception) {
+                            android.util.Log.w("HomeScreen", "Failed to start SyncService", e)
+                        }
+                    },
+                    // Enabled only when after Stop (isStartDisabledAfterStop is true)
+                    enabled = uiState.isStartDisabledAfterStop,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                    ),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.Refresh, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Restart")
                 }
             }
 
@@ -247,19 +280,19 @@ fun HomeScreen(
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Sync Now")
                 }
+            }
 
-                // Force Upload button - resets all items and re-uploads everything
-                OutlinedButton(
-                    onClick = { showForceUploadConfirm = true },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = MaterialTheme.colorScheme.error
-                    )
-                ) {
-                    Icon(Icons.Default.StopCircle, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Force Upload")
-                }
+            // Force Upload button - always visible, resets all items and re-uploads everything
+            OutlinedButton(
+                onClick = { showForceUploadConfirm = true },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = MaterialTheme.colorScheme.error
+                )
+            ) {
+                Icon(Icons.Default.StopCircle, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Force Upload")
             }
 
             // Force Upload confirmation dialog

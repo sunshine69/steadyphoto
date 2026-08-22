@@ -418,6 +418,7 @@ func (h *MediaUploadHandler) Handle(w http.ResponseWriter, r *http.Request) {
 	mlog.Info("[INFO] UploadHandler: Upload complete - %d uploaded, %d skipped duplicates (total files: %d)",
 		len(uploaded), len(skippedDuplicates), len(files))
 	response := map[string]interface{}{
+		"success": true,
 		"uploaded":           uploaded,
 		"skipped_duplicates": skippedDuplicates,
 	}

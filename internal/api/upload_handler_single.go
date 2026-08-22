@@ -399,6 +399,7 @@ func (h *MediaUploadHandlerSingle) HandleSingleFileUpload(w http.ResponseWriter,
 	if existingMedia != nil && existingMedia.ID != uuid.Nil {
 		mlog.Info("[INFO] UploadHandlerSingle: Duplicate detected for '%s' (Hash matches ID=%s)", fileName, existingMedia.ID.String())
 		response := map[string]interface{}{
+			"success": true,
 			"uploaded": []interface{}{},
 			"skipped_duplicates": []interface{}{map[string]interface{}{
 				"filename":        fileName,
@@ -893,6 +894,7 @@ func (h *MediaUploadHandlerSingle) HandleComplete(w http.ResponseWriter, r *http
 	if existingMedia != nil && existingMedia.ID != uuid.Nil {
 		mlog.Info("[INFO] UploadHandlerComplete: Duplicate detected for '%s' (Hash matches ID=%s)", session.Filename, existingMedia.ID.String())
 		response := map[string]interface{}{
+			"success": true,
 			"uploaded": []interface{}{},
 			"skipped_duplicates": []interface{}{map[string]interface{}{
 				"filename":        session.Filename,
@@ -1046,6 +1048,7 @@ func (h *MediaUploadHandlerSingle) HandleComplete(w http.ResponseWriter, r *http
 	}
 
 	response := map[string]interface{}{
+		"success": true,
 		"uploaded":           []interface{}{uploadedMedia},
 		"skipped_duplicates": []interface{}{},
 		"errors":             []interface{}{},

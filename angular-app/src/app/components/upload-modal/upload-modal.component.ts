@@ -798,22 +798,43 @@ export class UploadModalComponent implements OnInit, OnDestroy {
     // Initialize progress events for each file
     this.progressEvents = [];
     for (const f of filesToUpload) {
-      this.progressEvents.push({ fileName: f.name, status: 'uploading', progress: 0 });
+      this.progressEvents.push({ fileName: f.name, status: 'uploading' as const, progress: 0 });
     }
 
     const totalFiles = filesToUpload.length;
     
-    // Upload files in batch via FormData
+    // Upload files in SERIAL (one at a time) — critical for mobile stability.
+    // uploadFiles emits UploadProgressEvent objects directly (not HttpEventType).
     this.uploadService.uploadFiles(filesToUpload as any).subscribe({
-      next: (event) => {
-        if (event.type === HttpEventType.UploadProgress && event.total) {
+      next: (event: any) => {
+        // Check if this is a progress event (from our serial uploadFiles)
+        if (event.fileName && event.status) {
+          const progressEvt = event as UploadProgressEvent;
+          
+          // Update the progress event for this specific file
+          this.progressEvents = this.progressEvents.map(p => 
+            p.fileName === progressEvt.fileName 
+              ? { ...p, status: progressEvt.status as 'uploading' | 'completed' | 'error', progress: progressEvt.progress } 
+              : p
+          );
+          
+          // Update current file name being uploaded
+          this.currentFileName = progressEvt.fileName;
+          
+          // Check if any file had an error
+          if (progressEvt.status === 'error') {
+            this.hasError = true;
+          }
+        }
+        // Also handle raw HttpEventType events (in case uploadFiles still emits them internally)
+        else if (event.type === HttpEventType.UploadProgress && event.total) {
           const percent = Math.round((event.loaded / event.total) * 100);
-
-          this.progressEvents = this.progressEvents.map(p => ({ 
-            ...p, 
-            status: 'uploading', 
-            progress: Math.min(100, (percent / totalFiles)) 
-          }));
+          
+          this.progressEvents = this.progressEvents.map(p => 
+            p.status === 'uploading' 
+              ? { ...p, progress: percent } 
+              : p
+          );
           
           if(totalFiles > 0) {
             const names = filesToUpload.slice(0, 2).map(f => f.name).join(', ');
@@ -822,11 +843,12 @@ export class UploadModalComponent implements OnInit, OnDestroy {
         } else if (event.type === HttpEventType.Response && event.body) {
           const resData = event.body as any;
           
-          this.progressEvents = this.progressEvents.map(p => ({ 
-            ...p, 
-            status: 'completed', 
-            progress: 100 
-          }));
+          // Mark current uploading file as completed
+          this.progressEvents = this.progressEvents.map(p => 
+            p.status === 'uploading' 
+              ? { ...p, status: 'completed' as const, progress: 100 } 
+              : p
+          );
 
           this.response = resData; 
 
@@ -834,6 +856,8 @@ export class UploadModalComponent implements OnInit, OnDestroy {
             const dupCount = (this.response.skipped_duplicates as any[])?.length || 0;
             if (dupCount > 0) {
               this.uploadMessage = `Upload complete. ${dupCount} duplicate${dupCount > 1 ? 's' : ''} skipped.`;
+            } else {
+              this.uploadMessage = 'Media uploaded successfully!';
             }
             window.dispatchEvent(new CustomEvent('media-upload-complete'));
           } else {
@@ -842,18 +866,12 @@ export class UploadModalComponent implements OnInit, OnDestroy {
             this.uploadMessage = 'Server did not return expected data.';
           }
         } else if (event.type === HttpEventType.Response && !event.body) { 
-          this.progressEvents = this.progressEvents.map(p => ({ 
-            ...p, 
-            status: 'completed', 
-            progress: 100 
-          }));
+          this.progressEvents = this.progressEvents.map(p => 
+            p.status === 'uploading' 
+              ? { ...p, status: 'completed' as const, progress: 100 } 
+              : p
+          );
           console.log('Upload completed with empty body');
-        } else if (event.type === HttpEventType.UploadProgress && !event.total) { 
-          this.progressEvents = this.progressEvents.map(p => ({ 
-            ...p, 
-            status: 'uploading', 
-            progress: 0 
-          }));
         }
       },
       

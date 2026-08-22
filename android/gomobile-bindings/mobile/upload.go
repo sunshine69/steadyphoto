@@ -165,7 +165,9 @@ func UploadSingleFile(filePath string, uploadURL string, authToken string) (*Upl
 			if uploaded, ok := result["uploaded"]; ok && len(uploaded.([]interface{})) > 0 {
 				return &UploadResult{Success: true}, nil
 			} else if skipped, ok := result["skipped_duplicates"]; ok && len(skipped.([]interface{})) > 0 {
-				return &UploadResult{Success: false, Message: "Duplicate file detected"}, fmt.Errorf("duplicate file")
+				// Duplicate files are NOT failures — the file already exists on the server,
+				// so the upload effectively succeeded.
+				return &UploadResult{Success: true, Message: "Duplicate file detected"}, nil
 			}
 
 			return &UploadResult{Success: true}, nil

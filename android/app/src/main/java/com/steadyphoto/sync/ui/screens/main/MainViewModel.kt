@@ -29,7 +29,8 @@ data class MainUiState(
     val showPermissionRationale: Boolean = false,
     val isBackgroundSyncRunning: Boolean = false,
     val currentUploadItem: String? = null,
-    val currentUploadProgress: Float = 0f
+    val currentUploadProgress: Float = 0f,
+    val isStartDisabledAfterStop: Boolean = false
 )
 
 class MainViewModel(
@@ -317,6 +318,46 @@ class MainViewModel(
     }
 
     /**
+     * Restart background sync - clears the Stop-disables-Start flag and starts sync.
+     * This is the only way to re-enable the Start button after it was disabled by pressing Stop.
+     */
+    fun restartBackgroundSync() {
+        viewModelScope.launch {
+            try {
+                // Clear the flag that disables Start after Stop
+                _uiState.value = _uiState.value.copy(
+                    isStartDisabledAfterStop = false
+                )
+
+                // Then start the sync (same logic as startBackgroundSync)
+                val authToken = container.apiClient.getAuthToken()
+                if (authToken.isNullOrEmpty()) {
+                    _uiState.value = _uiState.value.copy(
+                        errorMessage = "No authentication. Please log in again."
+                    )
+                    return@launch
+                }
+
+                if (!hasMediaPermissions()) {
+                    _uiState.value = _uiState.value.copy(
+                        showPermissionRationale = true,
+                        errorMessage = null
+                    )
+                    return@launch
+                }
+
+                startSync()
+                _uiState.value = _uiState.value.copy(isBackgroundSyncRunning = true)
+            } catch (e: Exception) {
+                android.util.Log.e("MainViewModel", "Error restarting background sync", e)
+                _uiState.value = _uiState.value.copy(
+                    errorMessage = "Could not restart background sync. Please try again."
+                )
+            }
+        }
+    }
+
+    /**
      * Stop background sync - this cancels WorkManager jobs.
      * The Service will be stopped automatically when stopSyncJob() is called via ACTION_STOP_SYNC intent.
      */
@@ -328,13 +369,15 @@ class MainViewModel(
 
                 _uiState.value = _uiState.value.copy(
                     isBackgroundSyncRunning = false,
-                    syncState = SyncUiState.Idle  // Reset state so Start button becomes enabled again
+                    syncState = SyncUiState.Idle,
+                    isStartDisabledAfterStop = true  // Disable Start until Restart is pressed
                 )
             } catch (e: Exception) {
                 android.util.Log.e("MainViewModel", "Error stopping background sync", e)
                 _uiState.value = _uiState.value.copy(
                     isBackgroundSyncRunning = false,
-                    syncState = SyncUiState.Idle  // Reset state so Start button becomes enabled again
+                    syncState = SyncUiState.Idle,
+                    isStartDisabledAfterStop = true  // Disable Start until Restart is pressed
                 )
             }
         }

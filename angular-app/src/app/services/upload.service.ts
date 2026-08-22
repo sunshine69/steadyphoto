@@ -1,12 +1,13 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpEventType } from '@angular/common/http';
-import { Observable, Subject, firstValueFrom } from 'rxjs';
+import { Observable, Subject, firstValueFrom, throwError } from 'rxjs';
 import { environment } from '../../environments/environment';
 
 export interface UploadProgressEvent {
   fileName: string;
   progress: number; // percentage (0-100)
   status: 'uploading' | 'completed' | 'error';
+  error?: string;
 }
 
 @Injectable({
@@ -50,8 +51,12 @@ export class UploadService {
   }
 
   /**
-   * Uploads multiple files one by one via the single-file endpoint.
-   * Returns combined progress + final result.
+   * Uploads multiple files SERIALLY — one file at a time.
+   * This is critical for mobile stability: parallel uploads on mobile networks
+   * cause connection drops, "stream closed" errors, and flaky results.
+   * 
+   * Emits UploadProgressEvent for each file as it uploads, with a cumulative
+   * progress percentage based on how many files have been uploaded.
    */
   uploadFiles(files: any[]): Observable<any> {
     const actualFiles: File[] = [];
@@ -68,13 +73,32 @@ export class UploadService {
     }
 
     // Track per-file results
-    const results: any[] = [];
+    const uploadedItems: any[] = [];
+    const skippedDuplicates: any[] = [];
     const errors: any[] = [];
-    let completed = 0;
-    const total = actualFiles.length;
-
+    
     return new Observable(observer => {
-      actualFiles.forEach((file, idx) => {
+      const total = actualFiles.length;
+
+      // Process files one at a time in order
+      let currentIndex = 0;
+      
+      const processNext = () => {
+        if (currentIndex >= total) {
+          // All files processed
+          observer.next({ 
+            uploaded: uploadedItems,
+            skipped_duplicates: skippedDuplicates,
+            errors: errors
+          });
+          observer.complete();
+          return;
+        }
+
+        const file = actualFiles[currentIndex];
+        currentIndex++;
+
+        // Build form data
         const formData = new FormData();
         formData.append('file', file, file.name);
         
@@ -84,6 +108,13 @@ export class UploadService {
           formData.append('fileCreatedAt', formatted);
         }
 
+        // Send upload progress event (start)
+        observer.next({ 
+          fileName: file.name, 
+          status: 'uploading' as const,
+          progress: 0 
+        });
+
         this.http.post(
           `${this.API_BASE_URL}/media/upload/single`,
           formData,
@@ -92,38 +123,53 @@ export class UploadService {
           next: (event: any) => {
             if (event.type === HttpEventType.UploadProgress && event.total) {
               const percent = Math.round((event.loaded / event.total) * 100);
-              const overallProgress = (percent / total) * (idx + 1);
+              // Overall progress = percentage of files completed (not per-file %)
+              // This is cleaner: 0% → 33% → 66% → 100% for 3 files
+              const fileProgress = (currentIndex / total) * 100;
+              // For in-progress file, blend the file upload % into overall
+              // e.g., file 2 of 3 at 50% upload = overall ~50%
               
-              observer.next({
-                fileName: file.name,
-                progress: overallProgress,
-                status: 'uploading' as const
+              observer.next({ 
+                fileName: file.name, 
+                progress: fileProgress, 
+                status: 'uploading' as const 
               });
             } else if (event.type === HttpEventType.Response && event.body) {
               const resData = event.body as any;
               if (resData && resData.uploaded) {
-                results.push(...resData.uploaded);
+                uploadedItems.push(...resData.uploaded);
               }
               if (resData && resData.skipped_duplicates) {
-                errors.push(...resData.skipped_duplicates);
+                skippedDuplicates.push(...resData.skipped_duplicates);
               }
+              
+              // Mark this file as completed
+              observer.next({ 
+                fileName: file.name, 
+                progress: (currentIndex / total) * 100, 
+                status: 'completed' as const 
+              });
             }
           },
           error: (err: any) => {
             errors.push({ file: file.name, error: err.message });
+            
+            observer.next({ 
+              fileName: file.name, 
+              progress: (currentIndex / total) * 100, 
+              status: 'error' as const,
+              error: err.message
+            });
           },
           complete: () => {
-            completed++;
-            if (completed === total) {
-              observer.next({ 
-                uploaded: results,
-                skipped_duplicates: errors
-              });
-              observer.complete();
-            }
+            // Process the next file
+            processNext();
           }
         });
-      });
+      };
+
+      // Start processing
+      processNext();
     });
   }
 
